@@ -1,0 +1,16 @@
+Package: Icare
+Type: Package
+Title: Integrated Clinical Analysis and Risk Evaluation
+Version: 0.1.0
+Author: User
+Maintainer: User <user@example.com>
+Description: A modular framework for clinical statistics, machine learning, clustering, and prognostic modeling.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    methods,
+    caret,
+    survival
