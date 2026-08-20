@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_04_Extensions.R
 \name{external_validation_test}
 \alias{external_validation_test}
-\title{Perform a survival version of the Hosmer‑Lemeshow test}
+\title{Perform a survival version of the Hosmer Lemeshow test}
 \usage{
 external_validation_test(learner, object, time_point = NULL, n_groups = 10)
 }
@@ -16,8 +16,8 @@ external_validation_test(learner, object, time_point = NULL, n_groups = 10)
 \item{n_groups}{Number of risk groups for HL test (default 10).}
 }
 \value{
-A list with chi‑square statistic, p‑value, and observed/expected tables.
+A list with chi square statistic, p value, and observed/expected tables.
 }
 \description{
-Perform a survival version of the Hosmer‑Lemeshow test
+Perform a survival version of the Hosmer Lemeshow test
 }

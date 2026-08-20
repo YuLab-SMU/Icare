@@ -1,25 +1,25 @@
 # =============================================================================
-# icare Package — Module 4: Advanced Extensions for PrognosiX (Full Suite)
+# icare Package Module 4: Advanced Extensions for PrognosiX (Full Suite)
 # =============================================================================
 # This module provides 10 publication‑grade, robust extensions that integrate
 # seamlessly with your main prognosis pipeline. Each function performs its own
 # package checks using requireNamespace, avoiding helper function conflicts.
 #
 # Functions:
-#   1. run_competing_risks()          – Fine‑Gray or cause‑specific Cox
-#   2. plot_tdROC_comparison()        – Time‑dependent ROC with CIs and comparison
-#   3. plot_multitime_calibration()   – Calibration at multiple time points
-#   4. repeated_cv_evaluation()       – Repeated CV with parallel support
-#   5. compare_models_delong()        – DeLong test for C‑index difference
-#   6. tune_with_bayes()              – Bayesian hyperparameter optimisation
-#   7. stepwise_variable_selection()  – AIC stepwise Cox variable selection
-#   8. calibration_in_the_large()     – Overall calibration (mean predicted vs observed)
-#   9. external_validation_test()     – Survival Hosmer‑Lemeshow test
-#  10. plot_clinical_impact()         – Clinical impact curve with uncertainty
+#   1. run_competing_risks()          -Fine‑Gray or cause‑specific Cox
+#   2. plot_tdROC_comparison()        -Time‑dependent ROC with CIs and comparison
+#   3. plot_multitime_calibration()   -Calibration at multiple time points
+#   4. repeated_cv_evaluation()       -Repeated CV with parallel support
+#   5. compare_models_delong()        -DeLong test for C‑index difference
+#   6. tune_with_bayes()              -Bayesian hyperparameter optimisation
+#   7. stepwise_variable_selection()  -AIC stepwise Cox variable selection
+#   8. calibration_in_the_large()     -Overall calibration (mean predicted vs observed)
+#   9. external_validation_test()     -Survival Hosmer‑Lemeshow test
+#  10. plot_clinical_impact()         -Clinical impact curve with uncertainty
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# 1. Competing Risks: Fine‑Gray or Cause‑Specific Cox (Robust)
+# 1. Competing Risks: Fine-Gray or Cause-Specific Cox (Robust)
 # ---------------------------------------------------------------------------
 #' Run a competing risks survival model with fallback and checks
 #'
@@ -60,7 +60,7 @@ run_competing_risks <- function(object,
     if (requireNamespace("mlr3extralearners", quietly = TRUE)) {
       if (is.null(learner_id)) learner_id <- "surv.fgr"
     } else {
-      warning("mlr3extralearners not installed. Falling back to cause‑specific Cox.")
+      warning("mlr3extralearners not installed. Falling back to cause-specific Cox.")
       model_type <- "cox"
       learner_id <- "surv.coxph"
     }
@@ -82,7 +82,7 @@ run_competing_risks <- function(object,
   tune_res <- tryCatch({
     surv_train_and_tune(object = task, learner_id = learner_id, ...)
   }, error = function(e) {
-    warning("Fine‑Gray model failed: ", e$message, ". Falling back to cause‑specific Cox.")
+    warning("Fine-Gray model failed: ", e$message, ". Falling back to cause-specific Cox.")
     task <- surv_create_surv_task(data, time_col, status_col)
     surv_train_and_tune(object = task, learner_id = "surv.coxph", ...)
   })
@@ -94,9 +94,9 @@ run_competing_risks <- function(object,
 }
 
 # ---------------------------------------------------------------------------
-# 2. Time‑dependent ROC with Confidence Intervals and Model Comparison
+# 2. Time-dependent ROC with Confidence Intervals and Model Comparison
 # ---------------------------------------------------------------------------
-#' Plot time‑dependent ROC curves with bootstrap CIs and compare two models
+#' Plot time-dependent ROC curves with bootstrap CIs and compare two models
 #'
 #' @param learner1,learner2 Two trained learners (if comparing); learner2 can be NULL.
 #' @param object A `TaskSurv` or `PrognosiX` object.
@@ -179,7 +179,7 @@ plot_tdROC_comparison <- function(learner1, learner2 = NULL,
     ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper, fill = Model),
                          alpha = 0.2, colour = NA) +
     ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", colour = "grey50") +
-    ggplot2::labs(x = "Time", y = "AUC", title = "Time‑dependent ROC with 95% CI") +
+    ggplot2::labs(x = "Time", y = "AUC", title = "Time-dependent ROC with 95% CI") +
     ggprism::theme_prism()
   
   print(p)
@@ -199,9 +199,9 @@ plot_tdROC_comparison <- function(learner1, learner2 = NULL,
 }
 
 # ---------------------------------------------------------------------------
-# 3. Multi‑time Calibration Curves (with automatic time selection)
+# 3. Multi-time Calibration Curves (with automatic time selection)
 # ---------------------------------------------------------------------------
-#' Plot calibration curves at multiple time points (auto‑selected if not provided)
+#' Plot calibration curves at multiple time points (auto-selected if not provided)
 #'
 #' @param learner A trained mlr3 learner (supports "distr").
 #' @param object A `TaskSurv` or `PrognosiX` object.
@@ -267,25 +267,26 @@ plot_multitime_calibration <- function(learner, object,
     }
     ggplot2::ggsave(file.path(save_path, "calibration_multitime.pdf"),
                     combined, width = 10, height = 6)
-    message("Multi‑time calibration plot saved to: ", save_path)
+    message("Multi-time calibration plot saved to: ", save_path)
   }
   
   invisible(combined)
 }
 
 # ---------------------------------------------------------------------------
-# 4. Repeated Cross‑Validation (with parallel support)
+# 4. Repeated Cross-Validation (with parallel support)
 # ---------------------------------------------------------------------------
-#' Perform repeated k‑fold CV with optional parallelisation
+#' Perform repeated k-fold CV with optional parallelisation
 #'
 #' @param object A `TaskSurv` or `PrognosiX` object.
 #' @param learner_id Character; learner to evaluate.
 #' @param n_repeats Integer; number of CV repetitions (default 5).
 #' @param folds Integer; number of folds per repeat (default 5).
-#' @param tune Logical; whether to tune within each CV loop (time‑consuming).
+#' @param tune Logical; whether to tune within each CV loop (time-consuming).
 #' @param parallel Logical; use parallel processing (requires `foreach`).
 #' @param n_cores Number of cores for parallel (default detectCores() - 1).
 #' @param seed Random seed for reproducibility.
+#' @importFrom foreach foreach %dopar%
 #' @return A list with results and summary (including bootstrap CI).
 #' @export
 repeated_cv_evaluation <- function(object, learner_id,
@@ -370,7 +371,8 @@ repeated_cv_evaluation <- function(object, learner_id,
 #' @param task A `TaskSurv` object (validation set recommended).
 #' @param n_boot Bootstrap iterations (default 1000).
 #' @param seed Random seed for reproducibility.
-#' @return A list with p‑value, C‑indices, difference, and bootstrap CI.
+#' @importFrom survcomp cindex.comp concordance.index
+#' @return A list with p value, C indices, difference, and bootstrap CI.
 #' @export
 compare_models_delong <- function(model1, model2, task,
                                   n_boot = 1000, seed = 123) {
@@ -511,7 +513,7 @@ stepwise_variable_selection <- function(object,
 }
 
 # ---------------------------------------------------------------------------
-# 8. Calibration‑in‑the‑Large (overall calibration)
+# 8. Calibration 
 # ---------------------------------------------------------------------------
 #' Assess overall calibration: mean predicted vs observed survival probability
 #'
@@ -557,7 +559,7 @@ calibration_in_the_large <- function(learner, object,
   # Use observed status at time point (if time <= time_point & status == 1, else 0)
   obs_binary <- ifelse(time <= time_point & status == 1, 1, 0)
   idx <- time <= time_point
-  if (sum(idx) < 10) stop("Too few patients with follow‑up up to time_point.")
+  if (sum(idx) < 10) stop("Too few patients with follow-up up to time_point.")
   fit <- glm(obs_binary[idx] ~ logit_pred[idx], family = binomial())
   coefs <- coef(fit)
   
@@ -569,15 +571,15 @@ calibration_in_the_large <- function(learner, object,
 }
 
 # ---------------------------------------------------------------------------
-# 9. External Validation Test (Survival Hosmer‑Lemeshow)
+# 9. External Validation Test (Survival Hosmer Lemeshow)
 # ---------------------------------------------------------------------------
-#' Perform a survival version of the Hosmer‑Lemeshow test
+#' Perform a survival version of the Hosmer Lemeshow test
 #'
 #' @param learner A trained mlr3 learner (supports "distr").
 #' @param object A `TaskSurv` or `PrognosiX` object (validation set).
 #' @param time_point Time point for evaluation (default median event time).
 #' @param n_groups Number of risk groups for HL test (default 10).
-#' @return A list with chi‑square statistic, p‑value, and observed/expected tables.
+#' @return A list with chi square statistic, p value, and observed/expected tables.
 #' @export
 external_validation_test <- function(learner, object,
                                      time_point = NULL,
@@ -700,21 +702,21 @@ plot_clinical_impact <- function(learner, object,
   p <- ggplot2::ggplot(impact_df, ggplot2::aes(x = threshold)) +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = n_high_risk_lower,
                                       ymax = n_high_risk_upper,
-                                      fill = "High‑risk patients"),
+                                      fill = "High risk patients"),
                          alpha = 0.2) +
-    ggplot2::geom_line(ggplot2::aes(y = n_high_risk, colour = "High‑risk patients"),
+    ggplot2::geom_line(ggplot2::aes(y = n_high_risk, colour = "High-risk patients"),
                        linewidth = 1.2) +
     ggplot2::geom_ribbon(ggplot2::aes(ymin = n_events_lower,
                                       ymax = n_events_upper,
-                                      fill = "Events in high‑risk"),
+                                      fill = "Events in high-risk"),
                          alpha = 0.2) +
-    ggplot2::geom_line(ggplot2::aes(y = n_events_high, colour = "Events in high‑risk"),
+    ggplot2::geom_line(ggplot2::aes(y = n_events_high, colour = "Events in high-risk"),
                        linewidth = 1.2, linetype = "dashed") +
-    ggplot2::scale_fill_manual(values = c("High‑risk patients" = "#1f77b4",
-                                          "Events in high‑risk" = "#d62728"),
+    ggplot2::scale_fill_manual(values = c("High-risk patients" = "#1f77b4",
+                                          "Events in high-risk" = "#d62728"),
                                name = NULL) +
-    ggplot2::scale_colour_manual(values = c("High‑risk patients" = "#1f77b4",
-                                            "Events in high‑risk" = "#d62728"),
+    ggplot2::scale_colour_manual(values = c("High-risk patients" = "#1f77b4",
+                                            "Events in high-risk" = "#d62728"),
                                  name = NULL) +
     ggplot2::labs(x = "Risk Threshold",
                   y = "Number of Patients",

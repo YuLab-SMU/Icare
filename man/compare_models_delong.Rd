@@ -16,7 +16,7 @@ compare_models_delong(model1, model2, task, n_boot = 1000, seed = 123)
 \item{seed}{Random seed for reproducibility.}
 }
 \value{
-A list with p‑value, C‑indices, difference, and bootstrap CI.
+A list with p value, C indices, difference, and bootstrap CI.
 }
 \description{
 Compare two survival models using DeLong's test with confidence intervals

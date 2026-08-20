@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_04_Extensions.R
 \name{repeated_cv_evaluation}
 \alias{repeated_cv_evaluation}
-\title{Perform repeated k‑fold CV with optional parallelisation}
+\title{Perform repeated k-fold CV with optional parallelisation}
 \usage{
 repeated_cv_evaluation(
   object,
@@ -24,7 +24,7 @@ repeated_cv_evaluation(
 
 \item{folds}{Integer; number of folds per repeat (default 5).}
 
-\item{tune}{Logical; whether to tune within each CV loop (time‑consuming).}
+\item{tune}{Logical; whether to tune within each CV loop (time-consuming).}
 
 \item{parallel}{Logical; use parallel processing (requires `foreach`).}
 
@@ -36,5 +36,5 @@ repeated_cv_evaluation(
 A list with results and summary (including bootstrap CI).
 }
 \description{
-Perform repeated k‑fold CV with optional parallelisation
+Perform repeated k-fold CV with optional parallelisation
 }

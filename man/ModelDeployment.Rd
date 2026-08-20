@@ -8,7 +8,7 @@ ModelDeployment(
   object,
   preproc = NULL,
   class_labels = c("Normal", "High Risk"),
-  model_description = "Clinlabomics‑based diagnostic ensemble."
+  model_description = "Clinlabomics based diagnostic ensemble."
 )
 }
 \arguments{
@@ -35,14 +35,14 @@ A list of class `"ModelDeployment"` with components:
     \item{model_desc}{The description string.}
     \item{model_list}{Character vector of all selectable model identifiers.}
     \item{predict_fn}{A function `function(newdata, selected_model = "auto")`
-      that returns a two‑column data frame of class probabilities.}
+      that returns a two column data frame of class probabilities.}
   }
 }
 \description{
 Creates a deployment-ready object that encapsulates all trained models,
-fine‑tuned models, and all stored ensembles (from `process.info$ensembles`).
+fine tuned models, and all stored ensembles (from `process.info$ensembles`).
 The returned list includes a unified prediction function that can dispatch
-to any of these models based on a user‑selected string.
+to any of these models based on a user selected string.
 }
 \examples{
 \dontrun{
@@ -50,7 +50,7 @@ deploy <- ModelDeployment(
   object = model_obj,
   preproc = preProc,
   class_labels = c("Control", "Case"),
-  model_description = "Omics‑based diagnostic ensemble"
+  model_description = "Omics based diagnostic ensemble"
 )
 pred <- deploy$predict_fn(newdata, selected_model = "Ensemble: Stacking")
 }

@@ -95,7 +95,9 @@ Imports:
     viridisLite,
     mlr3tuningspaces,
     paradox,
-    wesanderson
+    wesanderson,
+    maxstat,
+    survcomp
 Suggests:
     mlr3learners,
     mlr3extralearners,
@@ -111,7 +113,9 @@ Suggests:
     ipred,
     themis,
     mlr3viz,
-    gbm
+    gbm,
+    bbotk,
+    mlr3mbo
 Remotes:
     mdbrown/rmda,
     mlr-org/mlr3extralearners

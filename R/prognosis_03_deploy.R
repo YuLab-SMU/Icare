@@ -141,12 +141,12 @@ Stat_to_PrognosiX <- function(stat_obj,
   feature_cols <- feature_candidates[numeric_features]
   meta_cols    <- feature_candidates[!numeric_features]
   
-  # Move non‑numeric metadata to info.data (keep them for clinical analyses)
+  # Move non-numeric metadata to info.data (keep them for clinical analyses)
   if (length(meta_cols) > 0) {
     for (col in meta_cols) {
       info_data[[col]] <- core_data[[col]]
     }
-    .log("   Moved %d non‑numeric columns to info.data: %s",
+    .log("   Moved %d non-numeric columns to info.data: %s",
          length(meta_cols), paste(meta_cols, collapse = ", "))
   }
   
@@ -177,7 +177,7 @@ Stat_to_PrognosiX <- function(stat_obj,
         .log("    [impute] %-14s  %d NA -> %s", col, n_na, fill)
       }
     }
-  } else { # "allow" – keep NAs
+  } else { 
     .log("   NA values are kept (na.action = 'allow').")
   }
   
@@ -344,7 +344,6 @@ run_prognosis_pipeline <- function(
     file.path(d3, "Best_Model_Summary.csv"), row.names = FALSE)
   message(sprintf("  [OK] CV C-index = %.4f", tune_res$cv_performance))
   
-  # ---- WARNING: Training‑set evaluation ahead ----
   if (is.null(val_data)) {
     message("\n", strrep("!", 65))
     message("!! WARNING: No validation data provided (val_data = NULL).")

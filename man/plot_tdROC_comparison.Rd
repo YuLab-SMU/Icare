@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_04_Extensions.R
 \name{plot_tdROC_comparison}
 \alias{plot_tdROC_comparison}
-\title{Plot time‑dependent ROC curves with bootstrap CIs and compare two models}
+\title{Plot time-dependent ROC curves with bootstrap CIs and compare two models}
 \usage{
 plot_tdROC_comparison(
   learner1,
@@ -31,5 +31,5 @@ plot_tdROC_comparison(
 A list with AUC values, CIs, and a ggplot.
 }
 \description{
-Plot time‑dependent ROC curves with bootstrap CIs and compare two models
+Plot time-dependent ROC curves with bootstrap CIs and compare two models
 }

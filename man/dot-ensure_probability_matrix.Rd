@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_10_deploy.R
 \name{.ensure_probability_matrix}
 \alias{.ensure_probability_matrix}
-\title{Helper: Convert prediction output to a two‑column probability matrix}
+\title{Helper: Convert prediction output to a two column probability matrix}
 \usage{
 .ensure_probability_matrix(pred, strategy)
 }
@@ -15,6 +15,6 @@
 A data frame with two columns (negative, positive) of probabilities.
 }
 \description{
-Helper: Convert prediction output to a two‑column probability matrix
+Helper: Convert prediction output to a two column probability matrix
 }
 \keyword{internal}

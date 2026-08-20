@@ -65,7 +65,6 @@
         predict_fn <- ens_obj$predict_fn
       }
       if (is.function(predict_fn)) {
-        # 修正：显式 error 处理，不使用 `...`
         pred <- tryCatch(
           predict_fn(newdata),
           error = function(e) {
@@ -95,13 +94,13 @@
     prob_matrix <- .ensure_probability_matrix(pred, "Ensemble Stacking")
   }
   
-  # 3b. Fine‑tuned model
+  # 3b. Fine tuned model
   if (is.null(prob_matrix) && !is.null(tuned_label) &&
       identical(selected_model, tuned_label) && !is.null(res$fine_tuned_model)) {
     prob_matrix <- tryCatch(
       as.data.frame(predict(res$fine_tuned_model, newdata, type = "prob")),
       error = function(e) {
-        stop("Fine‑tuned model prediction failed: ", e$message, call. = FALSE)
+        stop("Fine tuned model prediction failed: ", e$message, call. = FALSE)
       }
     )
   }
@@ -174,7 +173,7 @@
 }
 
 
-#' Helper: Convert prediction output to a two‑column probability matrix
+#' Helper: Convert prediction output to a two column probability matrix
 #'
 #' @param pred Output from an ensemble predict_fn.
 #' @param strategy Name of the ensemble (for error messages).
@@ -238,7 +237,7 @@
       neg <- 1 - pos
       return(data.frame(Neg = neg, Pos = pos, stringsAsFactors = FALSE))
     } else {
-      stop("Ensemble '", strategy, "' returned non‑binary categorical output. ",
+      stop("Ensemble '", strategy, "' returned non binary categorical output. ",
            "Cannot convert to probabilities.", call. = FALSE)
     }
   } else {
@@ -251,9 +250,9 @@
 #' Model Deployment Constructor with Multi‑Ensemble Support
 #'
 #' Creates a deployment-ready object that encapsulates all trained models,
-#' fine‑tuned models, and all stored ensembles (from `process.info$ensembles`).
+#' fine tuned models, and all stored ensembles (from `process.info$ensembles`).
 #' The returned list includes a unified prediction function that can dispatch
-#' to any of these models based on a user‑selected string.
+#' to any of these models based on a user selected string.
 #'
 #' @param object A `Train_Model` S4 object, typically returned by
 #'   `ModelTrainAnalysis()` and subsequent `TrainEnsemble()` calls.
@@ -274,7 +273,7 @@
 #'     \item{model_desc}{The description string.}
 #'     \item{model_list}{Character vector of all selectable model identifiers.}
 #'     \item{predict_fn}{A function `function(newdata, selected_model = "auto")`
-#'       that returns a two‑column data frame of class probabilities.}
+#'       that returns a two column data frame of class probabilities.}
 #'   }
 #' @export
 #'
@@ -284,14 +283,14 @@
 #'   object = model_obj,
 #'   preproc = preProc,
 #'   class_labels = c("Control", "Case"),
-#'   model_description = "Omics‑based diagnostic ensemble"
+#'   model_description = "Omics based diagnostic ensemble"
 #' )
 #' pred <- deploy$predict_fn(newdata, selected_model = "Ensemble: Stacking")
 #' }
 ModelDeployment <- function(object,
                             preproc = NULL,
                             class_labels = c("Normal", "High Risk"),
-                            model_description = "Clinlabomics‑based diagnostic ensemble.") {
+                            model_description = "Clinlabomics based diagnostic ensemble.") {
   
   # ----- 1. Build the list of available model identifiers -----
   available <- c()
@@ -302,7 +301,7 @@ ModelDeployment <- function(object,
     available <- c(available, base_models)
   }
   
-  # 1b. Fine‑tuned model (if present)
+  # 1b. Fine tuned model (if present)
   tuned_label <- NULL
   if (!is.null(object@best.model.result$fine_tuned_model)) {
     tuned_method <- object@best.model.result$model_type %||% "tuned"

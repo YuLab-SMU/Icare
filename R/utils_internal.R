@@ -435,7 +435,9 @@ utils::globalVariables(c(
   "x",
   "y",
   "y_position",
-  "yhat"
+  "yhat","cluster", "n_high_risk_lower", "n_high_risk_upper",
+  "n_high_risk", "n_events_lower", "n_events_upper",
+  "n_events_high", "r"
 ))
 
 #' Match factor levels of two data frames
@@ -604,4 +606,35 @@ list_presets <- function() {
     cat(sprintf("  %-12s: %s\n", p, descriptions[p]))
   }
   invisible(list(old = old_presets, new = new_presets))
+}
+
+
+#' Create a subdirectory under the global output root
+#'
+#' This function creates a subdirectory (or nested subdirectories) under the
+#' global output root set by \code{\link{set_output_root}}. If the root has not
+#' been set, it defaults to a temporary directory for the current R session.
+#'
+#' @param ... Character strings specifying subdirectory path components.
+#' @return The full path to the created directory (invisibly).
+#'
+#' @examples
+#' \dontrun{
+#' set_output_root("./my_results")
+#' sub_dir("figures", "final")
+#' sub_dir("data", "processed")
+#' }
+#'
+#' @seealso \code{\link{set_output_root}}, \code{\link{get_output_root}}
+#' @export
+sub_dir <- function(...) {
+  base <- get_output_root()
+  if (is.null(base)) {
+    # Fallback to a session‑specific temporary directory
+    base <- file.path(tempdir(), "icare_output")
+    dir.create(base, showWarnings = FALSE, recursive = TRUE)
+  }
+  d <- file.path(base, ...)
+  dir.create(d, showWarnings = FALSE, recursive = TRUE)
+  invisible(d)
 }

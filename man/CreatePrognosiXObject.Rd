@@ -39,7 +39,7 @@ CreatePrognosiXObject(
 
 \item{survival.var}{List of survival variables (reserved).}
 
-\item{survival.data}{Pre‑computed survival data (if NULL, built automatically).}
+\item{survival.data}{Pre-computed survival data (if NULL, built automatically).}
 
 \item{sub.data}{Data frame for subgroup analysis (reserved).}
 

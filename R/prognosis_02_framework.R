@@ -921,7 +921,7 @@ surv_list_available_learners <- function() {
 #' @param title Custom plot title.
 #' @param group_col Optional character; name of a clinical variable in
 #'   \code{info.data} to use instead of risk scores.
-#'
+#' @importFrom maxstat maxstat.test
 #' @return A \code{ggsurvplot} object (with cutoffs stored as attribute).
 #' @export
 surv_plot_risk_km <- function(learner, object,
@@ -3067,6 +3067,7 @@ surv_filter_features_clinical <- function(object,
 #'   (e.g. \code{"Set2"}, \code{"Dark2"}, \code{"Paired"}) or a vector of colors.
 #'   If \code{NULL} (default), a custom clean palette is used.
 #'
+#' @importFrom mlr3 benchmark_grid benchmark
 #' @return A list containing:
 #'   \item{bmr}{The \code{BenchmarkResult} object.}
 #'   \item{table}{Aggregated performance table.}

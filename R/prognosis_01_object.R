@@ -171,7 +171,7 @@ save_plot_sur <- function(p, name, w=8, h=6) {
 #' @param baseline.table Optional baseline table (reserved).
 #' @param variable.types List of variable types (reserved).
 #' @param survival.var List of survival variables (reserved).
-#' @param survival.data Pre‑computed survival data (if NULL, built automatically).
+#' @param survival.data Pre-computed survival data (if NULL, built automatically).
 #' @param sub.data Data frame for subgroup analysis (reserved).
 #' @param univariate.analysis Results of univariate analysis (reserved).
 #' @param split.data Train/test split info (reserved).
@@ -302,20 +302,20 @@ CreatePrognosiXObject <- function(
     clean.data[[status_col]] <- NULL
   }
   
-  # ---- 6. Move all non‑numeric columns from clean.data to info.data ----
-  # Identify non‑numeric columns (character, factor, logical, etc.)
+  # ---- 6. Move all non-numeric columns from clean.data to info.data ----
+  # Identify non-numeric columns (character, factor, logical, etc.)
   non_numeric <- names(which(!sapply(clean.data, is.numeric)))
   if (length(non_numeric) > 0) {
     for (col in non_numeric) {
       info.data[[col]] <- clean.data[[col]]
       clean.data[[col]] <- NULL
     }
-    cat("Moved non‑numeric columns to info.data:", paste(non_numeric, collapse = ", "), "\n")
+    cat("Moved non-numeric columns to info.data:", paste(non_numeric, collapse = ", "), "\n")
   }
   
   # ---- 7. Ensure clean.data contains only numeric columns ----
   if (ncol(clean.data) == 0) {
-    warning("clean.data has no columns after moving non‑numeric data. This may be acceptable if you only have clinical metadata.")
+    warning("clean.data has no columns after moving non-numeric data. This may be acceptable if you only have clinical metadata.")
   }
   
   # ---- 8. Prepare column names (sanitise) ----

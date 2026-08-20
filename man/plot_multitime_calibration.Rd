@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_04_Extensions.R
 \name{plot_multitime_calibration}
 \alias{plot_multitime_calibration}
-\title{Plot calibration curves at multiple time points (auto‑selected if not provided)}
+\title{Plot calibration curves at multiple time points (auto-selected if not provided)}
 \usage{
 plot_multitime_calibration(
   learner,
@@ -30,5 +30,5 @@ plot_multitime_calibration(
 A `patchwork` composite plot.
 }
 \description{
-Plot calibration curves at multiple time points (auto‑selected if not provided)
+Plot calibration curves at multiple time points (auto-selected if not provided)
 }
