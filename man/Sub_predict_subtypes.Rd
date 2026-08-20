@@ -51,5 +51,35 @@ In all cases the predicted label is written to
   val_obj <- Sub_predict_subtypes(val_obj, train_obj, method = "kmeans")
   val_obj <- Sub_predict_subtypes(val_obj, train_obj, method = "lpa")
   val_obj <- Sub_predict_subtypes(val_obj, train_obj, method = "nmf")
+set.seed(1)
+require('NMF')
+demo_df <- data.frame(
+  group = rep(c(0, 1), each = 30),
+  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+  feat3 = rnorm(60, 10, 2),
+  feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+ )
+rownames(demo_df) <- paste0("S", 1:60)  
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                             group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+split <- SplitSubtypingObject(sub_obj, p = 0.7, stratify_by = "group")
+sub_train <- Sub_normalize_process(split$train, normalize_method = "min_max")
+norm_params <- Sub_extract_norm_params(sub_train, verbose = FALSE)
+sub_test <- Sub_apply_norm_params(split$test, norm_params = norm_params, verbose = FALSE)
+
+sub_train <- Sub_nmf_estimate(sub_train, rank_range = 2:3, nrun = 2, seed = 1)
+sub_train <- Sub_nmf_best_rank(sub_train, nrun = 2)
+sub_train <- Sub_nmf_assign_subtypes(sub_train)
+sub_train <- Sub_nmf_train_model(
+  sub_train, best_k = sub_train@Optimal.cluster, nrun = 2,
+  model_name = "demo_nmf_model",save_dir   ="./"
+)
+
+# Predict subtypes on the held-out validation split.
+sub_test <- Sub_predict_subtypes(sub_test, train_object = sub_train,
+                                 method = "nmf", verbose = FALSE)
+table(sub_test@info.data$cluster_nmf)
 }
 }

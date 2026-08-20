@@ -18,10 +18,6 @@ Converts a user-provided named list of \code{c(lower, upper)} vectors into
 the format required by \code{rBayesianOptimization::BayesianOptimization}.
 }
 \examples{
-\dontrun{
-bounds <- BuildTuningBounds(
-  mtry        = c(2, 10),
-  n.trees     = c(50, 500),
-  shrinkage   = c(0.001, 0.1) )
-  }
+bounds <- BuildTuningBounds(mtry = c(1, 5), n.trees = c(50, 200))
+print(bounds)
 }

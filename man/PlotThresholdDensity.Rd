@@ -13,17 +13,23 @@ PlotThresholdDensity(
 )
 }
 \arguments{
-\item{thresh_result}{Output from \code{CalculateThresholds}.}
+\item{thresh_result}{Output list from \code{CalculateThresholds}.}
 
-\item{lower_threshold}{Default: \code{Se_Target} if exists, else Youden.}
+\item{lower_threshold}{Numeric threshold defining the lower decision boundary.
+Defaults to \code{Se_Target} if available, otherwise falls back to \code{Youden}.}
 
-\item{upper_threshold}{Default: \code{Sp_Target} if exists, else Youden.}
+\item{upper_threshold}{Numeric threshold defining the upper decision boundary.
+Defaults to \code{Sp_Target} if available, otherwise falls back to \code{Youden}.}
 
-\item{save_plot, save_dir}{Output options.}
+\item{save_plot}{Logical; whether to save the rendered density plot as a PDF file. Default is \code{FALSE}.}
+
+\item{save_dir}{Directory path where the output PDF will be saved.}
 }
 \value{
-A ggplot object.
+A \code{ggplot} object showing probability density distributions and decision zones.
 }
 \description{
-Decision Density with Threshold Zones
+Visualizes predicted probability density distributions stratified by true outcome,
+overlaid with decision threshold lines and risk zone summary statistics (Low/High counts,
+PPV, and NPV).
 }

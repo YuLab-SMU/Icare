@@ -2,19 +2,43 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_filter_features_clinical}
 \alias{surv_filter_features_clinical}
-\title{Feature Selection Pipeline: Univariate to Lasso}
+\title{Univariate Cox Filtering with Support for Clinical Metadata}
 \usage{
-surv_filter_features_clinical(object, p_threshold = 0.05)
+surv_filter_features_clinical(
+  object,
+  p_threshold = 0.05,
+  features = NULL,
+  include_clinical = FALSE
+)
 }
 \arguments{
-\item{object}{A \code{TaskSurv} or \code{PrognosiX} object. The function
-extracts the task using \code{surv_extract_task()}.}
+\item{object}{A \code{PrognosiX} or \code{TaskSurv} object, or a data frame.}
 
-\item{p_threshold}{P-value threshold for univariate filtering (default 0.05)}
+\item{p_threshold}{Numeric; p‑value cutoff (default 0.05).}
+
+\item{features}{Character vector of feature names to test. If \code{NULL},
+all numeric columns (plus any specified clinical variables) are used.}
+
+\item{include_clinical}{Logical; if \code{TRUE} and \code{object} is
+\code{PrognosiX}, also test all columns in \code{info.data} except
+\code{time} and \code{status}. Default \code{FALSE}.}
 }
 \value{
-A list containing the filtered task and the univariate results table
+A list with components:
+  \item{task}{A \code{TaskSurv} object containing only significant features.}
+  \item{table}{Data frame of univariate results for all tested variables.}
+  \item{plot}{A ggplot object showing -log10(p) for each variable.}
 }
 \description{
-Feature Selection Pipeline: Univariate to Lasso
+Performs univariate Cox regression on each feature (or clinical variable) and
+selects those with p‑value below a threshold. When a \code{PrognosiX} object
+is given, both \code{survival.data} and \code{info.data} are merged to allow
+filtering on clinical variables.
+}
+\examples{
+\dontrun{
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, "time", "status")
+uni <- surv_filter_features_clinical(task, p_threshold = 0.1)
+}
 }

@@ -11,7 +11,7 @@ run_prognosis_pipeline(
   learner_ids = c("surv.coxph", "surv.cv_glmnet", "surv.ranger"),
   p_threshold = 0.05,
   tuning_budget = 30,
-  cutoff_method = c("median", "tertile", "quartile", "p_optimize"),
+  cutoff_method = c("median", "tertile", "quartile", "p_optimize", "maxstat"),
   time_points = c(1, 3, 5),
   output_dir = NULL,
   seed = 2025,
@@ -28,23 +28,19 @@ run_prognosis_pipeline(
 
 \item{status_col}{Event status column (required for \code{Stat} input).}
 
-\item{learner_ids}{mlr3 learner IDs to benchmark.  Run
-\code{surv_list_available_learners()} to see every option.
-Default: \code{c("surv.coxph", "surv.cv_glmnet", "surv.ranger")}.}
+\item{learner_ids}{mlr3 learner IDs to benchmark.}
 
-\item{p_threshold}{Univariate Cox p-value cut-off (default \code{0.05}).}
+\item{p_threshold}{Univariate Cox p-value cut-off.}
 
-\item{tuning_budget}{Number of hyperparameter evaluations per model
-(default \code{30}).  Use \code{50}-\code{100} for publication results.}
+\item{tuning_budget}{Number of hyperparameter evaluations per model.}
 
-\item{cutoff_method}{Risk stratification cut-point:
-\code{"median"}, \code{"tertile"}, \code{"quartile"}, or \code{"p_optimize"}.}
+\item{cutoff_method}{Risk stratification cut-point method.}
 
-\item{time_points}{Nomogram prediction horizons (default \code{c(1,3,5)}).}
+\item{time_points}{Nomogram prediction horizons.}
 
 \item{output_dir}{Root folder for all outputs.}
 
-\item{seed}{Random seed (default \code{2025}).}
+\item{seed}{Random seed.}
 
 \item{run_shap}{Run SHAP explanation (default \code{FALSE}).}
 
@@ -55,36 +51,12 @@ Default: \code{c("surv.coxph", "surv.cv_glmnet", "surv.ranger")}.}
 \item{subgroup_vars}{Optional subgroup variables for forest-plot analysis.}
 }
 \value{
-Invisible named list:
-  \code{prog_obj}, \code{best_learner}, \code{filter_result},
-  \code{benchmark_table}, \code{km_plot}, \code{auc_data}, \code{output_dir}.
+Invisible named list with all results.
 }
 \description{
-Chains all prognosis analysis steps into a single call:
-\enumerate{
-  \item \strong{Feature filtering}  -- univariate Cox (\code{surv_filter_features_clinical})
-  \item \strong{Algorithm benchmark} -- multi-model CV (\code{surv_run_algorithm_benchmark})
-  \item \strong{Tuning + training}   -- best algorithm tuned and fitted (\code{surv_train_and_tune})
-  \item \strong{KM risk curves}      -- stratified survival plots (\code{surv_plot_risk_km})
-  \item \strong{Time-dependent AUC}  -- dynamic accuracy (\code{surv_plot_time_dependent_auc})
-  \item \strong{Nomogram}            -- clinical scoring chart (requires \pkg{rms})
-  \item \strong{SHAP}                -- feature explanation (requires \pkg{survex})
-  \item \strong{Save}               -- all artefacts written to \code{output_dir}
-}
-}
-\examples{
-\dontrun{
-# --- Minimal call (PrognosiX object) ---
-res <- run_prognosis_pipeline(prog_obj)
-
-# --- From a Stat object with custom learners ---
-res <- run_prognosis_pipeline(
-  object        = stat_obj,
-  time_col      = "OS_time",
-  status_col    = "OS_status",
-  learner_ids   = c("surv.coxph", "surv.ranger", "surv.cv_glmnet"),
-  tuning_budget = 50,
-  cutoff_method = "tertile"
-)
-}
+Chains all prognosis analysis steps into a single call. By default, all
+evaluation plots (KM, time-AUC, nomogram) are computed on the **training set**
+(apparent performance). If you provide an external validation set via
+\code{val_data}, the pipeline will also evaluate on that set and report
+unbiased performance.
 }

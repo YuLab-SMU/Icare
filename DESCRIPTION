@@ -1,7 +1,7 @@
 Package: icare
 Type: Package
 Title: Intelligent ClinlAbomics Research Expedition
-Version: 0.1.3
+Version: 1.0.0
 Author: Huaichao Luo,Guanchuang Yu,Fei Long,Hongyan Lin
 Maintainer: Huaichao Luo <luohc@uestc.edu.cn>
 Description: A modular framework for clinical statistics, missing-data
@@ -102,9 +102,62 @@ Suggests:
     Boruta,
     tidyverse,
     mlbench,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    magrittr,
+    forestploter,
+    ROSE,
+    DMwR,
+    RANN,
+    ipred,
+    themis,
+    mlr3viz,
+    gbm
 Remotes:
     mdbrown/rmda,
     mlr-org/mlr3extralearners
 RoxygenNote: 7.3.3
 Depends: R (>= 3.5.0)
+LazyDataCompression: xz
+Collate:
+  'stat_01_object.R'
+  'model_01_object.R'
+  'subtyping_01_object.R'
+  'prognosis_01_object.R'
+  'output_config.R'
+  'object_utils.R'
+  'utils_internal.R'
+  'stat_02_missing.R'
+  'stat_03_remove_missing.R'
+  'stat_04_descriptive.R'
+  'stat_05_handle_missing.R'
+  'stat_06_deg.R'
+  'stat_07_outlier.R'
+  'stat_08_normalize.R'
+  'stat_09_apply_new.R'
+  'model_02_FeatureSelect.R'
+  'model_02_viz_feature_selection.R'
+  'model_03_feature_sensitivity.R'
+  'model_04_model_benchmark.R'
+  'model_05_train.R'
+  'model_05b_nonbinary_downstream.R'
+  'model_06_ensemble.R'
+  'model_06_hyperparameter_tuning.R'
+  'model_07_explain.R'
+  'model_08_clinical_analysis.R'
+  'model_09_nri_idi.R'
+  'model_10_deploy.R'
+  'subtyping_02_normalize.R'
+  'subtyping_03_kmeans.R'
+  'subtyping_04_nmf.R'
+  'subtyping_05_lpa.R'
+  'subtyping_06_predict.R'
+  'subtyping_07_evaluate.R'
+  'subtyping_08_compare.R'
+  'subtyping_09_tsne.R'
+  'subtyping_09_umap.R'
+  'subtyping_10_deploy.R'
+  'prognosis_02_framework.R'
+  'prognosis_03_deploy.R'
+  'prognosis_04_Extensions.R'
+  'utils_convert_types.R'
+  'viz_functions.R'

@@ -19,8 +19,11 @@ the `last_test_sig` result is not available, it returns `NULL`.
 }
 \examples{
 \dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-last_sig <- ExtractLastTestSig(stat_obj)
-print(last_sig)
+data(iris)
+iris_sub <- iris[iris$Species != "virginica", ]
+stat <- CreateStatObject(clean.data = iris_sub, group_col = "Species")
+stat <- stat_var_feature(stat, p_threshold = 0.05)
+last <- ExtractLastTestSig(stat)
+head(last)
 }
 }

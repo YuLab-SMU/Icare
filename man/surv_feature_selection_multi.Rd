@@ -66,24 +66,13 @@ XGBoost importance, VIMP, stepwise, stability selection,  and Boruta.
 }
 \examples{
 \dontrun{
-# Load veteran data and create PrognosiX object
-data("veteran", package = "survival")
-stat <- CreateStatObject(raw.data = veteran, clean.data = veteran, group_col = "status")
-prog <- Stat_to_PrognosiX(stat, time_col = "time", status_col = "status")
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 
-# Run feature selection with 4 robust methods
-fs <- surv_feature_selection_multi(
-  object = prog,
-  methods = c("uni_cox", "lasso", "rf_imp", "vimp"),
-  p_threshold = 0.1,
-  top_ratio = 0.5,
-  combine = "freq",
-  freq_cutoff = 2
+feat_sel <- surv_feature_selection_multi(
+  object = task, methods = c("uni_cox", "lasso"),
+  p_threshold = 0.1, combine = "union", verbose = FALSE
 )
-
-# View selected features
-print(fs$selected)
-# View which methods selected each feature
-head(fs$method_table)
+feat_sel$selected
 }
 }

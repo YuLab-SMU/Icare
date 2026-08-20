@@ -46,16 +46,7 @@ or a regular `data.frame`, using `one_hot_encode()`. If a `Stat` object is provi
 the encoded result will be updated in its `clean.data` slot.
 }
 \examples{
-\dontrun{
-# One-hot encode a Stat object
-stat_encoded <- stat_onehot_encode(stat_obj_test, save_dir = "./output")
-
-# One-hot encode a data frame without saving
-df_encoded <- stat_onehot_encode(
-  object = my_data,
-  group_col = "group",
-  max_unique_values = 3,
-  save_data = FALSE
-)
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_onehot_encode(stat, save_data = FALSE,group_col = "cyl")
+head(stat@clean.data)
 }

@@ -2,41 +2,54 @@
 % Please edit documentation in R/model_04_model_benchmark.R
 \name{PlotBenchmarkForest}
 \alias{PlotBenchmarkForest}
-\title{Forest Plot for Preprocessing Benchmark Results}
+\title{Plot Forest Plot of Benchmark Results}
 \usage{
 PlotBenchmarkForest(
   benchmark_result,
+  metric = "AUC",
   palette_name = "Zissou1",
   remove_na = TRUE,
+  global_median = FALSE,
   save_plot = FALSE,
   save_dir = NULL
 )
 }
 \arguments{
-\item{benchmark_result}{Output from \code{PreprocessingBenchmark()}.}
+\item{benchmark_result}{A data frame returned by \code{\link{PreprocessingBenchmark}}.}
 
-\item{palette_name}{Wes Anderson palette name (default \code{"Zissou1"}).}
+\item{metric}{Character string specifying which metric to plot.
+Must match one of the columns in the benchmark result, e.g.,
+\code{"AUC"}, \code{"Accuracy"}, \code{"Sensitivity"}, \code{"Specificity"},
+\code{"F1"}, or \code{"Kappa"}. Default: \code{"AUC"}.}
 
-\item{remove_na}{Logical; remove rows with NA Mean_AUC (recommended).}
+\item{palette_name}{Character string naming the Wes Anderson palette to use
+for algorithm colors. Default: \code{"Zissou1"}.}
 
-\item{save_plot}{Logical; save plot to PDF.}
+\item{remove_na}{Logical; if \code{TRUE}, removes rows with missing values
+for the selected metric. Default: \code{TRUE}.}
 
-\item{save_dir}{Directory to save plot (required if \code{save_plot = TRUE}).}
+\item{global_median}{Logical; if \code{TRUE}, adds a dashed vertical line
+indicating the global median of the selected metric across all facets.
+Default: \code{FALSE}.}
+
+\item{save_plot}{Logical; if \code{TRUE}, saves the plot to a PDF file.
+Default: \code{FALSE}.}
+
+\item{save_dir}{Character string; directory where the plot will be saved.
+Required if \code{save_plot = TRUE}. Default: \code{NULL}.}
 }
 \value{
-Invisibly returns the \code{ggplot} object.
+Invisibly returns the \code{ggplot} object. The plot is drawn on
+  the current graphics device.
 }
 \description{
-Creates a faceted pointrange plot showing mean AUC and 95% confidence
-intervals for each algorithm, grouped by imputation and normalization methods.
+Creates a faceted forest plot to compare the performance of different
+preprocessing strategies across algorithms. The plot shows point estimates
+with confidence intervals for a chosen metric.
 }
 \examples{
 \dontrun{
-result <- PreprocessingBenchmark(...)
-PlotBenchmarkForest(result)
-
-# Save to file
-PlotBenchmarkForest(result, save_plot = TRUE, save_dir = "~/plots")
+  res <- PreprocessingBenchmark(my_data, group_col = "Class")
+  PlotBenchmarkForest(res, metric = "Accuracy", global_median = TRUE)
 }
-
 }

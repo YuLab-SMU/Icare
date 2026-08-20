@@ -40,4 +40,33 @@ risk <- predict_prognosix_robust(prog, new_data, impute = TRUE)
 head(risk)
 }
 
+\dontrun{
+veteran <- survival::veteran
+stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+                         group_col = "status", na.action = "allow")
+prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+                          min_events = 10, verbose = FALSE)
+task <- surv_extract_task(prog)
+lrn <- surv_get_learner("surv.coxph", task)
+lrn$train(task)
+
+prog@best.model <- list(
+  learner_id = "surv.coxph", learner = lrn,
+  features = task$feature_names, cutoff = 1.0,
+  decision_type = "binary", train_cols = task$feature_names
+)
+
+# Build new-patient data by reusing two rows from the training data itself,
+# guaranteeing every required feature column is present.
+new_patients <- as.data.frame(task$data())[1:2, task$feature_names]
+rownames(new_patients) <- c("patient_1", "patient_2")
+
+risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
+risk_scores
+
+groups <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
+groups
+
+manager <- New_Prog_Manager(prog)
+}
 }

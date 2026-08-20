@@ -18,3 +18,18 @@ PlotProbDensity(model_obj, data = NULL, save_plot = FALSE, save_dir = NULL)
 \description{
 Prediction Probability Density Plot (fixed)
 }
+\examples{
+\dontrun{
+if (interactive()) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+  control = list(method = "cv", number = 3), save_plots = FALSE)
+  PlotProbDensity(trained, data = trained@filtered.set$testing, save_plot = FALSE)
+  PlotProbStrip(trained, data = trained@filtered.set$testing, save_plot = FALSE)
+}
+}
+}

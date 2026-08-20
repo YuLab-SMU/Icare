@@ -45,13 +45,9 @@ are available to customize the output.
 }
 \examples{
 \dontrun{
-my_data=stat_obj_test@clean.data
-# Example 1: Performing gaze analysis with a formula and custom settings
-result <- gaze_analysis(data = my_data,formula = ~ SWAB + AGE,digits = 2,show.p = TRUE,
-                    gaze_method = 3,save_word = TRUE, save_dir = "./")
-# Example 2: Using the default formula based on group columns
- result <- gaze_analysis(data = my_data,group_cols = c("SWAB"),
-                        digits = 1,show.p = FALSE,save_word = TRUE,
-                        save_dir = "./",gaze_method = 1)
+if (requireNamespace("autoReg", quietly = TRUE)) {
+  data(mtcars)
+  gaze_analysis(mtcars, group_cols = "cyl", save_word = FALSE)
+}
 }
 }

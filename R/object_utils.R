@@ -91,6 +91,19 @@
 #' Subtem=ConvertObject(stat_obj_test,to='Subtyping')
 #' Protem=ConvertObject(stat_obj_test,to='PrognosiX')
 #' Traintem=ConvertObject(stat_obj_test,to='Train_Model')
+#' set.seed(1)
+#' demo_df <- data.frame(
+#'   id    = paste0("S", 1:60),
+#'   group = rep(c(0, 1), each = 30),
+#'   feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'   feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'   feat3 = rnorm(60, 10, 2),
+#'   feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+#' )
+#' stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                              group_col = "group", na.action = "allow")
+#' sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#' class(sub_obj)
 #' }
 ConvertObject <- function(object,
                           to,

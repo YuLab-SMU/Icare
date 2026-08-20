@@ -11,6 +11,7 @@ NRI_IDI_Analysis(
   new_prob = NULL,
   truth = NULL,
   newdata = NULL,
+  positive = NULL,
   risk_thresholds = c(0.02, 0.1, 0.5, 0.95),
   ref_thresholds = NULL,
   new_thresholds = NULL,
@@ -36,6 +37,8 @@ NRI_IDI_Analysis(
 \item{truth}{Raw binary outcome (optional).}
 
 \item{newdata}{Common data frame for prediction.}
+
+\item{positive}{The value in \code{truth} treated as the event. Defaults to the second unique value.}
 
 \item{risk_thresholds}{Numeric vector of risk category boundaries.}
 

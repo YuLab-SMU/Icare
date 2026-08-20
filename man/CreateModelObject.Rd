@@ -31,3 +31,9 @@ A `Train_Model` S4 object, which contains the data and grouping information for 
 \description{
 This function creates a `Train_Model` S4 object based on either a raw data frame or a preprocessed `Stat` object. It is designed to provide a structured object for subsequent modeling analyses.
 }
+\examples{
+# Binary classification with mtcars
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+print(model)
+}

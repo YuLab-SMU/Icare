@@ -19,65 +19,43 @@ if (!exists("%||%")) `%||%` <- function(a, b) if (!is.null(a) && length(a) > 0) 
 
 #' Convert a Stat Object to a PrognosiX Object
 #'
-#' Fixes all common upstream data issues so the resulting object is immediately
-#' ready for mlr3-based survival analysis:
+#' This function extracts the survival time and status columns from a \code{Stat}
+#' object and builds a \code{PrognosiX} object. It ensures that:
 #' \itemize{
-#'   \item Special characters in numeric columns (\code{">60"}, \code{"<40"})
-#'         are stripped and coerced to \code{numeric}.
-#'   \item \strong{All \code{character} feature columns are converted to
-#'         \code{factor}.}  mlr3 \code{TaskSurv} objects reject \code{character}
-#'         features; this conversion is the root fix for the
-#'         \emph{"unsupported feature types: character"} error.
-#'   \item Rows with non-positive / non-finite time are removed.
-#'   \item Rows where status is not \{0, 1\} are removed.
-#'   \item Missing feature values are omitted or imputed.
-#'   \item Row-name mismatches between \code{clean.data} and \code{info.data}
-#'         are resolved by intersection.
+#'   \item The \code{time} and \code{status} columns are moved to \code{info.data}.
+#'   \item \code{clean.data} contains only numeric feature columns.
+#'   \item All other columns (clinical, IDs, etc.) are preserved in \code{info.data}.
 #' }
+#' Missing values are handled according to \code{na_action}.
 #'
-#' @param stat_obj    A \code{Stat} S4 object from \code{CreateStatObject()}.
-#' @param time_col    Name of the survival time column (character string).
-#' @param status_col  Name of the event status column (character string;
-#'                    1 = event occurred, 0 = censored).
-#' @param na_action   How to handle missing feature values:
-#'   \describe{
-#'     \item{\code{"omit"}}{(default) Delete any row that contains an NA in
-#'           a feature column.}
-#'     \item{\code{"impute_median"}}{Replace numeric NAs with the column
-#'           median; replace categorical NAs with the column mode.}
-#'   }
-#' @param min_events  Minimum event count; a \code{warning()} is issued when
-#'                    fewer events are present (default 20).
-#' @param verbose     Print a step-by-step conversion log (default \code{TRUE}).
-#'
-#' @return A \code{PrognosiX} S4 object ready for \code{run_prognosis_pipeline()}.
-#'
+#' @param stat_obj A \code{Stat} S4 object.
+#' @param time_col Character string naming the survival time column.
+#' @param status_col Character string naming the event status column (1 = event, 0 = censored).
+#' @param na_action Character; one of \code{"omit"} (remove rows with any NA in features),
+#'   \code{"impute_median"} (replace NAs with median/mode), or \code{"allow"} (keep NAs).
+#' @param min_events Integer; minimum number of events required; a warning is issued if fewer.
+#' @param verbose Logical; print progress messages.
+#' @return A \code{PrognosiX} S4 object.
 #' @export
 #' @examples
 #' \dontrun{
-#' library(survival)
-#' data("veteran")
-#' veteran$celltype <- as.character(veteran$celltype)   # simulate dirty data
-#'
-#' stat_obj <- CreateStatObject(raw.data   = veteran,
-#'                               clean.data = veteran,
-#'                               group_col  = "celltype")
-#'
-#' prog_obj <- Stat_to_PrognosiX(stat_obj,
-#'                                time_col   = "time",
-#'                                status_col = "status")
+#' veteran <- survival::veteran
+#' stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+#'                          group_col = "status", na.action = "allow")
+#' prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+#'                           min_events = 10, verbose = TRUE)
 #' }
 Stat_to_PrognosiX <- function(stat_obj,
                               time_col,
                               status_col,
-                              na_action  = c("omit", "impute_median"),
+                              na_action  = c("omit", "impute_median", "allow"),
                               min_events = 20,
                               verbose    = TRUE) {
   
   na_action <- match.arg(na_action)
   .log <- function(fmt, ...) if (verbose) message(sprintf(fmt, ...))
   
-  # 1. Validate and extract ---------------------------------------------------
+  # ---- 1. Validate and extract data ----
   if (!inherits(stat_obj, "Stat"))
     stop("[Stat_to_PrognosiX] 'stat_obj' must be a 'Stat' S4 object.")
   
@@ -92,7 +70,10 @@ Stat_to_PrognosiX <- function(stat_obj,
   }
   
   info_data <- stat_obj@info.data
-  if (nrow(info_data) > 0) {
+  # Ensure row names match; if info.data is empty, create one
+  if (nrow(info_data) == 0) {
+    info_data <- data.frame(row.names = rownames(core_data))
+  } else {
     common <- intersect(rownames(core_data), rownames(info_data))
     if (length(common) == 0) {
       warning("[Stat_to_PrognosiX] Row names do not match between clean.data and info.data. info.data ignored.")
@@ -102,21 +83,24 @@ Stat_to_PrognosiX <- function(stat_obj,
       info_data <- info_data[common, , drop = FALSE]
     }
   }
-  for (col in c(time_col, status_col))
-    if (col %in% colnames(info_data) && !(col %in% colnames(core_data)))
-      core_data[[col]] <- info_data[[col]]
   
-  # 2. Verify required columns ------------------------------------------------
+  # ---- 2. Ensure time/status columns exist ----
   .log("[2/6] Verifying time / status columns...")
   miss <- setdiff(c(time_col, status_col), colnames(core_data))
-  if (length(miss) > 0)
-    stop(sprintf("[Stat_to_PrognosiX] Column(s) not found: %s\n  Available: %s",
-                 paste(miss, collapse = ", "),
-                 paste(colnames(core_data), collapse = ", ")))
+  if (length(miss) > 0) {
+    # Try to find them in info.data
+    if (all(miss %in% colnames(info_data))) {
+      core_data[, miss] <- info_data[, miss]
+      .log("   Copied missing columns from info.data: %s", paste(miss, collapse = ", "))
+    } else {
+      stop(sprintf("[Stat_to_PrognosiX] Column(s) not found: %s\n  Available in core: %s",
+                   paste(miss, collapse = ", "),
+                   paste(colnames(core_data), collapse = ", ")))
+    }
+  }
   
-  # 3. Type coercion ---------------------------------------------------------
+  # ---- 3. Coerce types and remove invalid rows ----
   .log("[3/6] Coercing column types...")
-  # Strip ">", "<", spaces etc. then force numeric
   core_data[[time_col]]   <- suppressWarnings(
     as.numeric(gsub("[^0-9.-]", "", as.character(core_data[[time_col]]))))
   core_data[[status_col]] <- suppressWarnings(
@@ -126,72 +110,96 @@ Stat_to_PrognosiX <- function(stat_obj,
   if (any(bad_t)) {
     warning(sprintf("[Stat_to_PrognosiX] Removing %d row(s) with time <= 0 or NA.", sum(bad_t)))
     core_data <- core_data[!bad_t, , drop = FALSE]
+    info_data <- info_data[!bad_t, , drop = FALSE]
   }
   bad_s <- is.na(core_data[[status_col]]) | !(core_data[[status_col]] %in% c(0, 1))
   if (any(bad_s)) {
     warning(sprintf("[Stat_to_PrognosiX] Removing %d row(s) where status not in {0,1}.", sum(bad_s)))
     core_data <- core_data[!bad_s, , drop = FALSE]
+    info_data <- info_data[!bad_s, , drop = FALSE]
   }
   
-  # ROOT FIX: character -> factor
-  # mlr3 TaskSurv rejects character feature columns.
-  # Converting to factor also lets surv_get_learner() apply its automatic
-  # encoding pipeline for learners that cannot handle factors.
-  feat_cols <- setdiff(colnames(core_data), c(time_col, status_col))
-  for (col in feat_cols) {
+  # ---- 4. Move time/status to info.data and clean feature columns ----
+  .log("[4/6] Separating features and metadata...")
+  # Ensure time/status are in info.data
+  info_data[[time_col]]   <- core_data[[time_col]]
+  info_data[[status_col]] <- core_data[[status_col]]
+  
+  # All other columns: decide which are features (numeric) and which are metadata
+  all_cols <- colnames(core_data)
+  feature_candidates <- setdiff(all_cols, c(time_col, status_col))
+  
+  # Convert characters to factors (mlr3 requires factors, not characters)
+  for (col in feature_candidates) {
     if (is.character(core_data[[col]])) {
       core_data[[col]] <- factor(core_data[[col]])
-      .log("    [fix] %-14s  character -> factor  (%d levels)",
-           col, nlevels(core_data[[col]]))
     }
   }
   
-  # 4. Missing values ---------------------------------------------------------
-  .log("[4/6] Missing values (strategy: %s)...", na_action)
+  # Separate numeric features from metadata
+  numeric_features <- sapply(core_data[, feature_candidates, drop = FALSE], is.numeric)
+  feature_cols <- feature_candidates[numeric_features]
+  meta_cols    <- feature_candidates[!numeric_features]
+  
+  # Move non‑numeric metadata to info.data (keep them for clinical analyses)
+  if (length(meta_cols) > 0) {
+    for (col in meta_cols) {
+      info_data[[col]] <- core_data[[col]]
+    }
+    .log("   Moved %d non‑numeric columns to info.data: %s",
+         length(meta_cols), paste(meta_cols, collapse = ", "))
+  }
+  
+  # Keep only numeric feature columns in clean.data
+  clean_data <- core_data[, c(feature_cols), drop = FALSE]
+  
+  # ---- 5. Handle missing values ----
+  .log("[5/6] Missing values (strategy: %s)...", na_action)
   if (na_action == "omit") {
-    n_before  <- nrow(core_data)
-    core_data <- core_data[complete.cases(core_data[, feat_cols, drop = FALSE]), , drop = FALSE]
-    removed   <- n_before - nrow(core_data)
+    n_before  <- nrow(clean_data)
+    keep_idx <- complete.cases(clean_data)
+    clean_data <- clean_data[keep_idx, , drop = FALSE]
+    info_data <- info_data[keep_idx, , drop = FALSE]
+    removed   <- n_before - nrow(clean_data)
     if (removed > 0)
       warning(sprintf("[Stat_to_PrognosiX] Removed %d/%d row(s) with NA in features.",
                       removed, n_before))
-  } else {
-    for (col in feat_cols) {
-      n_na <- sum(is.na(core_data[[col]]))
+  } else if (na_action == "impute_median") {
+    for (col in colnames(clean_data)) {
+      n_na <- sum(is.na(clean_data[[col]]))
       if (n_na > 0) {
-        fill <- if (is.numeric(core_data[[col]])) {
-          median(core_data[[col]], na.rm = TRUE)
+        if (is.numeric(clean_data[[col]])) {
+          fill <- median(clean_data[[col]], na.rm = TRUE)
         } else {
-          names(sort(table(core_data[[col]]), decreasing = TRUE))[1]
+          fill <- names(sort(table(clean_data[[col]]), decreasing = TRUE))[1]
         }
-        core_data[[col]][is.na(core_data[[col]])] <- fill
+        clean_data[[col]][is.na(clean_data[[col]])] <- fill
         .log("    [impute] %-14s  %d NA -> %s", col, n_na, fill)
       }
     }
+  } else { # "allow" – keep NAs
+    .log("   NA values are kept (na.action = 'allow').")
   }
   
-  # 5. Event count ------------------------------------------------------------
-  .log("[5/6] Checking event count...")
-  n_ev <- sum(core_data[[status_col]] == 1)
-  n_to <- nrow(core_data)
+  # ---- 6. Event count ----
+  .log("[6/6] Checking event count...")
+  n_ev <- sum(info_data[[status_col]] == 1)
+  n_to <- nrow(info_data)
   .log("    N = %d | Events = %d | Censoring = %.1f%%",
        n_to, n_ev, (1 - n_ev / n_to) * 100)
   if (n_ev < min_events)
     warning(sprintf("[Stat_to_PrognosiX] Only %d events (< min_events=%d). Results may be unstable.",
                     n_ev, min_events))
   
-  # 6. Build PrognosiX --------------------------------------------------------
-  .log("[6/6] Building PrognosiX object...")
-  new_info  <- core_data[, c(time_col, status_col), drop = FALSE]
-  new_clean <- core_data[, feat_cols, drop = FALSE]
-  
-  prog_obj  <- CreatePrognosiXObject(
-    clean.data = new_clean,
-    info.data  = new_info,
+  # ---- 7. Build PrognosiX object ----
+  .log("[OK] Building PrognosiX object...")
+  prog_obj <- CreatePrognosiXObject(
+    clean.data = clean_data,
+    info.data  = info_data,
     time_col   = time_col,
     status_col = status_col)
   
-  .log("[OK] Done. Features: %d | Samples: %d", ncol(new_clean), nrow(new_clean))
+  .log("[OK] Done. Features: %d | Samples: %d", ncol(clean_data), nrow(clean_data))
   prog_obj
 }
 
@@ -202,56 +210,29 @@ Stat_to_PrognosiX <- function(stat_obj,
 
 #' Run the Complete Prognosis Analysis Pipeline
 #'
-#' Chains all prognosis analysis steps into a single call:
-#' \enumerate{
-#'   \item \strong{Feature filtering}  -- univariate Cox (\code{surv_filter_features_clinical})
-#'   \item \strong{Algorithm benchmark} -- multi-model CV (\code{surv_run_algorithm_benchmark})
-#'   \item \strong{Tuning + training}   -- best algorithm tuned and fitted (\code{surv_train_and_tune})
-#'   \item \strong{KM risk curves}      -- stratified survival plots (\code{surv_plot_risk_km})
-#'   \item \strong{Time-dependent AUC}  -- dynamic accuracy (\code{surv_plot_time_dependent_auc})
-#'   \item \strong{Nomogram}            -- clinical scoring chart (requires \pkg{rms})
-#'   \item \strong{SHAP}                -- feature explanation (requires \pkg{survex})
-#'   \item \strong{Save}               -- all artefacts written to \code{output_dir}
-#' }
+#' Chains all prognosis analysis steps into a single call. By default, all
+#' evaluation plots (KM, time-AUC, nomogram) are computed on the **training set**
+#' (apparent performance). If you provide an external validation set via
+#' \code{val_data}, the pipeline will also evaluate on that set and report
+#' unbiased performance.
 #'
 #' @param object         \code{PrognosiX} or \code{Stat} S4 object.
 #' @param time_col       Survival time column (required for \code{Stat} input).
 #' @param status_col     Event status column (required for \code{Stat} input).
-#' @param learner_ids    mlr3 learner IDs to benchmark.  Run
-#'   \code{surv_list_available_learners()} to see every option.
-#'   Default: \code{c("surv.coxph", "surv.cv_glmnet", "surv.ranger")}.
-#' @param p_threshold    Univariate Cox p-value cut-off (default \code{0.05}).
-#' @param tuning_budget  Number of hyperparameter evaluations per model
-#'   (default \code{30}).  Use \code{50}-\code{100} for publication results.
-#' @param cutoff_method  Risk stratification cut-point:
-#'   \code{"median"}, \code{"tertile"}, \code{"quartile"}, or \code{"p_optimize"}.
-#' @param time_points    Nomogram prediction horizons (default \code{c(1,3,5)}).
+#' @param learner_ids    mlr3 learner IDs to benchmark.
+#' @param p_threshold    Univariate Cox p-value cut-off.
+#' @param tuning_budget  Number of hyperparameter evaluations per model.
+#' @param cutoff_method  Risk stratification cut-point method.
+#' @param time_points    Nomogram prediction horizons.
 #' @param output_dir     Root folder for all outputs.
-#' @param seed           Random seed (default \code{2025}).
+#' @param seed           Random seed.
 #' @param run_shap       Run SHAP explanation (default \code{FALSE}).
 #' @param run_nomogram   Draw nomogram (default \code{TRUE}).
 #' @param val_data       Optional external validation data frame.
 #' @param subgroup_vars  Optional subgroup variables for forest-plot analysis.
 #'
-#' @return Invisible named list:
-#'   \code{prog_obj}, \code{best_learner}, \code{filter_result},
-#'   \code{benchmark_table}, \code{km_plot}, \code{auc_data}, \code{output_dir}.
+#' @return Invisible named list with all results.
 #' @export
-#' @examples
-#' \dontrun{
-#' # --- Minimal call (PrognosiX object) ---
-#' res <- run_prognosis_pipeline(prog_obj)
-#'
-#' # --- From a Stat object with custom learners ---
-#' res <- run_prognosis_pipeline(
-#'   object        = stat_obj,
-#'   time_col      = "OS_time",
-#'   status_col    = "OS_status",
-#'   learner_ids   = c("surv.coxph", "surv.ranger", "surv.cv_glmnet"),
-#'   tuning_budget = 50,
-#'   cutoff_method = "tertile"
-#' )
-#' }
 run_prognosis_pipeline <- function(
     object,
     time_col      = NULL,
@@ -259,7 +240,7 @@ run_prognosis_pipeline <- function(
     learner_ids   = c("surv.coxph", "surv.cv_glmnet", "surv.ranger"),
     p_threshold   = 0.05,
     tuning_budget = 30,
-    cutoff_method = c("median", "tertile", "quartile", "p_optimize"),
+    cutoff_method = c("median", "tertile", "quartile", "p_optimize", "maxstat"),
     time_points   = c(1, 3, 5),
     output_dir    = NULL,
     seed          = 2025,
@@ -278,12 +259,11 @@ run_prognosis_pipeline <- function(
   }
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   
-  # Helper: create numbered step sub-directory
+  # Helper functions
   .sdir <- function(n, nm) {
     p <- file.path(output_dir, sprintf("Step%02d_%s", n, nm))
     dir.create(p, recursive = TRUE, showWarnings = FALSE); p
   }
-  # Helper: save ggplot safely
   .sp <- function(plt, path, w = 8, h = 6)
     tryCatch(ggplot2::ggsave(path, plt, width = w, height = h),
              error = function(e) NULL)
@@ -293,7 +273,7 @@ run_prognosis_pipeline <- function(
           "  |  output: ", output_dir)
   message(strrep("=", 65))
   
-  # Step 0: object conversion -------------------------------------------------
+  # Step 0: object conversion
   if (inherits(object, "Stat")) {
     if (is.null(time_col) || is.null(status_col))
       stop("[run_prognosis_pipeline] time_col and status_col required for Stat input.")
@@ -306,7 +286,7 @@ run_prognosis_pipeline <- function(
   }
   saveRDS(prog_obj, file.path(output_dir, "prog_obj_initial.rds"))
   
-  # Step 1: univariate Cox feature filtering ----------------------------------
+  # Step 1: univariate Cox feature filtering
   d1 <- .sdir(1, "Feature_Selection")
   message("\n[Step 1] Univariate Cox feature filtering (p < ", p_threshold, ")...")
   filter_result <- surv_filter_features_clinical(prog_obj, p_threshold = p_threshold)
@@ -314,37 +294,32 @@ run_prognosis_pipeline <- function(
             row.names = FALSE)
   .sp(filter_result$plot, file.path(d1, "Univariate_Feature_Selection.pdf"))
   
-  task_filtered  <- filter_result$task
+  task_filtered <- filter_result$task
   selected_feats <- task_filtered$feature_names
   message(sprintf("  [OK] %d feature(s): %s",
                   length(selected_feats), paste(selected_feats, collapse = ", ")))
   
   if (length(selected_feats) == 0) {
     message("  [!] 0 features at p<", p_threshold, " -- relaxing to p<0.2 ...")
-    filter_result  <- surv_filter_features_clinical(prog_obj, p_threshold = 0.2)
-    task_filtered  <- filter_result$task
+    filter_result <- surv_filter_features_clinical(prog_obj, p_threshold = 0.2)
+    task_filtered <- filter_result$task
     selected_feats <- task_filtered$feature_names
     if (length(selected_feats) == 0)
       stop("Still 0 features at p<0.2. Check your data.")
   }
   prog_obj@univariate.analysis <- filter_result
-  prog_obj@survival.var        <- list(selected = selected_feats)
+  prog_obj@survival.var <- list(selected = selected_feats)
   
-  # Step 2: multi-algorithm benchmark ----------------------------------------
+  # Step 2: algorithm benchmark
   d2 <- .sdir(2, "Algorithm_Benchmark")
   message("\n[Step 2] Algorithm benchmark (", paste(learner_ids, collapse = ", "), ")...")
-  
-  # CRITICAL: wrap via surv_get_learner() so factor/character columns are
-  # handled by the automatic encoding pipeline and do NOT cause the
-  # "unsupported feature types: character" error in mlr3.
   lrn_list <- Filter(Negate(is.null), lapply(learner_ids, function(lid) {
     tryCatch(surv_get_learner(lid, task_filtered),
              error = function(e) { warning("Skipping ", lid, ": ", e$message); NULL })
   }))
-  
   bmr_result <- surv_run_algorithm_benchmark(task_filtered, learners_list = lrn_list)
-  perf_tab   <- bmr_result$table
-  best_id    <- as.character(
+  perf_tab <- bmr_result$table
+  best_id <- as.character(
     perf_tab[order(-perf_tab$surv.cindex), ][1, "learner_id"])
   
   write.csv(perf_tab, file.path(d2, "Benchmark_Leaderboard.csv"), row.names = FALSE)
@@ -352,29 +327,46 @@ run_prognosis_pipeline <- function(
   message(sprintf("  [OK] Winner: %s  (C-index = %.4f)",
                   best_id, perf_tab[perf_tab$learner_id == best_id, "surv.cindex"]))
   
-  # Step 3: hyperparameter tuning ---------------------------------------------
+  # Step 3: hyperparameter tuning
   d3 <- .sdir(3, "Final_Model")
   message("\n[Step 3] Tuning ", best_id, " (budget=", tuning_budget, " evals)...")
-  tune_res     <- surv_train_and_tune(task_filtered, best_id,
-                                      tuning_budget = tuning_budget, seed = seed)
+  tune_res <- surv_train_and_tune(task_filtered, best_id,
+                                  tuning_budget = tuning_budget, seed = seed)
   best_learner <- tune_res$learner
   saveRDS(best_learner, file.path(d3, "best_learner.rds"))
   write.csv(
-    data.frame(Algorithm  = best_id,
-               CV_CIndex  = round(tune_res$cv_performance, 4),
+    data.frame(Algorithm = best_id,
+               CV_CIndex = round(tune_res$cv_performance, 4),
                N_Features = length(selected_feats),
-               Params     = paste(names(tune_res$best_params),
-                                  unlist(tune_res$best_params),
-                                  sep = "=", collapse = "; ")),
+               Params = paste(names(tune_res$best_params),
+                              unlist(tune_res$best_params),
+                              sep = "=", collapse = "; ")),
     file.path(d3, "Best_Model_Summary.csv"), row.names = FALSE)
   message(sprintf("  [OK] CV C-index = %.4f", tune_res$cv_performance))
   
-  # Step 4: KM risk stratification --------------------------------------------
+  # ---- WARNING: Training‑set evaluation ahead ----
+  if (is.null(val_data)) {
+    message("\n", strrep("!", 65))
+    message("!! WARNING: No validation data provided (val_data = NULL).")
+    message("!! All subsequent evaluation plots (KM, time-AUC, nomogram)")
+    message("!! are computed on the TRAINING set (apparent performance).")
+    message("!! These estimates are optimistic and not suitable for")
+    message("!! publication without independent validation.")
+    message("!! If you have a validation set, pass it via val_data.")
+    message(strrep("!", 65), "\n")
+  }
+  
+  # Step 4: KM risk stratification
   d4 <- .sdir(4, "Risk_KM")
   message("\n[Step 4] KM risk stratification (", cutoff_method, ")...")
   km_plot <- tryCatch({
     p <- surv_plot_risk_km(best_learner, task_filtered,
                            cutoff_method = cutoff_method, risk_table = TRUE)
+    cutoff_val <- attr(p, "cutoffs_used")
+    if (!is.null(cutoff_val)) {
+      tune_res$best_params$cutoff <- cutoff_val
+      message(sprintf("  [OK] Cutoff extracted: %.4f", cutoff_val))
+    }
     pdf(file.path(d4, paste0("KM_", cutoff_method, ".pdf")), width = 8, height = 7)
     print(p); dev.off(); p
   }, error = function(e) {
@@ -382,7 +374,7 @@ run_prognosis_pipeline <- function(
     message("  [!] KM skipped: ", e$message); NULL
   })
   
-  # Step 5: time-dependent AUC ------------------------------------------------
+  # Step 5: time-dependent AUC
   d5 <- .sdir(5, "Time_AUC")
   message("\n[Step 5] Time-dependent AUC...")
   auc_data <- tryCatch({
@@ -394,7 +386,7 @@ run_prognosis_pipeline <- function(
     message("  [!] AUC skipped (need risksetROC): ", e$message); NULL
   })
   
-  # Step 6: nomogram (optional) -----------------------------------------------
+  # Step 6: nomogram (optional)
   if (run_nomogram && requireNamespace("rms", quietly = TRUE)) {
     d6 <- .sdir(6, "Nomogram")
     message("\n[Step 6] Nomogram...")
@@ -410,7 +402,7 @@ run_prognosis_pipeline <- function(
     })
   }
   
-  # Step 7: SHAP (optional) ---------------------------------------------------
+  # Step 7: SHAP (optional)
   if (run_shap) {
     d7 <- .sdir(7, "SHAP")
     message("\n[Step 7] SHAP explanation...")
@@ -422,14 +414,55 @@ run_prognosis_pipeline <- function(
       message("  [!] SHAP skipped (need survex): ", e$message))
   }
   
-  # Step 8: write back and save -----------------------------------------------
+  # Step 7.5: Validation set evaluation (if provided)
+  if (!is.null(val_data)) {
+    message("\n[Step 7.5] Evaluating on validation set...")
+    val_clean <- val_data[, c(selected_feats, time_col, status_col), drop = FALSE]
+    val_prog <- CreatePrognosiXObject(
+      clean.data = val_clean[, selected_feats, drop = FALSE],
+      info.data = val_clean[, c(time_col, status_col)],
+      time_col = time_col,
+      status_col = status_col
+    )
+    val_task <- surv_extract_task(val_prog)
+    
+    val_cindex <- best_learner$predict(val_task)$score(msr("surv.cindex"))
+    message(sprintf("  Validation C-index = %.4f", val_cindex))
+    
+    med_time <- median(prog_obj@survival.data[[time_col]], na.rm = TRUE)
+    cal_val <- tryCatch({
+      surv_plot_calibration(best_learner, val_task, time_point = med_time, apparent = FALSE)
+    }, error = function(e) NULL)
+    
+    km_val <- NULL
+    if (!is.null(tune_res$best_params$cutoff)) {
+      km_val <- tryCatch({
+        surv_plot_risk_km(best_learner, val_task, cutoff_method = "custom",
+                          custom_cutoffs = tune_res$best_params$cutoff)
+      }, error = function(e) NULL)
+    }
+    
+    prog_obj@subgroup.risk$validation <- list(
+      cindex = val_cindex,
+      calibration_plot = cal_val,
+      km_plot = km_val,
+      n = nrow(val_data)
+    )
+    
+    if (!is.null(cal_val)) .sp(cal_val, file.path(d4, "Calibration_Validation.pdf"))
+    if (!is.null(km_val)) .sp(km_val, file.path(d4, "KM_Validation.pdf"))
+  } else {
+    message("\n[Step 7.5] Skipped (no val_data provided).")
+  }
+  
+  # Step 8: write back and save
   message("\n[Step 8] Saving results to PrognosiX object...")
   prog_obj@best.model <- list(
-    learner_id  = best_id,
-    learner     = best_learner,
+    learner_id = best_id,
+    learner = best_learner,
     best_params = tune_res$best_params,
-    cv_cindex   = tune_res$cv_performance,
-    features    = selected_feats)
+    cv_cindex = tune_res$cv_performance,
+    features = selected_feats)
   prog_obj@subgroup.risk <- list(benchmark_table = perf_tab)
   saveRDS(prog_obj, file.path(output_dir, "prog_obj_final.rds"))
   
@@ -438,13 +471,13 @@ run_prognosis_pipeline <- function(
   message(strrep("=", 65))
   
   invisible(list(
-    prog_obj        = prog_obj,
-    best_learner    = best_learner,
-    filter_result   = filter_result,
+    prog_obj = prog_obj,
+    best_learner = best_learner,
+    filter_result = filter_result,
     benchmark_table = perf_tab,
-    km_plot         = km_plot,
-    auc_data        = auc_data,
-    output_dir      = output_dir))
+    km_plot = km_plot,
+    auc_data = auc_data,
+    output_dir = output_dir))
 }
 
 
@@ -714,6 +747,36 @@ get_prog_app_text <- function(key = NULL) {
 #' @importFrom mlr3proba TaskSurv
 #' @importFrom data.table as.data.table
 #' @export
+#' @examples
+#' \dontrun{
+#' veteran <- survival::veteran
+#' stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+#'                          group_col = "status", na.action = "allow")
+#' prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+#'                           min_events = 10, verbose = FALSE)
+#' task <- surv_extract_task(prog)
+#' lrn <- surv_get_learner("surv.coxph", task)
+#' lrn$train(task)
+#'
+#' prog@best.model <- list(
+#'   learner_id = "surv.coxph", learner = lrn,
+#'   features = task$feature_names, cutoff = 1.0,
+#'   decision_type = "binary", train_cols = task$feature_names
+#' )
+#'
+#' # Build new-patient data by reusing two rows from the training data itself,
+#' # guaranteeing every required feature column is present.
+#' new_patients <- as.data.frame(task$data())[1:2, task$feature_names]
+#' rownames(new_patients) <- c("patient_1", "patient_2")
+#'
+#' risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
+#' risk_scores
+#'
+#' groups <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
+#' groups
+#'
+#' manager <- New_Prog_Manager(prog)
+#' }
 predict_prognosix <- function(prog_obj, newdata, impute = TRUE) {
   if (!inherits(prog_obj, "PrognosiX")) {
     stop("prog_obj must be a PrognosiX object.")

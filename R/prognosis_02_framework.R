@@ -8,25 +8,39 @@
 #'   If \code{PrognosiX}, the function extracts the survival data, time column,
 #'   and event column to create a \code{TaskSurv} object.
 #'
-#' @return A \code{\link[mlr3proba]{TaskSurv}} object.
+#' @details
+#' When \code{object} is already a \code{TaskSurv}, this function also performs
+#' a defensive sanity check on \code{object$row_roles$use}. Row indices produced
+#' by functions such as \code{caret::createDataPartition(..., list = FALSE)} are
+#' returned as a single-column matrix rather than a plain integer vector. If such
+#' a matrix is passed directly to \code{TaskSurv$filter()}, mlr3's internal
+#' resampling machinery silently misnames its row-id column (e.g.
+#' \code{row_id.Resample1} instead of \code{row_id}), which later surfaces as an
+#' opaque \code{"column not found: [row_id]"} error deep inside
+#' \code{mlr3::Resampling$instantiate()}. To prevent this, \code{surv_extract_task}
+#' coerces any matrix-typed \code{row_roles$use} back to a plain integer vector
+#' before returning the task, so all downstream benchmarking, tuning, and
+#' evaluation functions receive a well-formed task.
+#'
+#' @return A \code{\link[mlr3proba]{TaskSurv}} object with sanitized row roles.
 #'
 #' @seealso \code{\link{surv_create_surv_task}} for creating tasks from data frames
 #' @export
-#' 
+#'
 #' @examples
-#' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' # From TaskSurv
-#' data("veteran", package = "survival")
-#' task <- TaskSurv$new("veteran", backend = veteran, time = "time", event = "status")
-#' task_out <- surv_extract_task(task)
-#' 
-#' # From PrognosiX object (if available)
-#' data(pro_obj_test)
-#' task_out <- surv_extract_task(pro_obj_test)
-#' }
+#' veteran <- survival::veteran
+#' stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+#'                          group_col = "status", na.action = "allow")
+#' prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+#'                           min_events = 10, verbose = FALSE)
+#'
+#' # From a PrognosiX object:
+#' task <- surv_extract_task(prog)
+#' task$nrow
+#'
+#' # Directly from a data frame:
+#' task2 <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#' task2$nrow
 surv_extract_task <- function(object) {
   .check_prognosis_packages()
   if (inherits(object, 'PrognosiX')) {
@@ -35,11 +49,92 @@ surv_extract_task <- function(object) {
     event_col <- object@status_col
     return(surv_create_surv_task(data, time_col, event_col))
   } else if (inherits(object, 'TaskSurv')) {
+    if (is.matrix(object$row_roles$use)) {
+      object$row_roles$use <- as.integer(as.vector(object$row_roles$use))
+    }
     return(object)
   }
   stop('Input must be a PrognosiX object or TaskSurv')
 }
 
+# Internal helper: prepare binned predicted-vs-observed calibration data.
+#
+# @details Bin count is adaptively capped so each bin retains a statistically
+#   meaningful sample size (default target: >= 10 observations/bin). Without
+#   this guard, small task subsets (e.g. a held-out validation split) combined
+#   with a fixed n_bins can produce bins with only 2-3 observations; the
+#   per-bin KM estimate at time_point then frequently collapses to exactly 0
+#   or 1, producing a jagged, misleading calibration curve driven by binning
+#   noise rather than genuine miscalibration.
+.prepare_cal_data <- function(learner, object, time_point, n_bins) {
+  if (inherits(object, "TaskSurv")) {
+    task <- object
+  } else if (inherits(object, "PrognosiX")) {
+    task <- surv_extract_task(object)
+  } else {
+    stop("object must be a TaskSurv or PrognosiX object")
+  }
+  
+  n_bins <- max(n_bins, 5L)
+  # Adaptive bin count: cap n_bins so each bin has a statistically meaningful
+  # number of observations. With too few points per bin, the per-bin KM
+  # estimate at time_point becomes unstable (often collapsing to exactly 0
+  # or 1), producing a jagged, misleading calibration curve rather than a
+  # true miscalibration signal -- this is especially visible when comparing
+  # a small validation set against a larger training set.
+  min_per_bin <- 10L
+  adaptive_n_bins <- min(n_bins, max(3L, floor(task$nrow / min_per_bin)))
+  if (adaptive_n_bins < n_bins) {
+    message(sprintf(
+      "[Calibration] Reduced n_bins from %d to %d (task has %d rows; targeting >= %d obs/bin for stable per-bin KM estimates).",
+      n_bins, adaptive_n_bins, task$nrow, min_per_bin
+    ))
+  }
+  n_bins <- adaptive_n_bins
+  
+  learner$predict_type <- "distr"
+  pred <- learner$predict(task)
+  
+  surv_prob <- .extract_surv_prob(pred$distr, time_point, task)
+  if (is.null(surv_prob)) return(NULL)
+  surv_prob <- as.numeric(surv_prob)
+  
+  if (length(surv_prob) != task$nrow) {
+    warning("Length of survival probabilities does not match task rows. Calibration skipped.")
+    return(NULL)
+  }
+  
+  data_df <- as.data.frame(task$data())
+  time    <- data_df[[task$target_names[1L]]]
+  status  <- data_df[[task$target_names[2L]]]
+  
+  df <- data.frame(pred = surv_prob, time = time, status = status)
+  df <- df[order(df$pred), ]
+  
+  breaks <- unique(quantile(df$pred, probs = seq(0, 1, length.out = n_bins + 1L), na.rm = TRUE))
+  if (length(breaks) < 3L) {
+    warning("Not enough unique predicted probabilities to form bins. Calibration skipped.")
+    return(NULL)
+  }
+  df$bin <- cut(df$pred, breaks = breaks, include.lowest = TRUE)
+  
+  obs_surv <- sapply(split(df, df$bin), function(bin_data) {
+    if (nrow(bin_data) < 2L) return(NA_real_)
+    km <- survival::survfit(survival::Surv(time, status) ~ 1, data = bin_data)
+    sp <- summary(km, times = time_point, extend = TRUE)$surv
+    if (length(sp) == 0L) NA_real_ else sp[[1L]]
+  })
+  
+  bin_centers <- tapply(df$pred, df$bin, mean, na.rm = TRUE)
+  cal_df <- na.omit(data.frame(predicted = as.numeric(bin_centers),
+                               observed  = as.numeric(obs_surv)))
+  
+  if (nrow(cal_df) < 2L) {
+    warning("Not enough valid bins for calibration (need at least 2).")
+    return(NULL)
+  }
+  return(cal_df)
+}
 # ==============================================================================
 
 #' Available Survival Learners
@@ -278,15 +373,15 @@ surv_create_surv_task <- function(data, time_col, event_col, id = "survival_task
   .check_prognosis_packages()
   # Coerce to data.table for optimized performance in mlr3
   data <- as.data.table(data)
-  
-  TaskSurv$new(
+  task <- TaskSurv$new(
     id = id,
     backend = data,
     time = time_col,
     event = event_col
   )
+  # Ensure backend is preserved when the task is saved/loaded
+  return(task)
 }
-
 # ==============================================================================
 # 3. Model Training & Tuning Module
 # ==============================================================================
@@ -313,8 +408,13 @@ surv_create_surv_task <- function(data, time_col, event_col, id = "survival_task
 #'     learner supports them. If not, adds a \code{po("encode")} pipeline.
 #' }
 #' @import mlr3pipelines
-#' @keywords internal
-#' @noRd
+#' @export
+#' @examples
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#'
+#' lrn_cox <- surv_get_learner("surv.coxph", task)
+#' lrn_cox$id
 surv_get_learner <- function(learner_id, task) {
   lrn_obj <- lrn(learner_id)
   
@@ -341,72 +441,83 @@ surv_get_learner <- function(learner_id, task) {
   return(lrn_obj)
 }
 
-#' Train and tune a survival learner with hyperparameter optimization
+#' Train and Tune a Survival Learner with Hyperparameter Optimization
 #'
-#' @param object A survival task object (e.g., from \code{mlr3} package).
-#' @param learner_id Character string identifying the learner (e.g., \code{"surv.coxph"}).
+#' Trains a survival learner on a given task, optionally tuning its
+#' hyperparameters using a predefined or custom search space. Handles
+#' \code{GraphLearner} objects by correctly prefixing parameter names when an
+#' automatic encoding pipeline is added (e.g., for factor features).
+#'
+#' @param object A \code{TaskSurv} or \code{PrognosiX} object.
+#' @param learner_id Character string identifying the learner (e.g., "surv.coxph").
 #' @param search_space A \code{\link[paradox]{ParamSet}} defining the hyperparameter
-#'   search space. If \code{NULL}, a default is generated.
-#' @param resampling A \code{\link[mlr3]{Resampling}} object. If \code{NULL},
-#'   defaults to 5-fold cross-validation.
-#' @param measure A \code{\link[mlr3]{Measure}} object. If \code{NULL},
-#'   defaults to the concordance index (\code{surv.cindex}).
+#'   search space. If \code{NULL}, a default is generated via
+#'   \code{surv_get_search_space}.
+#' @param resampling A \code{\link[mlr3]{Resampling}} object. Defaults to 5-fold CV.
+#' @param measure A \code{\link[mlr3]{Measure}} object. Defaults to \code{surv.cindex}.
 #' @param tuning_budget Integer number of evaluations allowed during tuning.
-#' @param tuner A \code{\link[mlr3tuning]{Tuner}} object. If \code{NULL},
-#'   random search is used.
+#' @param tuner A \code{\link[mlr3tuning]{Tuner}} object. Defaults to random search.
 #' @param seed Integer seed for reproducibility.
-#' @importFrom mlr3 rsmp msr
-#' @importFrom mlr3tuning tnr trm
+#'
 #' @return A list with four components:
 #' \describe{
-#' \item{learner}{The trained learner object with optimal parameters.}
-#' \item{best_params}{List of best hyperparameter values.}
-#' \item{tuning_result}{Data frame of all evaluated parameter sets and performance.}
-#' \item{cv_performance}{Numeric cross-validated performance score.}
+#'   \item{learner}{The trained learner with optimal parameters.}
+#'   \item{best_params}{List of best hyperparameter values (names are prefixed
+#'         if a \code{GraphLearner} was used).}
+#'   \item{tuning_result}{Data frame of all evaluated parameter sets and performance.}
+#'   \item{cv_performance}{Numeric cross-validated performance score.}
 #' }
-#' @details
-#' The function extracts a task from \code{object}, instantiates the specified
-#' learner, and - if a non-empty search space is provided - tunes its
-#' hyperparameters using the chosen resampling and measure. The best parameters
-#' are then applied to the learner, which is retrained on the full task.
-#' After training, predictions are validated to ensure the model produces
-#' sensible \code{crank} values. If the search space is empty, training
-#' proceeds directly without tuning.
 #'
+#' @importFrom mlr3 lrn rsmp msr
+#' @importFrom mlr3tuning tnr trm TuningInstanceSingleCrit
+#' @importFrom paradox ps
 #' @export
+#'
 #' @examples
 #' \dontrun{
-#' library(mlr3)
-#' library(mlr3proba)
-#' task <- tsk("lung")
-#' result <- surv_train_and_tune(task, "surv.coxph", tuning_budget = 10)
-#' print(result$best_params)
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#'
+#' tune <- surv_train_and_tune(task, "surv.ranger", tuning_budget = 5)
+#' lrn <- tune$learner
+#' round(tune$cv_performance, 3)
+#'
+#' lrn$predict_type <- "distr"
+#' perf <- surv_evaluate_model(lrn, task,
+#'                             measures = list(mlr3::msr("surv.cindex")))
+#' perf$surv.cindex
 #' }
 surv_train_and_tune <- function(object,
-                           learner_id,
-                           search_space = NULL,
-                           resampling = NULL,
-                           measure = NULL,
-                           tuning_budget = 50,
-                           tuner = NULL,
-                           seed = 123) {
-  task <- surv_extract_task(object)
+                                learner_id,
+                                search_space = NULL,
+                                resampling = NULL,
+                                measure = NULL,
+                                tuning_budget = 50,
+                                tuner = NULL,
+                                seed = 123) {
+  # ---- Package checks ----
+  .check_prognosis_packages()
   
+  # ---- Extract task ----
+  task <- surv_extract_task(object)
   set.seed(seed)
   
-  # 1. Instantiate the learner and smartly configure predict_type
+  # ---- Instantiate learner (may return GraphLearner) ----
   learner <- tryCatch({
     surv_get_learner(learner_id, task)
   }, error = function(e) {
-    stop(sprintf("Failed to instantiate learner '%s': %s\nConsider running mlr3extralearners::install_learner('%s')", learner_id, e$message, learner_id))
+    stop(sprintf(
+      "Failed to instantiate learner '%s': %s\nConsider running mlr3extralearners::install_learner('%s')",
+      learner_id, e$message, learner_id
+    ))
   })
   
-  # 2. Set Search Space (Dynamically pass task to scale features)
+  # ---- Get or validate search space ----
   if (is.null(search_space)) {
     search_space <- surv_get_search_space(learner_id, object = task)
   }
   
-  # Skip tuning if there are no hyperparameters defined
+  # ---- No tuning needed if search space is empty ----
   if (length(search_space$params) == 0) {
     message(sprintf("[-] Learner '%s' requires no tuning. Training directly...", learner_id))
     learner$train(task)
@@ -414,18 +525,35 @@ surv_train_and_tune <- function(object,
       learner = learner,
       best_params = list(),
       tuning_result = NULL,
-      cv_performance = NA
+      cv_performance = NA_real_
     ))
   }
   
-  # 3. Configure default evaluation strategies
+  # ============================================================
+  # CRITICAL FIX: GraphLearner parameter prefixing
+  # ============================================================
+  # When surv_get_learner() wraps the learner in a GraphLearner
+  # (e.g., to encode factors), the parameter names of the inner
+  # learner are prefixed with the GraphLearner's set_id.
+  # We must rename the search_space parameters accordingly.
+  if (inherits(learner, "GraphLearner")) {
+    prefix <- learner$param_set$set_id
+    if (!is.null(prefix) && nzchar(prefix)) {
+      old_names <- names(search_space$params)
+      new_names <- paste0(prefix, ".", old_names)
+      names(search_space$params) <- new_names
+      message("[Tune] GraphLearner detected. Param names prefixed: ",
+              paste(new_names, collapse = ", "))
+    }
+  }
+  
+  # ---- Default resampling / measure / tuner ----
   if (is.null(resampling)) resampling <- mlr3::rsmp("cv", folds = 5)
-  if (is.null(measure)) measure <- msr("surv.cindex")
-  if (is.null(tuner)) tuner <- tnr("random_search") 
+  if (is.null(measure)) measure <- mlr3::msr("surv.cindex")
+  if (is.null(tuner)) tuner <- mlr3tuning::tnr("random_search")
+  terminator <- mlr3tuning::trm("evals", n_evals = tuning_budget)
   
-  terminator <- trm("evals", n_evals = tuning_budget)
-  
-  # 4. Create Tuning Instance
+  # ---- Create tuning instance ----
   instance <- mlr3tuning::TuningInstanceSingleCrit$new(
     task = task,
     learner = learner,
@@ -435,51 +563,21 @@ surv_train_and_tune <- function(object,
     terminator = terminator
   )
   
-  # 5. Execute Tuning
-  message(sprintf("[*] Starting tuning for learner '%s' (Budget: %d evals)...", learner_id, tuning_budget))
+  # ---- Run tuning ----
+  message(sprintf("[*] Starting tuning for learner '%s' (Budget: %d evals)...",
+                  learner_id, tuning_budget))
   tuner$optimize(instance)
   
-  # 6. Train the final model on the full dataset using the best hyperparameters
+  # ---- Train final model with best parameters ----
   learner$param_set$values <- instance$result_learner_param_vals
+  learner$train(task)
   
-  # Try training with error handling
-  train_success <- tryCatch({
-    learner$train(task)
-    TRUE
-  }, error = function(e) {
-    message(sprintf("[!] Training failed with error: %s", e$message))
-    FALSE
-  })
-  
-  if (!train_success) {
-    stop(sprintf("Model training failed for learner '%s'. Please check data quality and feature suitability.", learner_id))
-  }
-  
-  # Verify predictions work (mlr3 learners may not have state$trained flag)
-  test_pred <- tryCatch({
-    pred <- learner$predict(task)
-    if (is.null(pred$crank)) {
-      stop("Model predictions do not contain crank values")
-    }
-    if (length(unique(pred$crank)) < 2) {
-      warning(sprintf("Model predictions have low variance (unique values: %d). Risk stratification may not be meaningful.", length(unique(pred$crank))))
-    }
-    TRUE
-  }, error = function(e) {
-    message(sprintf("[!] Prediction test failed: %s", e$message))
-    FALSE
-  })
-  
-  if (!test_pred) {
-    stop(sprintf("Model training verification failed for learner '%s'. Predictions are invalid.", learner_id))
-  }
-  
-  # 7. Return Results
+  # ---- Return results ----
   list(
     learner = learner,
     best_params = instance$result_learner_param_vals,
     tuning_result = instance$result,
-    cv_performance = instance$result_y[[1]] # Extract single-criterion score
+    cv_performance = instance$result_y[[1]]  # single-criterion score
   )
 }
 
@@ -769,6 +867,9 @@ surv_summarize_benchmark <- function(benchmark_results) {
 #' if (requireNamespace("mlr3", quietly = TRUE)) {
 #'   available <- surv_list_available_learners()
 #'   print(head(available, 10))
+#' surv_list_available_learners()
+#' list_surv_feature_methods()
+#' print_surv_feature_methods()
 #' }
 #' }
 #'
@@ -783,213 +884,224 @@ surv_list_available_learners <- function() {
 # ==============================================================================
 # 7. Advanced Visualization & Interpretability Module
 # ==============================================================================
-#' Plot Risk Stratification Kaplan-Meier Curve (Training or Validation)
+#' Plot Risk Stratification Kaplan-Meier Curve
 #'
-#' Generates Kaplan-Meier survival curves stratified by risk groups defined by
-#' a model's predicted risk scores (crank values). Supports multiple cutoff
-#' determination methods including median, tertile, quartile, and p-value optimization.
+#' Generates Kaplan-Meier curves stratified by risk groups based on a model's
+#' predicted risk scores or a clinical variable. Supports multiple cutoff
+#' determination methods.
 #'
-#' @param learner A trained \code{mlr3} learner that outputs \code{crank} predictions.
-#' @param object A \code{TaskSurv} or \code{PrognosiX} object (can be training or validation task).
-#' @param cutoff_method A character string specifying the method for determining
-#'   risk group cutoffs. Must be one of \code{"median"}, \code{"tertile"},
-#'   \code{"quartile"}, \code{"p_optimize"}, or \code{"custom"}.
-#' @param custom_cutoffs A numeric vector of custom cutoffs (required when
-#'   \code{cutoff_method = "custom"}). Length 1 -> binary split, length 2 -> three
-#'   groups, length 3 -> four groups, etc.
-#' @param n_boot An integer specifying the number of bootstrap samples for
-#'   \code{p_optimize} method. Default is \code{10}.
-#' @param fraction A numeric value specifying the subsample fraction for
-#'   \code{p_optimize}. Default is \code{0.1}.
-#' @param conf_int A logical value. Should confidence intervals be shown?
-#'   Default is \code{FALSE}.
-#' @param risk_table A logical value. Should a risk table be shown below the plot?
-#'   Default is \code{FALSE}.
-#' @param palette_name A character string specifying the Wes Anderson palette name.
-#'   Default is \code{"AsteroidCity1"}.
-#' @param show_cutoff A logical value. Should cutoffs be displayed in the plot subtitle?
-#'   Default is \code{TRUE}.
-#' @param title An optional custom plot title. If \code{NULL}, auto-generated.
+#' @param learner A trained mlr3 learner (must support \code{"crank"} predictions
+#'   if \code{group_col} is \code{NULL}).
+#' @param object A \code{PrognosiX} or \code{TaskSurv} object.
+#' @param cutoff_method Method for determining cutoffs:
+#'   \itemize{
+#'     \item \code{"median"}: split at median (binary).
+#'     \item \code{"tertile"}: tertiles (3 groups).
+#'     \item \code{"quartile"}: quartiles (4 groups).
+#'     \item \code{"p_optimize"}: bootstrap resampling to find cutoff that
+#'       minimises log‑rank p‑value (repeatedly, then take median).
+#'       \strong{Warning:} This is exploratory; the resulting p‑value is
+#'       over‐optimistic and must be validated in an independent set.
+#'     \item \code{"maxstat"}: use \code{maxstat::maxstat.test()} to find
+#'       the cutoff that maximises the log‑rank statistic (Hothorn & Lausen, 2003).
+#'       Supports \code{n_boot} resampling to obtain a stable cutoff.
+#'       \strong{Warning:} Same overfitting caveat as \code{p_optimize}.
+#'     \item \code{"custom"}: user‐supplied cutoffs.
+#'   }
+#' @param custom_cutoffs Numeric vector for custom method.
+#' @param n_boot Number of bootstrap samples for \code{"p_optimize"} and
+#'   \code{"maxstat"}. Default 100.
+#' @param fraction Subsample fraction for \code{"p_optimize"} (default 0.7).
+#' @param minprop Minimum proportion of observations per group for
+#'   \code{"maxstat"} (default 0.3).
+#' @param conf_int Logical; draw confidence bands.
+#' @param risk_table Logical; show risk table below plot.
+#' @param palette_name Wes Anderson palette name.
+#' @param show_cutoff Logical; show cutoff values in subtitle.
+#' @param title Custom plot title.
+#' @param group_col Optional character; name of a clinical variable in
+#'   \code{info.data} to use instead of risk scores.
 #'
-#' @return A \code{\link[survminer]{ggsurvplot}} object with the Kaplan-Meier plot.
-#'   The cutoffs used and group distribution are stored as attributes.
-#'
-#' @details
-#' The cutoff methods work as follows:
-#' \itemize{
-#'   \item \code{"median"}: Splits at the median risk score (binary groups).
-#'   \item \code{"tertile"}: Splits at the 1/3 and 2/3 quantiles (3 groups).
-#'   \item \code{"quartile"}: Splits at the 1/4, 1/2, and 3/4 quantiles (4 groups).
-#'   \item \code{"p_optimize"}: Finds the cutoff that maximizes log-rank test
-#'     significance across bootstrap samples (binary groups).
-#'   \item \code{"custom"}: Uses user-provided cutoffs for arbitrary group numbers.
-#' }
-#'
-#' @examples
-#' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' data("veteran", package = "survival")
-#' task <- surv_create_surv_task(veteran, "time", "status")
-#' learner <- lrn("surv.coxph")$train(task)
-#' 
-#' # Median split
-#' p <- surv_plot_risk_km(learner, task, cutoff_method = "median")
-#' print(p)
-#' 
-#' # Tertile split (3 groups)
-#' p_tertile <- surv_plot_risk_km(learner, task, cutoff_method = "tertile")
-#' 
-#' # Custom cutoffs
-#' p_custom <- surv_plot_risk_km(
-#'   learner, task,
-#'   cutoff_method = "custom",
-#'   custom_cutoffs = c(-1, 0, 1)
-#' )
-#' }
-#'
-#' @seealso \code{\link{get_cf}} for extracting cutoffs from the plot object
+#' @return A \code{ggsurvplot} object (with cutoffs stored as attribute).
 #' @export
-surv_plot_risk_km <- function(learner, object, 
-                              cutoff_method = c("median", "tertile", "quartile", "p_optimize"),
+surv_plot_risk_km <- function(learner, object,
+                              cutoff_method = c("median", "tertile", "quartile",
+                                                "p_optimize", "maxstat", "custom"),
                               custom_cutoffs = NULL,
-                              n_boot = 10, fraction = 0.1,
+                              n_boot = 100,
+                              fraction = 0.7,
+                              minprop = 0.3,
                               conf_int = FALSE,
                               risk_table = FALSE,
                               palette_name = "AsteroidCity1",
                               show_cutoff = TRUE,
-                              title = NULL) {
+                              title = NULL,
+                              group_col = NULL) {
+  
   cutoff_method <- match.arg(cutoff_method)
-  task <- surv_extract_task(object)
-  if (!requireNamespace("survminer", quietly = TRUE)) 
-    stop("Please install 'survminer'")
   
-  # Predict risk scores (crank)
-  if ("crank" %in% learner$predict_types) learner$predict_type <- "crank"
-  lp <- learner$predict(task)$crank
-  
-  if (length(unique(lp)) < 2) 
-    stop("Cannot perform risk stratification: all predictions are identical.")
-  
-  surv_data <- as.data.frame(task$data(cols = task$target_names))
-  surv_data$lp <- lp
-  
-  # Determine cutoffs
-  if (cutoff_method == "custom") {
-    if (is.null(custom_cutoffs)) 
-      stop("cutoff_method = 'custom' requires custom_cutoffs.")
-    cutoffs_used <- sort(custom_cutoffs)
-    cat(sprintf("[*] Using custom cutoffs: %s\n", 
-                paste(round(cutoffs_used, 4), collapse = ", ")))
+  # ---- 1. Extract survival data and optional grouping variable ----
+  if (inherits(object, "PrognosiX")) {
+    surv_df <- as.data.frame(object@survival.data)
+    info_df <- as.data.frame(object@info.data)
+    if (!is.null(group_col) && group_col %in% colnames(info_df)) {
+      common <- intersect(rownames(surv_df), rownames(info_df))
+      if (length(common) == 0) stop("No matching rows between survival.data and info.data.")
+      surv_df <- surv_df[common, , drop = FALSE]
+      info_df <- info_df[common, , drop = FALSE]
+      surv_df[[group_col]] <- info_df[[group_col]]
+    }
+    task <- surv_extract_task(object)
+  } else if (inherits(object, "TaskSurv")) {
+    surv_df <- as.data.frame(object$data())
+    task <- object
   } else {
-    if (cutoff_method == "median") {
-      cutoffs_used <- median(lp, na.rm = TRUE)
-    } else if (cutoff_method == "tertile") {
-      q <- quantile(lp, probs = c(1/3, 2/3), na.rm = TRUE)
-      if (length(unique(q)) < 2) {
-        warning("Tertile cutoffs not unique, falling back to median.")
-        cutoffs_used <- median(lp)
-        cutoff_method <- "median"
-      } else {
-        cutoffs_used <- as.numeric(q)
-      }
-    } else if (cutoff_method == "quartile") {
-      q <- quantile(lp, probs = c(1/4, 2/4, 3/4), na.rm = TRUE)
-      if (length(unique(q)) < 3) {
-        warning("Quartile cutoffs not unique, falling back to median.")
-        cutoffs_used <- median(lp)
-        cutoff_method <- "median"
-      } else {
-        cutoffs_used <- as.numeric(q)
+    stop("object must be a PrognosiX or TaskSurv.")
+  }
+  
+  # ---- 2. Determine strata ----
+  if (!is.null(group_col) && group_col %in% colnames(surv_df)) {
+    strata_var <- surv_df[[group_col]]
+    lp <- NULL
+  } else {
+    if (!("crank" %in% learner$predict_types)) learner$predict_type <- "crank"
+    lp <- learner$predict(task)$crank
+    if (length(unique(lp)) < 2) stop("All risk scores are identical.")
+    strata_var <- NULL
+  }
+  
+  # ---- 3. Determine cutoffs ----
+  if (!is.null(strata_var)) {
+    if (is.factor(strata_var)) {
+      cutoffs_used <- levels(strata_var)
+    } else {
+      cutoffs_used <- sort(unique(strata_var))
+    }
+    surv_df$risk_group <- factor(strata_var)
+  } else {
+    # Use risk scores to define groups
+    if (cutoff_method == "custom") {
+      if (is.null(custom_cutoffs)) stop("custom_cutoffs required.")
+      cutoffs_used <- sort(custom_cutoffs)
+    } else if (cutoff_method %in% c("median", "tertile", "quartile")) {
+      # Simple quantile-based methods
+      if (cutoff_method == "median") {
+        cutoffs_used <- median(lp, na.rm = TRUE)
+      } else if (cutoff_method == "tertile") {
+        q <- quantile(lp, probs = c(1/3, 2/3), na.rm = TRUE)
+        if (length(unique(q)) < 2) { warning("Tertile cutoffs not unique, using median."); cutoffs_used <- median(lp) } else cutoffs_used <- as.numeric(q)
+      } else if (cutoff_method == "quartile") {
+        q <- quantile(lp, probs = c(1/4, 2/4, 3/4), na.rm = TRUE)
+        if (length(unique(q)) < 3) { warning("Quartile cutoffs not unique, using median."); cutoffs_used <- median(lp) } else cutoffs_used <- as.numeric(q)
       }
     } else if (cutoff_method == "p_optimize") {
-      # Only meaningful on training set; if used on validation, it will compute based on validation data
-      cat(sprintf("[*] Running p_optimize: %d bootstraps with %.1f%% fraction...\n", 
-                  n_boot, fraction * 100))
-      n_samples <- nrow(surv_data)
+      # ---- p_optimize: bootstrap minimising log-rank p ----
+      message("p_optimize: Bootstrap resampling to find cutoff that minimises log-rank p-value.")
+      message("   This is an exploratory method; the resulting p-value is over-optimistic.")
+      message("   Do not report the p-value from this split as confirmatory.")
+      if (n_boot < 10) n_boot <- 10
+      n_samples <- length(lp)
       sample_size <- max(10, floor(n_samples * fraction))
-      best_cutoffs <- numeric(n_boot)
-      for (i in 1:n_boot) {
-        idx <- sample(1:n_samples, size = sample_size, replace = TRUE)
-        boot_data <- surv_data[idx, ]
-        boot_lp <- sort(unique(boot_data$lp))
-        if (length(boot_lp) > 2) boot_lp <- boot_lp[-c(1, length(boot_lp))]
-        if (length(boot_lp) < 2) {
-          best_cutoffs[i] <- median(boot_data$lp, na.rm = TRUE)
+      boot_cutoffs <- numeric(n_boot)
+      for (i in seq_len(n_boot)) {
+        idx <- sample(seq_len(n_samples), size = sample_size, replace = TRUE)
+        boot_lp <- lp[idx]
+        boot_time <- surv_df$time[idx]
+        boot_status <- surv_df$status[idx]
+        unique_cuts <- sort(unique(boot_lp))
+        if (length(unique_cuts) < 3) {
+          boot_cutoffs[i] <- median(boot_lp, na.rm = TRUE)
           next
         }
-        p_vals <- numeric(length(boot_lp))
-        for (j in seq_along(boot_lp)) {
-          cutoff <- boot_lp[j]
-          group <- ifelse(boot_data$lp > cutoff, "High", "Low")
-          if (length(unique(group)) == 2 && min(table(group)) >= 3) {
-            fit_diff <- tryCatch(
-              survival::survdiff(survival::Surv(time, status) ~ group, data = boot_data),
-              error = function(e) NULL
-            )
-            if (!is.null(fit_diff) && !is.na(fit_diff$chisq)) {
-              p_vals[j] <- 1 - pchisq(fit_diff$chisq, length(fit_diff$n) - 1)
-            } else {
-              p_vals[j] <- NA
-            }
-          } else {
-            p_vals[j] <- NA
-          }
+        # Exclude extreme values to ensure both groups have events
+        inner_cuts <- unique_cuts[-c(1, length(unique_cuts))]
+        if (length(inner_cuts) < 1) {
+          boot_cutoffs[i] <- median(boot_lp, na.rm = TRUE)
+          next
         }
-        if (all(is.na(p_vals))) {
-          best_cutoffs[i] <- median(boot_data$lp, na.rm = TRUE)
+        p_vals <- sapply(inner_cuts, function(cut) {
+          grp <- ifelse(boot_lp > cut, "High", "Low")
+          if (length(unique(grp)) < 2) return(NA)
+          tab <- table(grp, boot_status)
+          if (any(tab < 2)) return(NA)
+          fit <- tryCatch(survival::survdiff(survival::Surv(boot_time, boot_status) ~ grp),
+                          error = function(e) NULL)
+          if (is.null(fit)) return(NA)
+          pchisq(fit$chisq, length(fit$n) - 1, lower.tail = FALSE)
+        })
+        valid <- !is.na(p_vals)
+        if (sum(valid) == 0) {
+          boot_cutoffs[i] <- median(boot_lp, na.rm = TRUE)
         } else {
-          best_cutoffs[i] <- boot_lp[which.min(p_vals)]
+          best_idx <- which.min(p_vals[valid])
+          boot_cutoffs[i] <- inner_cuts[valid][best_idx]
         }
       }
-      cutoffs_used <- median(best_cutoffs, na.rm = TRUE)
-      cat(sprintf("  -> Optimal threshold: %.4f\n", cutoffs_used))
+      cutoffs_used <- median(boot_cutoffs, na.rm = TRUE)
+      message(sprintf("   Final cutoff (median of %d bootstraps): %.4f", n_boot, cutoffs_used))
+      
+    } else if (cutoff_method == "maxstat") {
+      # ---- maxstat: use maxstat::maxstat.test ----
+      if (!requireNamespace("maxstat", quietly = TRUE)) {
+        stop("Package 'maxstat' is required for cutoff_method = 'maxstat'.")
+      }
+      message("maxstat: Using maximally selected rank statistics (Hothorn & Lausen, 2003).")
+      message("   This method finds the cutoff that maximises the log-rank statistic.")
+      message("   The resulting cutoff is data-driven and must be validated externally.")
+      if (n_boot < 10) n_boot <- 10
+      # We'll run maxstat on bootstrap samples and take median cutoff
+      n_samples <- length(lp)
+      boot_cutoffs <- numeric(n_boot)
+      for (i in seq_len(n_boot)) {
+        idx <- sample(seq_len(n_samples), size = n_samples, replace = TRUE)
+        boot_lp <- lp[idx]
+        boot_time <- surv_df$time[idx]
+        boot_status <- surv_df$status[idx]
+        # Fit maxstat
+        ms <- tryCatch(
+          maxstat::maxstat.test(
+            survival::Surv(boot_time, boot_status) ~ boot_lp,
+            data = data.frame(boot_lp, boot_time, boot_status),
+            smethod = "LogRank",
+            minprop = minprop
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(ms) || is.na(ms$estimate)) {
+          boot_cutoffs[i] <- median(boot_lp, na.rm = TRUE)
+        } else {
+          boot_cutoffs[i] <- ms$estimate
+        }
+      }
+      cutoffs_used <- median(boot_cutoffs, na.rm = TRUE)
+      message(sprintf("   Final cutoff (median of %d bootstraps): %.4f", n_boot, cutoffs_used))
     }
+    
+    # Assign risk groups
+    surv_df$risk_group <- .assign_risk_groups(lp, cutoffs_used)
   }
   
-  # Assign risk groups (unified logic)
-  risk_group <- .assign_risk_groups(lp, cutoffs_used)
-  surv_data$risk_group <- risk_group
-  surv_data$lp <- NULL
+  # ---- 4. Fit KM curves ----
+  fit <- survival::survfit(survival::Surv(time, status) ~ risk_group, data = surv_df)
   
-  # Fit KM curves
-  fit <- survival::survfit(survival::Surv(time, status) ~ risk_group, data = surv_data)
-  actual_levels <- levels(droplevels(risk_group))
-  n_groups <- length(actual_levels)
+  # ---- 5. Plot ----
+  n_groups <- length(unique(surv_df$risk_group))
+  cols <- .get_palette(palette_name, n_groups)
   
-  # Colors
-  if (requireNamespace("wesanderson", quietly = TRUE)) {
-    color_palette <- wesanderson::wes_palette(palette_name, n = max(n_groups, 3), 
-                                              type = "continuous")[1:n_groups]
-  } else {
-    color_palette <- RColorBrewer::brewer.pal(min(n_groups, 8), "Set1")
-  }
-  
-  # Title and subtitle
-  if (is.null(title)) {
-    title <- paste("Risk Stratification:", learner$id)
-  }
-  subtitle_text <- paste("Method:", cutoff_method)
-  if (show_cutoff && !is.null(cutoffs_used)) {
-    cutoff_disp <- paste(round(cutoffs_used, 3), collapse = ", ")
-    subtitle_text <- paste0(subtitle_text, " | Cutoffs: ", cutoff_disp)
-  }
+  if (is.null(title)) title <- if (is.null(group_col)) "Risk Stratification" else paste("KM by", group_col)
   
   p <- survminer::ggsurvplot(
-    fit, data = surv_data,
+    fit, data = surv_df,
     pval = (n_groups > 1), pval.method = (n_groups > 1),
     conf.int = conf_int, risk.table = risk_table,
-    title = title, subtitle = subtitle_text,
-    palette = color_palette,
-    ggtheme = ggprism::theme_prism() + 
-      ggplot2::theme(legend.title = ggplot2::element_blank()),
-    legend = "right",
-    risk.table.y.text.col = TRUE, risk.table.y.text = TRUE,
-    risk.table.fontsize = 3.5
+    title = title,
+    subtitle = if (show_cutoff && !is.null(cutoffs_used)) paste("Cutoffs:", paste(round(cutoffs_used, 3), collapse = ", ")) else "",
+    palette = cols,
+    ggtheme = ggprism::theme_prism() + ggplot2::theme(legend.title = ggplot2::element_blank()),
+    legend = "right"
   )
+  
   attr(p, "cutoffs_used") <- cutoffs_used
-  attr(p, "group_distribution") <- table(risk_group)
   return(p)
 }
 
@@ -1042,91 +1154,147 @@ get_cf <- function(km_plot) {
 }
 
 
-#' Generate Clinical Nomogram for Survival Model
+#' Generate Clinical Nomogram for Survival Model (with PH test)
 #'
-#' Creates a nomogram for visualizing and predicting survival probabilities
-#' at specified time points using a fitted Cox proportional hazards model.
-#' The nomogram is generated using the \code{rms} package.
+#' Creates a nomogram for predicting survival probabilities at specified time
+#' points. Automatically selects time points from observed event quantiles if
+#' the user-provided ones fail. Also performs a proportional hazards assumption
+#' test using \code{cox.zph} and prints the result.
 #'
 #' @param object A \code{TaskSurv} or \code{PrognosiX} object.
-#' @param selected_features A character vector of feature names to include in the
-#'   nomogram. Defaults to the top 5 features from the task.
-#' @param time_points A numeric vector of time points at which to predict survival
-#'   probabilities (e.g., \code{c(3, 5)}).
-#' @param time_unit An optional character string specifying the time unit label
-#'   (e.g., \code{"days"}, \code{"months"}, \code{"years"}). If \code{NULL},
-#'   no unit is shown. Default is \code{NULL}.
+#' @param selected_features Character vector of feature names to include.
+#'   If \code{NULL}, uses the top 5 features from the task.
+#' @param time_points Numeric vector of time points; if \code{NULL} or if
+#'   the model fails at these points, falls back to quantiles of event times.
+#' @param time_unit Optional label for the x‑axis (e.g., "days", "months").
 #'
-#' @return A \code{nomogram} object (invisibly) and prints the nomogram plot.
-#'   The object can be used for further customization.
-#'
-#' @note
-#' This function uses \code{rms::datadist()} for model fitting. The \code{datadist}
-#' is set locally to avoid polluting the global environment.
-#'
-#' @examples
-#' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' data("veteran", package = "survival")
-#' task <- surv_create_surv_task(veteran, "time", "status")
-#' 
-#' # Generate nomogram with top 5 features
-#' nom <- surv_generate_nomogram(
-#'   object = task,
-#'   selected_features = c("age", "karno", "diagtime", "celltype", "prior"),
-#'   time_points = c(3, 5),
-#'   time_unit = "months"
-#' )
-#' }
-#'
-#' @seealso \code{\link[rms]{nomogram}}, \code{\link[rms]{cph}}
+#' @return A \code{nomogram} object (invisibly) and prints the nomogram plot,
+#'   or \code{NULL} if the model cannot be fitted.
 #' @export
-surv_generate_nomogram <- function(object, selected_features = NULL, time_points = c(3, 5), time_unit = NULL) {
-  task <- surv_extract_task(object)
-  if (!requireNamespace("rms", quietly = TRUE)) stop("Please install 'rms'")
+surv_generate_nomogram <- function(object,
+                                   selected_features = NULL,
+                                   time_points = NULL,
+                                   time_unit = NULL) {
   
+  if (!requireNamespace("rms", quietly = TRUE)) {
+    stop("Package 'rms' is required for nomogram generation.")
+  }
+  
+  task <- surv_extract_task(object)
   data <- as.data.frame(task$data())
   
-  # Default to top 5 features if none provided
+  # ---- 1. Select features ----
   if (is.null(selected_features)) {
     selected_features <- head(task$feature_names, 5)
   }
+  selected_features <- intersect(selected_features, colnames(data))
+  if (length(selected_features) == 0) {
+    stop("No valid features selected.")
+  }
   
-  # rms::datadist is strictly required for rms::cph nomograms
+  # ---- 2. Prepare time points ----
+  event_times <- data[[task$target_names[1]]][data[[task$target_names[2]]] == 1]
+  if (length(event_times) < 2) {
+    stop("Fewer than 2 event times; cannot estimate survival curve.")
+  }
+  
+  if (!is.null(time_points)) {
+    time_points <- time_points[time_points >= min(event_times) & time_points <= max(event_times)]
+    if (length(time_points) < 2) {
+      warning("User-provided time points outside event range or insufficient. Falling back to quantiles.")
+      time_points <- NULL
+    }
+  }
+  
+  if (is.null(time_points)) {
+    probs <- c(0.25, 0.5, 0.75)
+    time_points <- round(quantile(event_times, probs = probs, na.rm = TRUE), 0)
+    time_points <- unique(time_points)
+    if (length(time_points) < 2) {
+      time_points <- unique(c(min(event_times), median(event_times), max(event_times)))
+    }
+    message(sprintf("Using automatically selected time points: %s",
+                    paste(time_points, collapse = ", ")))
+  }
+  
+  # ---- 3. Fit Cox model with rms ----
   dd <- rms::datadist(data)
-  options(datadist = "dd")
+  old_dd <- options()$datadist
+  on.exit(options(datadist = old_dd), add = TRUE)
+  options(datadist = dd)
   
-  # Refit the model using rms::cph (mlr3 uses survival::coxph internally)
-  formula_str <- paste("survival::Surv(time, status) ~", paste(selected_features, collapse = " + "))
-  cph_fit <- rms::cph(as.formula(formula_str), data = data, x = TRUE, y = TRUE, surv = TRUE)
+  formula_str <- paste("survival::Surv(", task$target_names[1], ", ",
+                       task$target_names[2], ") ~ ",
+                       paste(selected_features, collapse = " + "))
   
-  # Create survival prediction functions for specific time points
-  surv_obj <- rms::Survival(cph_fit)
+  fit <- tryCatch({
+    rms::cph(as.formula(formula_str),
+             data = data, x = TRUE, y = TRUE, surv = TRUE)
+  }, error = function(e) {
+    warning("cph model fitting failed: ", e$message)
+    return(NULL)
+  })
+  
+  if (is.null(fit)) {
+    message("Nomogram generation aborted due to model fitting error.")
+    return(NULL)
+  }
+  
+  # ---- 4. Proportional Hazards Assumption Test ----
+  if (requireNamespace("survival", quietly = TRUE)) {
+    ph_test <- tryCatch(
+      survival::cox.zph(fit),
+      error = function(e) {
+        warning("cox.zph failed: ", e$message)
+        return(NULL)
+      }
+    )
+    if (!is.null(ph_test)) {
+      cat("\n========== Proportional Hazards Assumption Test ==========\n")
+      print(ph_test)
+      cat("  If any p-value < 0.05, the PH assumption may be violated.\n")
+      cat("  Consider including time-dependent covariates or stratification.\n")
+      cat("===========================================================\n\n")
+    }
+  }
+  
+  # ---- 5. Create survival function and nomogram ----
+  surv_obj <- rms::Survival(fit)
+  
   surv_funcs <- lapply(time_points, function(t) {
     function(x) surv_obj(t, x)
   })
   
-  # Build funlabel based on time_unit
   if (is.null(time_unit)) {
     funlabel <- paste0(time_points, " Survival")
   } else {
-    # Capitalize first letter of unit
-    unit_label <- paste0(toupper(substring(time_unit, 1, 1)), substring(time_unit, 2))
+    unit_label <- paste0(toupper(substring(time_unit, 1, 1)),
+                         substring(time_unit, 2))
     funlabel <- paste0(time_points, "-", unit_label, " Survival")
   }
   
-  # Build nomogram
-  nom <- rms::nomogram(
-    cph_fit, 
-    fun = surv_funcs,
-    funlabel = funlabel,
-    lp = FALSE # Hide linear predictor to save space
-  )
+  nom <- tryCatch({
+    rms::nomogram(fit,
+                  fun = surv_funcs,
+                  funlabel = funlabel,
+                  lp = FALSE)
+  }, error = function(e) {
+    if (grepl("approx", e$message, fixed = TRUE)) {
+      warning("Interpolation error in nomogram. This often means the survival ",
+              "curve has only one distinct value at the chosen time points. ",
+              "Try different time points or reduce the number of features.")
+    } else {
+      warning("Nomogram creation failed: ", e$message)
+    }
+    return(NULL)
+  })
+  
+  if (is.null(nom)) {
+    return(NULL)
+  }
   
   plot(nom)
-  return(nom)
+  return(invisible(nom))
 }
 
 #' SurvSHAP(t) Explanations for Survival Models -- Production Version
@@ -1577,102 +1745,99 @@ surv_plot_shap_beeswarm <- function(shap_result,
 # 9. Clinical Reporting & Subgroup Analysis
 # ==============================================================================
 
-#' Generate Subgroup Forest Plot
+#' Subgroup Forest Plot for Survival Models (with info.data Support)
 #'
-#' Creates a forest plot showing hazard ratios for risk score in different
-#' subgroups defined by categorical variables. This helps assess whether the
-#' model's prognostic effect is consistent across patient subgroups.
+#' Creates a publication‑quality forest plot showing hazard ratios for a risk
+#' score within subgroups defined by categorical variables. The function now
+#' retrieves subgroup variables from both \code{survival.data} and \code{info.data}
+#' of the \code{PrognosiX} object, so clinical metadata are fully accessible.
 #'
 #' @param learner A trained \code{mlr3} \code{LearnerSurv} object.
 #' @param object A \code{TaskSurv} or \code{PrognosiX} object.
-#' @param subgroup_vars A character vector of categorical column names to analyze.
-#' @param prog Optional. A \code{PrognosiX} S4 object. If \code{NULL}, the function
-#'   attempts to detect it from parent environments.
-#' @param base_size A numeric value specifying the base font size for ggplot2.
-#'   Default is \code{14}.
-#' @param palette_name A character string specifying the Wes Anderson palette name.
-#'   Default is \code{"Darjeeling1"}.
+#' @param subgroup_vars Character vector of categorical column names.
+#' @param prog Optional \code{PrognosiX} object; if provided, used for data extraction.
+#' @param var_labels Optional named vector to relabel section headers.
+#' @param level_order Optional named list of level order per variable.
+#' @param ref_line Numeric. Reference vertical line (default 1).
+#' @param xlim Numeric length‑2. If \code{NULL}, automatically computed.
+#' @param ticks_at Numeric vector. If \code{NULL}, automatically computed.
+#' @param ticks_digits Integer. Decimal digits for x-axis tick labels.
+#' @param x_trans Passed to \code{forestploter::forest()}; \code{"log"} (default).
+#' @param digits Integer for HR/CI decimals.
+#' @param p_digits Integer for p‑value decimals.
+#' @param box_col Color for the point‑estimate box.
+#' @param ci_col Color for CI whiskers.
+#' @param theme_args Named list passed to \code{forestploter::forest_theme()}.
+#' @param arrow_labels Character length‑2 or NULL.
+#' @param footnote Optional footnote string.
+#' @param save_plot Logical; save plot to PDF.
+#' @param save_dir Character; output directory.
+#' @param file_name Character; output filename.
+#' @param width Numeric; plot width (inches).
+#' @param height Numeric; plot height (inches).
 #'
-#' @return A list with two components:
-#'   \describe{
-#'     \item{plot}{A \code{ggplot} object showing the forest plot.}
-#'     \item{data}{A data frame containing the hazard ratio estimates for each subgroup.}
-#'   }
-#'
-#' @details
-#' The function performs the following steps:
-#' \enumerate{
-#'   \item Extracts the task and data from the input object.
-#'   \item For each subgroup variable, fits a Cox model with risk score as predictor.
-#'   \item Computes hazard ratios and 95\% confidence intervals.
-#'   \item Creates a forest plot with subgroups ordered by HR magnitude.
-#' }
-#'
+#' @return Invisibly, a list with components \code{plot}, \code{data}, and \code{fits}.
 #' @export
 #' @examples
 #' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' data("veteran", package = "survival")
-#' veteran$celltype <- as.factor(veteran$celltype)
-#' task <- surv_create_surv_task(veteran, "time", "status")
-#' learner <- lrn("surv.coxph")$train(task)
-#' 
-#' # Forest plot for celltype subgroups
-#' result <- surv_plot_subgroup_forest(
-#'   learner = learner,
-#'   object = task,
-#'   subgroup_vars = "celltype"
-#' )
-#' print(result$plot)
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#' lrn <- surv_get_learner("surv.coxph", task)
+#' lrn$train(task)
+#'
+#' forest <- surv_plot_subgroup_forest(lrn, task, subgroup_vars = c("celltype", "trt"))
+#' forest
 #' }
 surv_plot_subgroup_forest <- function(learner, object, subgroup_vars, prog = NULL,
-                                      base_size = 14, palette_name = "Darjeeling1") {
+                                      var_labels = NULL, level_order = NULL,
+                                      ref_line = 1,
+                                      xlim = NULL, ticks_at = NULL,
+                                      ticks_digits = 2,
+                                      x_trans = "log", digits = 2, p_digits = 3,
+                                      box_col = "#377eb8", ci_col = "black",
+                                      theme_args = list(), arrow_labels = NULL,
+                                      footnote = NULL, save_plot = FALSE,
+                                      save_dir = NULL, file_name = NULL,
+                                      width = 8, height = 6) {
   
-  # =========================================================================
-  # Phase 1: Polymorphic Input Parsing & Smart Prog Object Recovery
-  # =========================================================================
+  # ---- package checks ----
+  if (!requireNamespace("forestploter", quietly = TRUE)) {
+    stop("Package 'forestploter' is required for this plot.\n",
+         "Install it with: install.packages('forestploter')")
+  }
+  if (!requireNamespace("survival", quietly = TRUE)) {
+    stop("Package 'survival' is required for Cox models.")
+  }
+  
+  # ---- Phase 1: Resolve data sources ----
   if (inherits(object, "TaskSurv")) {
     task <- object
-    row_filter <- task$row_ids     # Extract row indices of current Task to isolate train/val sets
+    row_filter <- task$row_ids
     cohort_name <- task$id
-    
-    # [Smart Dual-Track Recovery] Prioritize explicitly passed prog; if NULL, search parent environments
     if (is.null(prog)) {
       prog <- get0("prog", envir = parent.frame(), inherits = TRUE)
       if (is.null(prog)) prog <- get0("prog", envir = .GlobalEnv)
     }
-    
-    # Ultimate Defense: If prog is completely missing and features are not within the Task, throw an error
     missing_in_task <- setdiff(subgroup_vars, task$backend$cols)
     if (length(missing_in_task) > 0L && is.null(prog)) {
       stop(sprintf(
-        "Error: Subgroup variables [%s] not found in mlr3 Task backend.\nNo 'prog' object detected in current environments. Please provide explicitly: prog = your_object",
+        "Subgroup variables [%s] not found in Task backend. Provide 'prog'.",
         paste(missing_in_task, collapse = ", ")
       ))
     }
-    
   } else if (inherits(object, "PrognosiX")) {
     prog <- object
     cohort_name <- "Full Cohort"
-    
-    # Extract Full Task if available
-    task <- tryCatch({
-      surv_extract_task(prog)
-    }, error = function(e) NULL)
-    
+    task <- tryCatch(surv_extract_task(prog), error = function(e) NULL)
     if (!is.null(task)) {
       row_filter <- task$row_ids
     } else {
-      # Fallback: Use all row positions if task extraction fails
       row_filter <- 1:nrow(prog@survival.data)
     }
   } else {
-    stop("Error: 'object' must be an instance of 'TaskSurv' or 'PrognosiX'.")
+    stop("'object' must be a TaskSurv or PrognosiX object.")
   }
   
-  # Dynamically retrieve target endpoint column names for the current survival analysis
   if (!is.null(task)) {
     time_col   <- task$target_names[1L]
     status_col <- task$target_names[2L]
@@ -1681,70 +1846,83 @@ surv_plot_subgroup_forest <- function(learner, object, subgroup_vars, prog = NUL
     status_col <- prog@status_col %||% "status"
   }
   
-  # =========================================================================
-  # Phase 2: Absolutely Safe Row Alignment & Data Slicing
-  # =========================================================================
-  # FIX: Use Base R 'inherits' instead of 'hasSlot' to ensure cross-platform safety
-  if (!is.null(prog) && inherits(prog, "PrognosiX") && nrow(prog@survival.data) > 0) {
-    raw_source <- as.data.frame(prog@survival.data)
+  # ---- Phase 2: Build a unified data frame (features + clinical vars) ----
+  if (!is.null(prog) && inherits(prog, "PrognosiX")) {
+    # Combine survival.data (features + time/status) with info.data (clinical)
+    surv_df <- as.data.frame(prog@survival.data)
+    info_df <- as.data.frame(prog@info.data)
     
-    # Validate the existence of features in the data source
-    available_vars <- intersect(subgroup_vars, colnames(raw_source))
-    missing_vars   <- setdiff(subgroup_vars, colnames(raw_source))
+    # Ensure row names align
+    common_ids <- intersect(rownames(surv_df), rownames(info_df))
+    if (length(common_ids) == 0) {
+      stop("No common sample IDs between survival.data and info.data.")
+    }
+    surv_df <- surv_df[common_ids, , drop = FALSE]
+    info_df <- info_df[common_ids, , drop = FALSE]
     
+    # Start with surv_df, then add missing subgroup variables from info_df
+    data <- surv_df
+    for (v in subgroup_vars) {
+      if (v %in% colnames(info_df) && !(v %in% colnames(data))) {
+        data[[v]] <- info_df[[v]]
+      }
+    }
+    # Check for still-missing variables
+    missing_vars <- setdiff(subgroup_vars, colnames(data))
     if (length(missing_vars) > 0L) {
-      message(paste("Warning: The following variables were not found in prog and will be ignored:", 
-                    paste(missing_vars, collapse = ", ")))
+      warning("Variables not found in prog (neither survival.data nor info.data): ",
+              paste(missing_vars, collapse = ", "))
     }
     
-    # Perform row slicing based on row_filter to ensure absolute alignment with current Task
-    data <- raw_source[row_filter, unique(c(time_col, status_col, available_vars)), drop = FALSE]
+    # Keep only the variables we need (time, status, subgroup vars)
+    needed_cols <- unique(c(time_col, status_col, subgroup_vars))
+    data <- data[, intersect(needed_cols, colnames(data)), drop = FALSE]
+    
   } else {
-    # Fallback: Directly fetch data from Task Backend
+    # Fallback: use task data only (if prog not available)
     cols_to_fetch <- unique(c(time_col, status_col, subgroup_vars))
     valid_cols <- intersect(cols_to_fetch, task$backend$cols)
     data <- as.data.frame(task$backend$data(rows = row_filter, cols = valid_cols))
   }
   
-  # Mount prediction risk scores (Crank) -- physical row order corresponds strictly 1:1
+  # Compute risk scores from the learner
   if (!is.null(task)) {
     predictions <- learner$predict(task)
     data$risk_score <- predictions$crank
   } else {
-    stop("Error: Failed to construct mlr3 Task, unable to calculate risk scores.")
+    stop("Unable to compute risk scores.")
   }
   
-  # Extract valid variables eventually used for the loop
+  # ---- Phase 3: Run Cox regressions per subgroup ----
   valid_vars <- intersect(subgroup_vars, colnames(data))
   if (length(valid_vars) == 0L) {
-    stop("Error: No valid subgroup variables found in the parsed dataset.")
+    stop("No valid subgroup variables found.")
   }
   
   results <- list()
+  fit_list <- list()
   
-  # =========================================================================
-  # Phase 3: Robust Subgroup Cox Regression Loop
-  # =========================================================================
   for (var in valid_vars) {
     if (all(is.na(data[[var]]))) next
     
     levels_var <- unique(na.omit(data[[var]]))
+    if (!is.null(level_order) && !is.null(level_order[[var]])) {
+      levels_var <- level_order[[var]][level_order[[var]] %in% levels_var]
+    }
+    
     for (lev in levels_var) {
       subset_data <- data[data[[var]] == lev & !is.na(data[[var]]), ]
-      
       n_total  <- nrow(subset_data)
       n_events <- sum(subset_data[[status_col]], na.rm = TRUE)
       
-      # Robustness Filtering: If a subgroup has too few events (< 5), skip to prevent singularity
       if (n_events < 5L) {
-        message(sprintf("Info: Skipping %s - %s due to insufficient events (n=%d, events=%d).", 
-                        var, lev, n_total, n_events))
-        next 
+        message(sprintf("Skipping %s - %s (events=%d < 5).", var, lev, n_events))
+        next
       }
       
       fit <- tryCatch({
         survival::coxph(
-          survival::Surv(subset_data[[time_col]], subset_data[[status_col]]) ~ risk_score, 
+          survival::Surv(subset_data[[time_col]], subset_data[[status_col]]) ~ risk_score,
           data = subset_data
         )
       }, error = function(e) NULL)
@@ -1752,8 +1930,8 @@ surv_plot_subgroup_forest <- function(learner, object, subgroup_vars, prog = NUL
       if (!is.null(fit)) {
         hr <- exp(stats::coef(fit))
         ci <- exp(confint(fit))
-        
         if (is.na(hr) || is.infinite(hr) || any(is.na(ci))) next
+        p_val <- summary(fit)$coefficients[1, "Pr(>|z|)"]
         
         results[[paste0(var, "_", lev)]] <- data.frame(
           Variable = var,
@@ -1761,57 +1939,242 @@ surv_plot_subgroup_forest <- function(learner, object, subgroup_vars, prog = NUL
           N        = n_total,
           HR       = as.numeric(hr),
           Lower    = as.numeric(ci[1L]),
-          Upper    = as.numeric(ci[2L])
+          Upper    = as.numeric(ci[2L]),
+          P        = p_val,
+          stringsAsFactors = FALSE
         )
+        fit_list[[paste0(var, "_", lev)]] <- fit
       }
     }
   }
   
-  # =========================================================================
-  # Phase 4: Forest Plot Rendering
-  # =========================================================================
   if (length(results) == 0L) {
-    warning("Warning: No subgroups met the statistical criteria. Execution aborted.")
+    warning("No subgroups met the criteria. Returning NULL.")
     return(NULL)
   }
   
   res_df <- do.call(rbind, results)
   rownames(res_df) <- NULL
   
-  res_df$Label <- paste0(res_df$Variable, " - ", res_df$Subgroup, " (n=", res_df$N, ")")
-  res_df$Label <- factor(res_df$Label, levels = rev(res_df$Label))
+  # ---- Phase 4: Build forestploter display table ----
+  rows <- list()
   
-  # Palette availability and safety check
-  if (requireNamespace("wesanderson", quietly = TRUE)) {
-    all_pals <- names(wesanderson::wes_palettes)
-    active_pal <- if (palette_name %in% all_pals) palette_name else "Darjeeling1"
-    colors <- wesanderson::wes_palette(active_pal, n = max(nrow(res_df), 2L), type = "continuous")
-  } else {
-    colors <- colorRampPalette(RColorBrewer::brewer.pal(min(nrow(res_df), 8L), "Set1"))(nrow(res_df))
+  for (var in unique(res_df$Variable)) {
+    sub_df <- res_df[res_df$Variable == var, ]
+    if (!is.null(level_order) && !is.null(level_order[[var]])) {
+      sub_df <- sub_df[order(match(sub_df$Subgroup, level_order[[var]])), ]
+    } else {
+      sub_df <- sub_df[order(sub_df$Subgroup), ]
+    }
+    
+    header_label <- if (!is.null(var_labels) && var %in% names(var_labels)) var_labels[var] else var
+    rows[[length(rows) + 1]] <- data.frame(
+      Label = header_label,
+      N     = NA_integer_,
+      HR    = NA_real_,
+      Lower = NA_real_,
+      Upper = NA_real_,
+      P     = NA_real_,
+      RowType = "header",
+      stringsAsFactors = FALSE
+    )
+    
+    for (i in seq_len(nrow(sub_df))) {
+      rows[[length(rows) + 1]] <- data.frame(
+        Label = paste0("    ", sub_df$Subgroup[i]),
+        N     = sub_df$N[i],
+        HR    = sub_df$HR[i],
+        Lower = sub_df$Lower[i],
+        Upper = sub_df$Upper[i],
+        P     = sub_df$P[i],
+        RowType = "subgroup",
+        stringsAsFactors = FALSE
+      )
+    }
   }
   
-  p <- ggplot2::ggplot(res_df, ggplot2::aes(x = HR, y = Label)) +
-    ggplot2::geom_vline(xintercept = 1, linetype = "dashed", color = "gray50") +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = Lower, xmax = Upper), height = 0.2, size = 0.8) +
-    ggplot2::geom_point(ggplot2::aes(color = Label), size = 3) +
-    ggplot2::scale_color_manual(values = colors) +
-    ggplot2::labs(
-      title = paste("Subgroup Analysis of Risk Score (", cohort_name, ")"),
-      x = "Hazard Ratio (95% CI)",
-      y = NULL
-    ) +
-    ggplot2::theme_minimal(base_size = base_size) +
-    ggplot2::theme(
-      legend.position = "none",
-      panel.grid.minor = ggplot2::element_blank(),
-      panel.grid.major.y = ggplot2::element_blank(),
-      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-      axis.text.y = ggplot2::element_text(size = base_size * 0.8)
-    ) +
-    ggplot2::scale_x_log10()
+  forest_df <- do.call(rbind, rows)
+  if (is.null(forest_df) || nrow(forest_df) == 0) {
+    stop("No rows to plot.")
+  }
   
+  # ---- Automated xlim and ticks ----
+  if (is.null(xlim) || is.null(ticks_at)) {
+    hr_vals <- forest_df$HR[!is.na(forest_df$HR) & is.finite(forest_df$HR)]
+    lower_vals <- forest_df$Lower[!is.na(forest_df$Lower) & is.finite(forest_df$Lower)]
+    upper_vals <- forest_df$Upper[!is.na(forest_df$Upper) & is.finite(forest_df$Upper)]
+    all_vals <- c(hr_vals, lower_vals, upper_vals)
+    all_vals <- all_vals[all_vals > 0]
+    
+    if (length(all_vals) > 0) {
+      min_val <- min(all_vals, na.rm = TRUE)
+      max_val <- max(all_vals, na.rm = TRUE)
+      
+      log_min <- log(min_val)
+      log_max <- log(max_val)
+      span <- log_max - log_min
+      expand <- max(0.08, span * 0.6)
+      new_min <- exp(log_min - expand)
+      new_max <- exp(log_max + expand)
+      
+      new_min <- min(new_min, 1)
+      new_max <- max(new_max, 1)
+      
+      if (new_max / new_min < 1.15) {
+        mid <- sqrt(new_min * new_max)
+        new_min <- mid / 1.15
+        new_max <- mid * 1.15
+      }
+      
+      if (is.null(xlim)) {
+        xlim <- c(new_min, new_max)
+      }
+      
+      if (is.null(ticks_at)) {
+        log_range <- log(c(new_min, new_max))
+        log_ticks <- pretty(log_range, n = 4)
+        ticks <- exp(log_ticks)
+        ticks <- ticks[ticks >= new_min * 0.99 & ticks <= new_max * 1.01]
+        
+        if (!any(abs(ticks - 1) < 0.0001)) {
+          ticks <- sort(c(ticks, 1))
+        }
+        if (length(ticks) > 4) {
+          ticks <- sort(ticks)
+          keep_idx <- c(1, which.min(abs(ticks - 1)), length(ticks))
+          if (length(ticks) >= 3) {
+            mid_idx <- round(median(seq_along(ticks)))
+            keep_idx <- sort(unique(c(keep_idx, mid_idx)))
+          }
+          ticks <- ticks[keep_idx]
+        }
+        ticks_at <- unique(round(ticks, 8))
+        ticks_at <- ticks_at[ticks_at > 0]
+      }
+    } else {
+      if (is.null(xlim)) xlim <- c(0.5, 2)
+      if (is.null(ticks_at)) ticks_at <- c(0.5, 1, 2)
+    }
+  }
+  
+  # Safety checks
+  if (is.null(xlim) || length(xlim) != 2 || any(!is.finite(xlim))) {
+    xlim <- c(0.5, 2)
+  }
+  xlim <- sort(xlim)
+  if (xlim[1] <= 0) xlim[1] <- 0.01
+  
+  if (!is.null(ticks_at)) {
+    ticks_at <- ticks_at[ticks_at >= xlim[1] & ticks_at <= xlim[2]]
+    ticks_at <- ticks_at[ticks_at > 0]
+    if (length(ticks_at) > 5) {
+      ticks_at <- sort(ticks_at)
+      keep <- c(1, round(length(ticks_at)/2), length(ticks_at))
+      one_idx <- which.min(abs(ticks_at - 1))
+      keep <- sort(unique(c(keep, one_idx)))
+      ticks_at <- ticks_at[keep]
+    }
+    if (length(ticks_at) < 2) {
+      log_ticks <- pretty(log(c(xlim[1], xlim[2])), n = 3)
+      ticks_at <- exp(log_ticks)
+      ticks_at <- ticks_at[ticks_at >= xlim[1] & ticks_at <= xlim[2]]
+    }
+    ticks_at <- unique(sort(ticks_at))
+  } else {
+    log_ticks <- pretty(log(c(xlim[1], xlim[2])), n = 3)
+    ticks_at <- exp(log_ticks)
+    ticks_at <- ticks_at[ticks_at >= xlim[1] & ticks_at <= xlim[2]]
+    ticks_at <- unique(sort(ticks_at))
+  }
+  
+  # ---- Format columns ----
+  fmt <- paste0("%.", digits, "f")
+  forest_df$disp_hr <- ifelse(
+    forest_df$RowType == "header", "",
+    sprintf(paste0(fmt, " (", fmt, ", ", fmt, ")"),
+            forest_df$HR, forest_df$Lower, forest_df$Upper)
+  )
+  forest_df$disp_p <- ifelse(
+    forest_df$RowType == "header" | is.na(forest_df$P), "",
+    formatC(forest_df$P, digits = p_digits, format = "f")
+  )
+  forest_df$disp_n <- ifelse(is.na(forest_df$N), "", forest_df$N)
+  forest_df[[" "]] <- paste(rep(" ", 20), collapse = " ")
+  
+  display_df <- forest_df[, c("Label", "disp_n", " ", "disp_hr", "disp_p")]
+  names(display_df) <- c(" ", "N", " ", "HR (95% CI)", "p value")
+  
+  is_summary <- forest_df$RowType == "header"
+  
+  # ---- Theme ----
+  base_theme <- list(
+    base_size    = 10,
+    ci_pch       = 15,
+    ci_col       = ci_col,
+    ci_fill      = box_col,
+    ci_lty       = 1,
+    ci_lwd       = 1.5,
+    ci_Theight   = 0.2,
+    refline_lwd  = 1,
+    refline_lty  = "dashed",
+    refline_col  = "grey40",
+    footnote_col = "grey50",
+    xaxis_gp     = grid::gpar(fontsize = 9, fontfamily = "", cex = 0.9)
+  )
+  
+  if (packageVersion("forestploter") >= "0.3.0") {
+    base_theme$refline_gp <- grid::gpar(lwd = base_theme$refline_lwd,
+                                        lty = base_theme$refline_lty,
+                                        col = base_theme$refline_col)
+    base_theme$footnote_gp <- grid::gpar(col = base_theme$footnote_col)
+    base_theme$refline_lwd <- NULL
+    base_theme$refline_lty <- NULL
+    base_theme$refline_col <- NULL
+    base_theme$footnote_col <- NULL
+  }
+  
+  if (!is.null(arrow_labels)) {
+    base_theme$arrow_lab  <- arrow_labels
+    base_theme$arrow_type <- "open"
+    base_theme$arrow_col  <- "black"
+  }
+  theme_args_final <- utils::modifyList(base_theme, theme_args)
+  tm <- do.call(forestploter::forest_theme, theme_args_final)
+  
+  if (is.null(footnote)) {
+    footnote <- ''
+  }
+  
+  # ---- Draw ----
+  p <- forestploter::forest(
+    display_df,
+    est          = forest_df$HR,
+    lower        = forest_df$Lower,
+    upper        = forest_df$Upper,
+    ci_column    = 3,
+    is_summary   = is_summary,
+    ref_line     = ref_line,
+    xlim         = xlim,
+    ticks_at     = ticks_at,
+    ticks_digits = ticks_digits,
+    x_trans      = x_trans,
+    footnote     = footnote,
+    theme        = tm
+  )
   print(p)
-  return(list(plot = p, data = res_df))
+  
+  # ---- Save ----
+  if (save_plot) {
+    if (is.null(save_dir)) save_dir <- getwd()
+    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+    if (is.null(file_name)) file_name <- "subgroup_forest.pdf"
+    grDevices::pdf(file.path(save_dir, file_name), width = width, height = height)
+    plot(p)
+    grDevices::dev.off()
+  }
+  
+  invisible(list(plot = p, data = forest_df, fits = fit_list,
+                 xlim = xlim, ticks_at = ticks_at, ticks_digits = ticks_digits))
 }
 # ==============================================================================
 # 9. Stability & Sensitivity Analysis Module
@@ -1849,20 +2212,18 @@ surv_plot_subgroup_forest <- function(learner, object, subgroup_vars, prog = NUL
 #'
 #' @examples
 #' \dontrun{
-#' library(survival)
-#' data("veteran", package = "survival")
-#' 
-#' # Stability analysis on data frame
-#' stab <- surv_analyze_feature_stability(
-#'   object = veteran,
-#'   time_col = "time",
-#'   status_col = "status",
-#'   n_repeat = 20,
-#'   alpha = 1
-#' )
-#' 
-#' print(paste("Stability Index:", round(stab$stability_index, 3)))
-#' print(stab$plot)
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#'
+#' stab <- surv_analyze_feature_stability(task, "time", "status", n_repeat = 5, alpha = 1)
+#' stab$stability_index
+#'
+#' abl <- surv_analyze_feature_ablation(task, "surv.coxph",
+#'                                      features_to_test = c("karno", "celltype", "trt"))
+#' abl$results
+#'
+#' sens <- surv_analyze_model_sensitivity(task, "surv.coxph", analysis_type = "sample_size")
+#' sens$results
 #' }
 #'
 #' @seealso \code{\link{surv_feature_selection_multi}} for multi-method selection
@@ -2058,7 +2419,6 @@ surv_analyze_feature_stability <- function(object,
   )
 }
 
-
 #' Analyze Model Performance Sensitivity
 #'
 #' Evaluates how model performance (C-index) changes under varying conditions
@@ -2073,8 +2433,7 @@ surv_analyze_feature_stability <- function(object,
 #'   \code{"sample_size"}, these are proportions (e.g., \code{c(0.3, 0.5, 0.7, 0.9, 1.0)}).
 #'   For \code{"censoring"}, these are additional censoring proportions
 #'   (e.g., \code{c(0.1, 0.2, 0.3, 0.5)}). If \code{NULL}, uses reasonable defaults.
-#' @param palette_name A character string specifying the Wes Anderson palette name.
-#'   Default is \code{"AsteroidCity1"}.
+#' @param palette_name A character string (kept for compatibility, no longer used).
 #'
 #' @return A list with two components:
 #'   \describe{
@@ -2082,118 +2441,78 @@ surv_analyze_feature_stability <- function(object,
 #'     \item{plot}{A \code{ggplot} object showing the sensitivity trajectory.}
 #'   }
 #'
-#' @importFrom mlr3 rsmp msr resample 
 #' @export
-#' 
-#' @examples
-#' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' data("veteran", package = "survival")
-#' task <- surv_create_surv_task(veteran, "time", "status")
-#' 
-#' # Sample size sensitivity
-#' sens <- surv_analyze_model_sensitivity(
-#'   object = task,
-#'   learner_id = "surv.coxph",
-#'   analysis_type = "sample_size",
-#'   param_values = c(0.3, 0.5, 0.7, 0.9)
-#' )
-#' print(sens$plot)
-#' }
-surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c("sample_size", "censoring"), param_values = NULL, palette_name = "AsteroidCity1") {
-  task <- surv_extract_task(object)
+surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c("sample_size", "censoring"),
+                                           param_values = NULL, palette_name = "AsteroidCity1") {
+
+  `%>%` <- magrittr::`%>%`  
+  
+  task <- surv_extract_task(object)  
   
   analysis_type <- match.arg(analysis_type)
-  original_data <- as.data.table(task$data())
+  original_data <- data.table::as.data.table(task$data())
   
-  message(sprintf("\n[*] Starting Sensitivity Analysis: %s...", analysis_type))
+  base::message(sprintf("\n[*] Starting Sensitivity Analysis: %s...", analysis_type))
   
-  results <- data.frame(Parameter = numeric(), C_Index = numeric(), SE = numeric())
+  results <- base::data.frame(Parameter = base::numeric(), C_Index = base::numeric(), SE = base::numeric())
   
   # Default parameters if not provided
-  if (is.null(param_values)) {
+  if (base::is.null(param_values)) {
     if (analysis_type == "sample_size") param_values <- c(0.3, 0.5, 0.7, 0.9, 1.0)
-    # For censoring: values are ADDITIONAL censoring PROPORTIONS (0 = no extra censoring,
-    # 0.5 = censor an additional 50% of currently observed events at random times).
-    # This is NOT the rate parameter of an exponential distribution.
     if (analysis_type == "censoring") param_values <- c(0.1, 0.2, 0.3, 0.5)
   }
   
   for (val in param_values) {
     
-    cv_scores <- numeric(5L)
+    cv_scores <- base::numeric(5L)
     
     for (fold in seq_len(5L)) {
       temp_data <- data.table::copy(original_data)
       
       if (analysis_type == "sample_size") {
-        keep_idx  <- sample(nrow(temp_data), size = max(20L, floor(nrow(temp_data) * val)))
+        keep_idx  <- base::sample(base::nrow(temp_data), size = base::max(20L, base::floor(base::nrow(temp_data) * val)))
         temp_data <- temp_data[keep_idx, ]
       } else if (analysis_type == "censoring") {
-        # val is the ADDITIONAL CENSORING PROPORTION: the fraction of currently
-        # observed events (status == 1) that will be randomly censored.
-        # We randomly select val*100% of event rows and replace their observed
-        # event time with a uniform random time in [0, observed_time).
-        # This correctly controls the additional censoring fraction and avoids
-        # the misinterpretation of 'rate' in rexp().
         time_col   <- task$target_names[1L]
         status_col <- task$target_names[2L]
         event_idx  <- which(temp_data[[status_col]] == 1)
-        n_to_censor <- floor(length(event_idx) * val)
+        n_to_censor <- base::floor(base::length(event_idx) * val)
         if (n_to_censor > 0L) {
-          censor_idx <- sample(event_idx, size = n_to_censor, replace = FALSE)
-          # Censoring time uniform in (0, observed_time] for each selected subject
+          censor_idx <- base::sample(event_idx, size = n_to_censor, replace = FALSE)
           new_times  <- stats::runif(n_to_censor, min = 0,
                                      max = temp_data[[time_col]][censor_idx])
-          new_times  <- pmax(new_times, .Machine$double.eps)  # avoid zero times
+          new_times  <- base::pmax(new_times, .Machine$double.eps)
           temp_data[[time_col]][censor_idx]   <- new_times
           temp_data[[status_col]][censor_idx] <- 0L
         }
       }
-      
-      # 2. Create Temporary Task & Evaluate
+
       temp_task <- surv_create_surv_task(temp_data, task$target_names[1], task$target_names[2], id = "temp_sens")
       
-      res <- tryCatch({
-        rr <- resample(temp_task, lrn(learner_id), mlr3::rsmp("cv", folds = 3), store_models = FALSE)
-        rr$aggregate(msr("surv.cindex"))
+      res <- base::tryCatch({
+        rr <- mlr3::resample(temp_task, mlr3::lrn(learner_id), mlr3::rsmp("cv", folds = 3), store_models = FALSE)
+        rr$aggregate(mlr3::msr("surv.cindex"))
       }, error = function(e) NA)
       
       cv_scores[fold] <- res
     }
     
-    # 3. Store Results (Mean and Standard Error)
-    results <- rbind(results, data.frame(
+    results <- base::rbind(results, base::data.frame(
       Parameter = val,
-      C_Index = mean(cv_scores, na.rm = TRUE),
-      SE = stats::sd(cv_scores, na.rm = TRUE) / sqrt(sum(!is.na(cv_scores)))
+      C_Index = base::mean(cv_scores, na.rm = TRUE),
+      SE = stats::sd(cv_scores, na.rm = TRUE) / base::sqrt(base::sum(!base::is.na(cv_scores)))
     ))
   }
   
-  # Generate Plot
   x_label <- ifelse(analysis_type == "sample_size",
                     "Proportion of Total Sample Size",
                     "Additional Censoring Proportion (fraction of events re-censored)")
   
-  # Get colors from wesanderson palette
-  if (requireNamespace("wesanderson", quietly = TRUE)) {
-    colors <- wesanderson::wes_palette(palette_name, n = 3, type = "continuous")
-    line_color <- colors[1]
-    point_color <- colors[2]
-    error_color <- colors[3]
-  } else {
-    line_color <- "#E74C3C"
-    point_color <- "#C0392B"
-    error_color <- "#7F8C8D"
-  }
-  
   p <- ggplot2::ggplot(results, ggplot2::aes(x = Parameter, y = C_Index)) +
-    ggplot2::geom_line(color = line_color, size = 1) +
-    ggplot2::geom_point(color = point_color, size = 3) +
-    ggplot2::geom_errorbar(ggplot2::aes(ymin = C_Index - SE, ymax = C_Index + SE), width = 0.05, color = error_color) +
-    ggplot2::scale_y_continuous(limits = c(0.45, 1)) +
+    ggplot2::geom_line(color = "black", size = 1) +
+    ggplot2::geom_point(color = "black", size = 3) +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = C_Index - SE, ymax = C_Index + SE),
+                           width = 0.01, color = "grey50") +
     ggplot2::labs(
       x = x_label, 
       y = "Cross-Validated C-Index (+/- SE)", 
@@ -2201,16 +2520,12 @@ surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c
       subtitle = sprintf("Model: %s | Perturbation: %s", learner_id, analysis_type)
     ) +
     ggprism::theme_prism(base_size = 14) +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(hjust = 0.5)
-    )
+    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
   
-  print(p)
-  message("  [OK] Sensitivity analysis complete.")
-  
-  list(results = results, plot = p)
+  base::print(p)
+  base::message("  [OK] Sensitivity analysis complete.")
+  base::list(results = results, plot = p)
 }
-
 #' Feature Ablation Sensitivity Analysis
 #'
 #' Evaluates the impact of removing individual features on model performance.
@@ -2328,42 +2643,46 @@ surv_analyze_feature_ablation <- function(object, learner_id, features_to_test =
 
 # ==============================================================================
 # 11. Clinical Validation: Calibration & Time-dependent AUC
-# ==============================================================================
-#' Plot Calibration Curve with Quantitative Metrics
+#' Plot Calibration Curve (Apparent)
 #'
-#' Calibration is assessed by grouping predicted survival probabilities into
-#' quantile bins and comparing the bin mean predicted probability to the
-#' Kaplan-Meier observed survival probability in that bin.
+#' Plots predicted vs. observed (KM-based) survival probability at a fixed
+#' evaluation time, using adaptively-sized quantile bins.
 #'
-#' IMPORTANT: When evaluated on the TRAINING SET the curve reflects "apparent"
-#' (optimistic) calibration. For valid calibration use an independent test set
-#' or cross-validated out-of-fold predictions.
-#'
-#' ICI follows Austin & Steyerberg (2019): loess of observed ~ predicted fitted
-#' on bin centres (span = 1.0), then |loess(x) - x| integrated over the
-#' prediction range. Falls back to trapezoidal rule when fewer than 4 bins.
-#'https://doi.org/10.1002/sim.8281
-#'
-#' @param learner Trained mlr3 learner with predict_type "distr"
-#' @param object TaskSurv or PrognosiX object
-#' @param time_point Numeric. Time horizon for calibration.
-#' @param n_bins Integer. Number of bins (default 10; minimum 5 recommended).
-#' @param apparent Logical. If TRUE (default) labels the plot as APPARENT
-#'   (training-set) calibration and prints a reminder.
-#' @param print_metrics Logical. Print metrics to console (default TRUE).
-#' @param show_ici Logical. Include ICI in plot subtitle (default TRUE).
-#' @return ggplot object; calibration metrics attached as attribute "calibration_metrics".
+#' @param learner Trained mlr3 learner (must support "distr" predict_type)
+#' @param object A \code{TaskSurv} or \code{PrognosiX} object
+#' @param time_point Numeric. Evaluation time point for calibration.
+#' @param n_bins Integer. Requested number of bins (default 10; automatically
+#'   reduced for small datasets, see \code{.prepare_cal_data}).
+#' @param apparent Logical. Whether this is apparent (training-set,
+#'   optimistic) calibration (default TRUE).
+#' @param print_metrics Logical. Print calibration metrics to console (default TRUE).
+#' @param show_ici Logical. Show ICI in the plot subtitle (default TRUE).
+#' @return A ggplot object (invisibly carrying \code{calibration_metrics} and
+#'   \code{calibration_data} as attributes), or \code{NULL} if calibration
+#'   could not be computed.
 #' @export
-#' 
+#'
 #' @examples
 #' \dontrun{
-#' # Requires trained learner with distr predict_type and task
-#' # cal_plot <- surv_plot_calibration(learner, task, time_point = 365)
+#' veteran <- survival::veteran
+#' veteran$celltype <- as.character(veteran$celltype)
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#' lrn <- surv_get_learner("surv.ranger", task)
+#' lrn$train(task)
+#'
+#' cal <- surv_plot_calibration(lrn, task, time_point = 90)
+#'
+#' set.seed(1)
+#' idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+#' train_task <- task$clone()$filter(idx)
+#' val_task   <- task$clone()$filter(setdiff(seq_len(task$nrow), idx))
+#' lrn2 <- surv_get_learner("surv.ranger", train_task)
+#' lrn2$train(train_task)
+#' cal_cmp <- surv_plot_comparison_calibration(lrn2, train_task, val_task, time_point = 90)
 #' }
 surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
                                   apparent = TRUE,
                                   print_metrics = TRUE, show_ici = TRUE) {
-  # ---- 1. Environment Protection: Prevent altering external R6 learner state ----
   if (!("distr" %in% learner$predict_types)) {
     warning("Learner does not support 'distr' predict_type. Calibration skipped.")
     return(NULL)
@@ -2371,8 +2690,7 @@ surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
   old_predict_type <- learner$predict_type
   on.exit({ learner$predict_type <- old_predict_type }, add = TRUE)
   
-  # ---- 2. Data Preparation and Cleaning ----
-  cal_df <- .prepare_cal_data(learner = learner, object = object, 
+  cal_df <- .prepare_cal_data(learner = learner, object = object,
                               time_point = time_point, n_bins = n_bins)
   if (is.null(cal_df)) return(NULL)
   
@@ -2384,7 +2702,6 @@ surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
     ))
   }
   
-  # ---- 3. Metric Computations ----
   metrics <- .compute_cal_metrics(cal_df)
   
   if (print_metrics) {
@@ -2401,13 +2718,12 @@ surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
     cat("====================================================\n")
   }
   
-  # ---- 4. Plot Configurations ----
   slope_label <- round(metrics$slope, 3)
   ici_label   <- ifelse(is.na(metrics$ici), "NA", round(metrics$ici, 3))
-  plot_title  <- ifelse(apparent, 
+  plot_title  <- ifelse(apparent,
                         paste("Apparent Calibration at t =", time_point, "(training set)"),
                         paste("Calibration Curve at t =", time_point))
-  sub_title   <- ifelse(show_ici, 
+  sub_title   <- ifelse(show_ici,
                         paste(learner$id, "| Slope =", slope_label, "| ICI =", ici_label),
                         learner$id)
   
@@ -2419,9 +2735,8 @@ surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
     ggplot2::labs(x = "Predicted Survival Probability",
                   y = "Observed Survival Probability (KM)",
                   title = plot_title, subtitle = sub_title) +
-    ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) # Core fix: Prevent early data clipping from ruining the path line
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) # Set display range without clipping geom_line paths; no forced 1:1 aspect
   
-  # Graceful fallback if ggprism is not available
   if (requireNamespace("ggprism", quietly = TRUE)) {
     p <- p + ggprism::theme_prism()
   } else {
@@ -2443,20 +2758,21 @@ surv_plot_calibration <- function(learner, object, time_point, n_bins = 10,
 #' @param train_task Training TaskSurv object
 #' @param val_task Validation TaskSurv object
 #' @param time_point Numeric. Evaluation time point for calibration.
-#' @param n_bins Integer. Number of bins (default 10; minimum 5).
+#' @param n_bins Integer. Requested number of bins (default 10; each of
+#'   \code{train_task} and \code{val_task} is independently adjusted for its
+#'   own sample size, see \code{.prepare_cal_data} -- a message is printed
+#'   when the two datasets end up with different effective bin counts).
 #' @param print_metrics Logical. Print metrics for both datasets (default TRUE).
 #' @return A ggplot object showing calibration curves for training and validation.
 #' @export
-#' 
+#'
 #' @examples
 #' \dontrun{
-#' # Requires trained learner, training task and validation task
-#' # comp_plot <- surv_plot_comparison_calibration(learner, train_task, val_task, time_point = 365)
+#' comp_plot <- surv_plot_comparison_calibration(learner, train_task, val_task, time_point = 365)
 #' }
 surv_plot_comparison_calibration <- function(learner, train_task, val_task,
                                              time_point, n_bins = 10,
                                              print_metrics = TRUE) {
-  # ---- 1. Environment Protection: Avoid polluting the external R6 learner state ----
   if (!("distr" %in% learner$predict_types)) {
     warning("Learner does not support 'distr' predict_type. Calibration skipped.")
     return(NULL)
@@ -2464,7 +2780,6 @@ surv_plot_comparison_calibration <- function(learner, train_task, val_task,
   old_predict_type <- learner$predict_type
   on.exit({ learner$predict_type <- old_predict_type }, add = TRUE)
   
-  # ---- 2. Extract underlying data using shared internal function to eliminate redundancy ----
   cal_train <- .prepare_cal_data(learner, train_task, time_point, n_bins)
   cal_val   <- .prepare_cal_data(learner, val_task, time_point, n_bins)
   
@@ -2485,6 +2800,10 @@ surv_plot_comparison_calibration <- function(learner, train_task, val_task,
     cat(sprintf("  Slope=%.4f | Intercept=%.4f | R2=%.4f | MAE=%.4f | ICI=%.4f\n",
                 m_val$slope, m_val$intercept, m_val$r_squared, m_val$mae, m_val$ici))
     cat("  Note: Training calibration is always expected to be more optimistic.\n")
+    if (nrow(cal_train) != nrow(cal_val)) {
+      cat(sprintf("  Note: Effective bin counts differ (train=%d, val=%d) due to per-set adaptive binning.\n",
+                  nrow(cal_train), nrow(cal_val)))
+    }
     cat("=================================================================\n")
   }
   
@@ -2505,7 +2824,7 @@ surv_plot_comparison_calibration <- function(learner, train_task, val_task,
                   y = "Observed Survival Probability (KM)",
                   title = paste("Calibration Comparison at t =", time_point),
                   subtitle = paste0(learner$id, " | Train ICI = ", ici_tr, " (apparent) | Val ICI = ", ici_val)) +
-    ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) # Core fix: Avoid line breakage due to strict axis clipping
+    ggplot2::coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) # Set display range without clipping geom_line paths; no forced 1:1 aspect
   
   if (requireNamespace("ggprism", quietly = TRUE)) {
     p <- p + ggprism::theme_prism()
@@ -2522,6 +2841,25 @@ surv_plot_comparison_calibration <- function(learner, train_task, val_task,
 #'   extracts the task using \code{surv_extract_task()}.
 #' @return ggplot object
 #' @export
+#' @examples
+#' \dontrun{
+#' veteran <- survival::veteran
+#' veteran$celltype <- as.character(veteran$celltype)
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#' lrn <- surv_get_learner("surv.ranger", task)
+#' lrn$train(task)
+#'
+#' auc_plot <- surv_plot_time_dependent_auc(lrn, task)
+#'
+#' # Comparison needs two tasks (e.g. train vs validation split):
+#' set.seed(1)
+#' idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+#' train_task <- task$clone()$filter(idx)
+#' val_task   <- task$clone()$filter(setdiff(seq_len(task$nrow), idx))
+#' lrn2 <- surv_get_learner("surv.ranger", train_task)
+#' lrn2$train(train_task)
+#' auc_cmp <- surv_plot_comparison_auc(lrn2, train_task, val_task)
+#' }
 surv_plot_time_dependent_auc <- function(learner, object) {
   task <- surv_extract_task(object)
   if (!requireNamespace("risksetROC", quietly = TRUE)) stop("Please install 'risksetROC'")
@@ -2575,30 +2913,93 @@ surv_plot_time_dependent_auc <- function(learner, object) {
   return(auc_df)
 }
 
-#' Feature Selection Pipeline: Univariate to Lasso
-#' @param object A \code{TaskSurv} or \code{PrognosiX} object. The function
-#'   extracts the task using \code{surv_extract_task()}.
-#' @param p_threshold P-value threshold for univariate filtering (default 0.05)
-#' @return A list containing the filtered task and the univariate results table
+#' Univariate Cox Filtering with Support for Clinical Metadata
+#'
+#' Performs univariate Cox regression on each feature (or clinical variable) and
+#' selects those with p‑value below a threshold. When a \code{PrognosiX} object
+#' is given, both \code{survival.data} and \code{info.data} are merged to allow
+#' filtering on clinical variables.
+#'
+#' @param object A \code{PrognosiX} or \code{TaskSurv} object, or a data frame.
+#' @param p_threshold Numeric; p‑value cutoff (default 0.05).
+#' @param features Character vector of feature names to test. If \code{NULL},
+#'   all numeric columns (plus any specified clinical variables) are used.
+#' @param include_clinical Logical; if \code{TRUE} and \code{object} is
+#'   \code{PrognosiX}, also test all columns in \code{info.data} except
+#'   \code{time} and \code{status}. Default \code{FALSE}.
+#'
+#' @return A list with components:
+#'   \item{task}{A \code{TaskSurv} object containing only significant features.}
+#'   \item{table}{Data frame of univariate results for all tested variables.}
+#'   \item{plot}{A ggplot object showing -log10(p) for each variable.}
 #' @export
-surv_filter_features_clinical <- function(object, p_threshold = 0.05) {
-  task <- surv_extract_task(object)
+#' @examples
+#' \dontrun{
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, "time", "status")
+#' uni <- surv_filter_features_clinical(task, p_threshold = 0.1)
+#' }
+surv_filter_features_clinical <- function(object,
+                                          p_threshold = 0.05,
+                                          features = NULL,
+                                          include_clinical = FALSE) {
   
   message("[*] Starting Feature Selection: Univariate Cox Filtering...")
   
-  data <- as.data.frame(task$data())
-  features <- task$feature_names
-  target_time <- task$target_names[1]
-  target_status <- task$target_names[2]
+  # ---- 1. Extract data ----
+  if (inherits(object, "PrognosiX")) {
+    surv_df <- as.data.frame(object@survival.data)
+    info_df <- as.data.frame(object@info.data)
+    # Merge by row names
+    common <- intersect(rownames(surv_df), rownames(info_df))
+    if (length(common) == 0) stop("No matching rows between survival.data and info.data.")
+    surv_df <- surv_df[common, , drop = FALSE]
+    info_df <- info_df[common, , drop = FALSE]
+    # Combine, but avoid duplicating time/status if already in info
+    # Remove time/status columns from info if they are already in surv_df
+    time_col <- object@time_col %||% "time"
+    status_col <- object@status_col %||% "status"
+    info_cols <- setdiff(colnames(info_df), c(time_col, status_col))
+    data <- cbind(surv_df, info_df[, info_cols, drop = FALSE])
+    target_time <- time_col
+    target_status <- status_col
+  } else if (inherits(object, "TaskSurv")) {
+    data <- as.data.frame(object$data())
+    target_time <- object$target_names[1]
+    target_status <- object$target_names[2]
+  } else if (is.data.frame(object)) {
+    data <- object
+    target_time <- "time"
+    target_status <- "status"
+  } else {
+    stop("object must be a PrognosiX, TaskSurv, or data.frame.")
+  }
   
+  # Determine candidate features
+  all_cols <- colnames(data)
+  if (is.null(features)) {
+    # Use all numeric columns except time/status
+    numeric_cols <- names(which(sapply(data, is.numeric)))
+    features <- setdiff(numeric_cols, c(target_time, target_status))
+    if (include_clinical && inherits(object, "PrognosiX")) {
+      # Also include all columns from info.data (non-numeric allowed)
+      clinical_vars <- setdiff(colnames(info_df), c(target_time, target_status, features))
+      # Convert character/factor to numeric? We'll test as-is; coxph can handle factors.
+      features <- c(features, clinical_vars)
+    }
+  }
+  
+  # Remove any that are not in data
+  features <- intersect(features, colnames(data))
+  if (length(features) == 0) stop("No valid features to test.")
+  
+  # ---- 2. Run univariate Cox ----
   unv_results <- list()
-  
   for (feat in features) {
     formula_str <- sprintf("survival::Surv(%s, %s) ~ %s", target_time, target_status, feat)
     fit <- tryCatch({
       survival::coxph(as.formula(formula_str), data = data)
     }, error = function(e) NULL)
-    
     if (!is.null(fit)) {
       s <- summary(fit)
       p_val <- s$coefficients[1, "Pr(>|z|)"]
@@ -2607,21 +3008,39 @@ surv_filter_features_clinical <- function(object, p_threshold = 0.05) {
         HR = s$conf.int[1, "exp(coef)"],
         P_Value = p_val,
         Lower_CI = s$conf.int[1, "lower .95"],
-        Upper_CI = s$conf.int[1, "upper .95"]
+        Upper_CI = s$conf.int[1, "upper .95"],
+        stringsAsFactors = FALSE
       )
     }
   }
-  
   unv_df <- do.call(rbind, unv_results)
-  # Filter significant features
+  
+  # ---- 3. Select significant features ----
   significant_feats <- unv_df$Feature[unv_df$P_Value < p_threshold]
+  message(sprintf("  [[OK]] Univariate filter: %d -> %d features", length(features), length(significant_feats)))
   
-  message(sprintf("  [[OK]] Univariate filter complete: %d -> %d features", length(features), length(significant_feats)))
+  # ---- 4. Create filtered task if object is a TaskSurv or PrognosiX ----
+  if (inherits(object, "PrognosiX") || inherits(object, "TaskSurv")) {
+    # We need to produce a new TaskSurv with only significant features
+    # For PrognosiX, we can create a temporary data frame
+    if (inherits(object, "PrognosiX")) {
+      # Use the merged data (surv_df only) but keep only significant features
+      surv_data <- object@survival.data
+      # We need to select columns from surv_data (which has all features and time/status)
+      # But time/status are not in features, we keep them
+      keep_cols <- c(target_time, target_status, significant_feats)
+      keep_cols <- intersect(keep_cols, colnames(surv_data))
+      new_surv <- surv_data[, keep_cols, drop = FALSE]
+      # Create a new PrognosiX? Better to return the task directly.
+      task <- surv_create_surv_task(new_surv, target_time, target_status)
+    } else {
+      task <- object$clone()$select(significant_feats)
+    }
+  } else {
+    task <- NULL
+  }
   
-  # Return a task with only significant features
-  new_task <- task$clone()$select(significant_feats)
-  
-  # Visualization: P-value Lollipop Plot
+  # ---- 5. Plot ----
   p <- ggplot2::ggplot(unv_df, ggplot2::aes(x = stats::reorder(Feature, -P_Value), y = -log10(P_Value))) +
     ggplot2::geom_segment(ggplot2::aes(xend = Feature, yend = 0), color = "grey") +
     ggplot2::geom_point(ggplot2::aes(color = P_Value < p_threshold), size = 3) +
@@ -2632,103 +3051,43 @@ surv_filter_features_clinical <- function(object, p_threshold = 0.05) {
   
   print(p)
   
-  return(list(task = new_task, table = unv_df, plot = p))
+  return(list(task = task, table = unv_df, plot = p))
 }
 
-
-#' Benchmark Multiple Survival Algorithms
+#' Run Algorithm Benchmark for Survival Analysis
 #'
-#' Compares the performance of multiple survival learners using cross-validation.
-#' The function automatically creates a benchmarking design, runs the comparison,
-#' and generates a boxplot visualization of the C-index scores across folds.
+#' Compares multiple survival learners using cross-validation and visualizes
+#' the C-index performance with a boxplot.
 #'
-#' @param object A \code{TaskSurv} or \code{PrognosiX} object. The function
-#'   extracts the task using \code{surv_extract_task()}.
-#' @param learners_list A list of \code{Learner} objects to benchmark. If \code{NULL},
-#'   defaults to four commonly used survival learners:
-#'   \itemize{
-#'     \item \code{surv.coxph} (Cox Proportional Hazards)
-#'     \item \code{surv.cv_glmnet} (LASSO)
-#'     \item \code{surv.ranger} (Random Forest)
-#'     \item \code{surv.xgboost} (XGBoost)
-#'   }
-#' @param resampling A \code{\link[mlr3]{Resampling}} object. If \code{NULL},
-#'   defaults to 5-fold cross-validation.
+#' @param object A \code{PrognosiX} object or a \code{TaskSurv}.
+#' @param learners_list A list of \code{mlr3} learners. If \code{NULL}, a default
+#'   set of learners is used (CoxPH, Lasso, RandomForest, XGBoost).
+#' @param resampling An \code{mlr3} resampling strategy. Defaults to 5-fold CV.
+#' @param palette Character or character vector. Either a ColorBrewer palette name
+#'   (e.g. \code{"Set2"}, \code{"Dark2"}, \code{"Paired"}) or a vector of colors.
+#'   If \code{NULL} (default), a custom clean palette is used.
 #'
-#' @return A list with three components:
-#'   \describe{
-#'     \item{bmr}{A \code{\link[mlr3]{BenchmarkResult}} object
-#'       containing all benchmark results.}
-#'     \item{table}{A data frame of aggregated performance metrics (C-index)
-#'       for each learner.}
-#'     \item{plot}{A \code{ggplot} object showing the performance distribution
-#'       across CV folds for each learner.}
-#'   }
-#'
-#' @details
-#' The function performs the following steps:
-#' \enumerate{
-#'   \item Extracts the survival task from \code{object}.
-#'   \item If no learners are provided, instantiates default learners.
-#'   \item Ensures all learners use the same \code{predict_type} (preferring
-#'     \code{"distr"} if available) for fair comparison.
-#'   \item Creates a benchmark design and runs the benchmark.
-#'   \item Aggregates performance using the concordance index (\code{surv.cindex}).
-#'   \item Generates a boxplot comparing the performance distribution.
-#' }
-#'
-#' @note
-#' The default learners require additional packages:
-#' \itemize{
-#'   \item \code{surv.coxph}: built-in to \code{mlr3proba}
-#'   \item \code{surv.cv_glmnet}: requires \code{mlr3learners} and \code{glmnet}
-#'   \item \code{surv.ranger}: requires \code{mlr3learners} and \code{ranger}
-#'   \item \code{surv.xgboost}: requires \code{mlr3extralearners} and \code{xgboost}
-#' }
-#'
-#' @importFrom mlr3 msr rsmp benchmark_grid benchmark 
-#' @examples
-#' \dontrun{
-#' library(mlr3proba)
-#' library(survival)
-#' 
-#' data("veteran", package = "survival")
-#' task <- surv_create_surv_task(veteran, "time", "status")
-#' 
-#' # Run benchmark with default learners
-#' bm <- surv_run_algorithm_benchmark(object = task)
-#' 
-#' # View performance table
-#' print(bm$table)
-#' 
-#' # Custom learners
-#' library(mlr3learners)
-#' custom_learners <- list(
-#'   lrn("surv.coxph", id = "CoxPH"),
-#'   lrn("surv.ranger", id = "RF", num.trees = 100)
-#' )
-#' 
-#' bm_custom <- surv_run_algorithm_benchmark(
-#'   object = task,
-#'   learners_list = custom_learners,
-#'   resampling = rsmp("cv", folds = 3)
-#' )
-#' }
-#'
-#' @seealso
-#' \code{\link{surv_benchmark_learners}} for more detailed benchmarking with tuning support,
-#' \code{\link{surv_summarize_benchmark}} for summarizing results
+#' @return A list containing:
+#'   \item{bmr}{The \code{BenchmarkResult} object.}
+#'   \item{table}{Aggregated performance table.}
+#'   \item{plot}{A \code{ggplot} object of the performance comparison.}
 #'
 #' @export
-surv_run_algorithm_benchmark <- function(object, learners_list = NULL, resampling = NULL) {
+surv_run_algorithm_benchmark <- function(object,
+                                         learners_list = NULL,
+                                         resampling = NULL,
+                                         palette = NULL) {
   task <- surv_extract_task(object)
+  requireNamespace("mlr3viz", quietly = TRUE)
+  requireNamespace("ggplot2", quietly = TRUE)
+  requireNamespace("ggprism", quietly = TRUE)
   
   if (is.null(learners_list)) {
     learners_list <- list(
-      lrn("surv.coxph", id = "CoxPH"),
+      lrn("surv.coxph",     id = "CoxPH"),
       lrn("surv.cv_glmnet", id = "Lasso"),
-      lrn("surv.ranger", id = "RandomForest"),
-      lrn("surv.xgboost", id = "XGBoost")
+      lrn("surv.ranger",    id = "RandomForest"),
+      lrn("surv.xgboost",   id = "XGBoost")
     )
   }
   
@@ -2742,17 +3101,51 @@ surv_run_algorithm_benchmark <- function(object, learners_list = NULL, resamplin
   message("[*] Running Benchmark: Comparing Algorithms via 5-fold CV...")
   
   design <- benchmark_grid(task, learners_list, resampling)
-  bmr <- benchmark(design)
+  bmr    <- benchmark(design)
   
   # Measure performance
   measures <- list(msr("surv.cindex"))
   perf_tab <- bmr$aggregate(measures)
   
-  # Visualization: Boxplot of performance across folds
+  # ---------- Color handling ----------
+  n_learners <- length(learners_list)
+  
+  if (is.null(palette)) {
+    # Default clean palette
+    cols <- c("#4C72B0", "#DD8452", "#55A868", "#C44E52", "#8172B3", "#937860")
+  } else if (length(palette) == 1L &&
+             requireNamespace("RColorBrewer", quietly = TRUE) &&
+             palette %in% rownames(RColorBrewer::brewer.pal.info)) {
+    # ColorBrewer palette name
+    max_col <- RColorBrewer::brewer.pal.info[palette, "maxcolors"]
+    n_col   <- min(max(3L, n_learners), max_col)
+    cols    <- RColorBrewer::brewer.pal(n_col, palette)
+  } else {
+    # User-supplied color vector
+    cols <- palette
+  }
+  
+  # Recycle if needed
+  if (length(cols) < n_learners) {
+    cols <- rep(cols, length.out = n_learners)
+  }
+  
+  # Visualization
   p <- autoplot(bmr, measure = msr("surv.cindex")) +
-    ggplot2::labs(title = "Algorithm Performance Comparison", subtitle = "5-Fold Cross-Validation C-Index") +
+    ggplot2::scale_fill_manual(values = cols) +
+    ggplot2::scale_color_manual(values = cols) +
+    ggplot2::labs(
+      title    = "Algorithm Performance Comparison",
+      subtitle = "5-Fold Cross-Validation C-Index",
+      x        = NULL,
+      y        = "C-Index"
+    ) +
     ggprism::theme_prism() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(
+      axis.text.x     = ggplot2::element_text(angle = 30, hjust = 1, vjust = 1),
+      legend.position = "none",
+      plot.margin     = ggplot2::margin(t = 10, r = 10, b = 25, l = 10)
+    )
   
   print(p)
   
@@ -2858,6 +3251,22 @@ create_step_dir <- function(base_dir, step_num, step_name) {
 #' @param task_ref Reference task to ensure column consistency
 #' @return Prediction object
 #' @export
+#' @examples
+#' \dontrun{
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#'
+#' set.seed(1)
+#' idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+#' train_task <- task$clone()$filter(idx)
+#' val_data   <- as.data.frame(task$data())[setdiff(seq_len(task$nrow), idx), ]
+#'
+#' lrn <- surv_get_learner("surv.coxph", train_task)
+#' lrn$train(train_task)
+#'
+#' res <- surv_predict_on_validation(lrn, val_data, train_task)
+#' res$prediction$score(mlr3::msr("surv.cindex"))
+#' }
 surv_predict_on_validation <- function(learner, test_data, task_ref) {
   # Ensure the test data has the same structure/encoding as training data
   test_task <- surv_create_surv_task(
@@ -2969,25 +3378,14 @@ surv_plot_comparison_auc <- function(learner, train_task, val_task) {
 #' @export
 #' @examples
 #' \dontrun{
-#' # Load veteran data and create PrognosiX object
-#' data("veteran", package = "survival")
-#' stat <- CreateStatObject(raw.data = veteran, clean.data = veteran, group_col = "status")
-#' prog <- Stat_to_PrognosiX(stat, time_col = "time", status_col = "status")
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 #'
-#' # Run feature selection with 4 robust methods
-#' fs <- surv_feature_selection_multi(
-#'   object = prog,
-#'   methods = c("uni_cox", "lasso", "rf_imp", "vimp"),
-#'   p_threshold = 0.1,
-#'   top_ratio = 0.5,
-#'   combine = "freq",
-#'   freq_cutoff = 2
+#' feat_sel <- surv_feature_selection_multi(
+#'   object = task, methods = c("uni_cox", "lasso"),
+#'   p_threshold = 0.1, combine = "union", verbose = FALSE
 #' )
-#'
-#' # View selected features
-#' print(fs$selected)
-#' # View which methods selected each feature
-#' head(fs$method_table)
+#' feat_sel$selected
 #' }
 surv_feature_selection_multi <- function(object,
                                          methods = c("uni_cox", "lasso", "rf_imp", "vimp"),
@@ -2999,6 +3397,17 @@ surv_feature_selection_multi <- function(object,
                                          use_boruta = FALSE) {
   
   combine <- match.arg(combine)
+  
+  # freq_cutoff only affects combine = "freq"; warn if the user set it
+  # explicitly under a different combine mode, since it would otherwise
+  # be silently ignored.
+  if (!missing(freq_cutoff) && combine != "freq") {
+    warning(sprintf(
+      "`freq_cutoff` was supplied but has no effect when combine = '%s' (it only applies when combine = 'freq'). The value will be ignored.",
+      combine
+    ), call. = FALSE)
+  }
+  
   if (!requireNamespace("mlr3", quietly = TRUE))
     stop("Package 'mlr3' required.")
   
@@ -3315,8 +3724,16 @@ surv_feature_selection_multi <- function(object,
 #' @export
 #' @examples
 #' \dontrun{
-#' # Requires trained learners with distr predict_type and task
-#' # dca_result <- plot_dca_survival(list("Cox" = cox_learner), task, eval_time = 365)
+#' veteran <- survival::veteran
+#' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+#' lrn <- surv_get_learner("surv.coxph", task)
+#' lrn$train(task)
+#' lrn$predict_type <- "distr"
+#'
+#' dca_res <- plot_dca_survival(
+#'   learners = list("Cox" = lrn), object = task,
+#'   eval_time = 90, clin_range = c(0.05, 0.5), print_stats = FALSE
+#' )
 #' }
 plot_dca_survival <- function(learners,
                                 object,
@@ -3722,61 +4139,6 @@ print_surv_feature_methods <- function() {
   invisible(TRUE)
 }
 
-
-# Unified pipeline to extract predictions and compute Kaplan-Meier observed rates per bin
-.prepare_cal_data <- function(learner, object, time_point, n_bins) {
-  if (inherits(object, "TaskSurv")) {
-    task <- object
-  } else if (inherits(object, "PrognosiX")) {
-    task <- surv_extract_task(object)
-  } else {
-    stop("object must be a TaskSurv or PrognosiX object")
-  }
-  
-  n_bins <- max(n_bins, 5L)
-  learner$predict_type <- "distr"
-  pred <- learner$predict(task)
-  
-  surv_prob <- .extract_surv_prob(pred$distr, time_point, task)
-  if (is.null(surv_prob)) return(NULL)
-  surv_prob <- as.numeric(surv_prob)
-  
-  if (length(surv_prob) != task$nrow) {
-    warning("Length of survival probabilities does not match task rows. Calibration skipped.")
-    return(NULL)
-  }
-  
-  data_df <- as.data.frame(task$data())
-  time    <- data_df[[task$target_names[1L]]]
-  status  <- data_df[[task$target_names[2L]]]
-  
-  df <- data.frame(pred = surv_prob, time = time, status = status)
-  df <- df[order(df$pred), ]
-  
-  breaks <- unique(quantile(df$pred, probs = seq(0, 1, length.out = n_bins + 1L), na.rm = TRUE))
-  if (length(breaks) < 3L) {
-    warning("Not enough unique predicted probabilities to form bins. Calibration skipped.")
-    return(NULL)
-  }
-  df$bin <- cut(df$pred, breaks = breaks, include.lowest = TRUE)
-  
-  obs_surv <- sapply(split(df, df$bin), function(bin_data) {
-    if (nrow(bin_data) < 2L) return(NA_real_)
-    km <- survival::survfit(survival::Surv(time, status) ~ 1, data = bin_data)
-    sp <- summary(km, times = time_point, extend = TRUE)$surv
-    if (length(sp) == 0L) NA_real_ else sp[[1L]]
-  })
-  
-  bin_centers <- tapply(df$pred, df$bin, mean, na.rm = TRUE)
-  cal_df <- na.omit(data.frame(predicted = as.numeric(bin_centers),
-                               observed  = as.numeric(obs_surv)))
-  
-  if (nrow(cal_df) < 2L) {
-    warning("Not enough valid bins for calibration (need at least 2).")
-    return(NULL)
-  }
-  return(cal_df)
-}
 
 # Unified interface to calculate calibration metrics
 .compute_cal_metrics <- function(cal_df) {

@@ -29,13 +29,28 @@ If input is a Subtyping object, returns the modified object with
 Normalize Process for Subtyping
 }
 \examples{
-\dontrun{
-  # Example with data frame
-  df <- data.frame(gene1 = c(1, 2, 3), gene2 = c(4, 5, 6))
-  result <- Sub_normalize_process(df, normalize_method = "min_max_scale")
+set.seed(1)
+demo_df <- data.frame(
+  id    = paste0("S", 1:60),
+  group = rep(c(0, 1), each = 30),
+  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+  feat3 = rnorm(60, 10, 2)
+)
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                             group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
 
-  # Example with Subtyping object
-  obj <- CreateSubtypingObject(clean.data = df)
-  obj <- Sub_normalize_process(obj, normalize_method = "min_max_scale")
-}
+set.seed(1)
+split <- SplitSubtypingObject(sub_obj, p = 0.7, stratify_by = "group")
+
+# Fit normalization on the training split only.
+sub_train <- Sub_normalize_process(split$train, normalize_method = "min_max")
+dim(sub_train@scale.data)
+
+# Extract training-derived parameters and apply them to the validation split
+# (avoids leaking validation-set values into their own scaling).
+norm_params <- Sub_extract_norm_params(sub_train, verbose = FALSE)
+sub_test <- Sub_apply_norm_params(split$test, norm_params = norm_params, verbose = FALSE)
+dim(sub_test@scale.data)
 }

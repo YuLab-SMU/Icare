@@ -14,7 +14,7 @@ CreateSubtypingObject(
   clustered.data = data.frame(),
   evaluation_results = list(),
   object = NULL,
-  convert_factors = TRUE,
+  convert_factors = FALSE,
   na.action = c("omit", "allow", "error")
 )
 }
@@ -37,8 +37,7 @@ CreateSubtypingObject(
 
 \item{object}{Input object (Stat, Subtyping, PrognosiX, Model_data).}
 
-\item{convert_factors}{Logical; if TRUE, automatically convert factor/character
-columns to numeric. Default TRUE.}
+\item{convert_factors}{Logical; Default FALSE – only enable if you are certain the variable is ordinal or binary.}
 
 \item{na.action}{Character string specifying how to handle NA values. 
 Options are "omit" (remove rows with NA, default for subtyping), 

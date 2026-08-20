@@ -49,31 +49,69 @@
   invisible(path)
 }
 
-# -- Unified probability extractor -----------------------------------------
-.extract_probs_and_truth <- function(model_obj, newdata = NULL, model_name = NULL) {
+# =============================================================================
+# Helper: Unified Probability and Outcome Extractor (Column-Safe)
+# =============================================================================
+#' @keywords internal
+.extract_probs_and_truth <- function(model_obj,
+                                     newdata        = NULL,
+                                     model_name     = NULL,
+                                     positive_class = NULL) {
   if (inherits(model_obj, "Train_Model")) {
-    if (is.null(newdata)) newdata <- model_obj@filtered.set$testing
+    if (is.null(newdata)) {
+      newdata <- model_obj@filtered.set$testing
+      if (is.null(newdata)) newdata <- model_obj@split.data$testing
+    }
     gc <- model_obj@group_col
     truth <- factor(newdata[[gc]])
+    
+    pos_cls <- if (!is.null(positive_class)) positive_class else levels(truth)[2]
+    
     if (is.null(model_name)) {
       best <- model_obj@best.model.result$model
       if (is.null(best)) best <- model_obj@train.models[[1]]
-      probs <- predict(best, newdata, type = "prob")[, 2]
+      prob_mat <- predict(best, newdata, type = "prob")
     } else if (model_name == "ensemble") {
       ens <- model_obj@best.model.result$ensemble
-      if (is.null(ens)) stop("No ensemble found.")
-      probs <- ens$predict_fn(newdata)
+      if (is.null(ens)) stop("No ensemble model found in model_obj.")
+      return(list(
+        truth    = truth,
+        probs    = ens$predict_fn(newdata),
+        positive = pos_cls,
+        negative = setdiff(levels(truth), pos_cls)[1]
+      ))
     } else {
-      probs <- predict(model_obj@train.models[[model_name]], newdata, type = "prob")[, 2]
+      prob_mat <- predict(model_obj@train.models[[model_name]], newdata, type = "prob")
     }
+    
   } else if (inherits(model_obj, "train")) {
-    if (is.null(newdata)) stop("newdata required for caret train object.")
-    truth <- factor(newdata[[model_obj@group_col]])
-    probs <- predict(model_obj, newdata, type = "prob")[, 2]
+    if (is.null(newdata)) stop("`newdata` argument is required for caret train object.")
+    gc <- model_obj@group_col
+    truth <- factor(newdata[[gc]])
+    pos_cls <- if (!is.null(positive_class)) positive_class else levels(truth)[2]
+    prob_mat <- predict(model_obj, newdata, type = "prob")
   } else {
-    stop("model_obj must be Train_Model or caret train object.")
+    stop("model_obj must be a Train_Model or caret train object.")
   }
-  list(truth = truth, probs = probs, positive = levels(truth)[2], negative = levels(truth)[1])
+  
+  # Robust column name matching including make.names check
+  probs <- if (is.matrix(prob_mat) || is.data.frame(prob_mat)) {
+    if (ncol(prob_mat) == 1) {
+      prob_mat[, 1]
+    } else if (!is.null(colnames(prob_mat)) && pos_cls %in% colnames(prob_mat)) {
+      prob_mat[, pos_cls]
+    } else if (!is.null(colnames(prob_mat)) && make.names(pos_cls) %in% colnames(prob_mat)) {
+      prob_mat[, make.names(pos_cls)]
+    } else {
+      warning("Positive class '", pos_cls, "' not found in prediction columns. Defaulting to column 2.")
+      prob_mat[, 2]
+    }
+  } else {
+    prob_mat
+  }
+  
+  neg_cls <- setdiff(levels(truth), pos_cls)[1]
+  list(truth = truth, probs = probs, positive = pos_cls, negative = neg_cls)
 }
 
 # -- 1. Category-based NRI -------------------------------------------------
@@ -100,83 +138,117 @@ CalculateCategoryNRI <- function(truth,
   .check_nri_pkgs()
   binary <- if (is.factor(truth)) as.numeric(truth == levels(truth)[2]) else truth
   
-  # Resolve thresholds
   if (is.null(ref_thresholds)) ref_thresholds <- risk_thresholds
   if (is.null(new_thresholds)) new_thresholds <- risk_thresholds
   
-  .get_cat <- function(p, t) {
+  n_ref_cats <- length(ref_thresholds) + 1
+  n_new_cats <- length(new_thresholds) + 1
+  
+  .get_cat <- function(p, t, max_cat) {
     cat <- rep(1L, length(p))
     for (i in seq_along(t)) cat[p > t[i]] <- i + 1L
-    cat
+    factor(cat, levels = seq_len(max_cat))
   }
   
-  ref_cat <- .get_cat(ref_prob, ref_thresholds)
-  new_cat <- .get_cat(new_prob, new_thresholds)
+  ref_cat <- .get_cat(ref_prob, ref_thresholds, n_ref_cats)
+  new_cat <- .get_cat(new_prob, new_thresholds, n_new_cats)
   
   ev_idx  <- which(binary == 1)
   nev_idx <- which(binary == 0)
   
-  ev_up   <- sum(new_cat[ev_idx]  > ref_cat[ev_idx])
-  ev_down <- sum(new_cat[ev_idx]  < ref_cat[ev_idx])
-  nri_ev  <- (ev_up - ev_down) / length(ev_idx)
+  ref_num <- as.numeric(ref_cat)
+  new_num <- as.numeric(new_cat)
   
-  nev_up   <- sum(new_cat[nev_idx] > ref_cat[nev_idx])
-  nev_down <- sum(new_cat[nev_idx] < ref_cat[nev_idx])
-  nri_nev  <- (nev_down - nev_up) / length(nev_idx)
+  ev_up   <- sum(new_num[ev_idx]  > ref_num[ev_idx])
+  ev_down <- sum(new_num[ev_idx]  < ref_num[ev_idx])
+  nri_ev  <- if (length(ev_idx) > 0) (ev_up - ev_down) / length(ev_idx) else NA_real_
   
-  list(nri_events    = nri_ev,
-       nri_nonevents = nri_nev,
-       nri_total     = nri_ev + nri_nev,
-       events_up     = ev_up,
-       events_down   = ev_down,
-       nonevents_up  = nev_up,
+  nev_up   <- sum(new_num[nev_idx] > ref_num[nev_idx])
+  nev_down <- sum(new_num[nev_idx] < ref_num[nev_idx])
+  nri_nev  <- if (length(nev_idx) > 0) (nev_down - nev_up) / length(nev_idx) else NA_real_
+  
+  nri_tot <- if (!is.na(nri_ev) && !is.na(nri_nev)) nri_ev + nri_nev else NA_real_
+  
+  list(nri_events     = nri_ev,
+       nri_nonevents  = nri_nev,
+       nri_total      = nri_tot,
+       events_up      = ev_up,
+       events_down    = ev_down,
+       nonevents_up   = nev_up,
        nonevents_down = nev_down,
-       event_table   = table(ref_cat[ev_idx],  new_cat[ev_idx]),
+       event_table    = table(ref_cat[ev_idx],  new_cat[ev_idx]),
        nonevent_table = table(ref_cat[nev_idx], new_cat[nev_idx]),
        ref_thresholds = ref_thresholds,
        new_thresholds = new_thresholds)
 }
 
 # -- 2. Bootstrap AUC & ROC -------------------------------------------------
-#' Bootstrap AUC Confidence Interval
-#'
-#' Returns mean AUC, 95% CI, and bootstrapped TPR/FPR at uniform thresholds.
-#'
-#' @param truth   Binary outcome.
-#' @param prob    Predicted probabilities.
-#' @param n_boot  Number of bootstrap iterations (default 500).
-#' @return A list with AUC, CI, and ROC coordinates.
-#' @export
+# =============================================================================
+# Helper: Bootstrap AUC Confidence Interval and Averaged ROC Curve
+# =============================================================================
 BootstrapROC <- function(truth, prob, n_boot = 500) {
   .check_nri_pkgs()
+  
   n <- length(truth)
-  base_t <- seq(0, 1, length.out = 101)
+  
+  # Define a fixed False Positive Rate (FPR) evaluation grid from 0 to 1
+  base_fpr <- seq(0, 1, length.out = 101)
   tprs <- matrix(NA_real_, n_boot, 101)
-  fprs <- matrix(NA_real_, n_boot, 101)
   aucs <- numeric(n_boot)
   
+  # Perform bootstrap resampling
   for (i in seq_len(n_boot)) {
     idx <- sample(n, replace = TRUE)
+    
+    # Ensure bootstrap sample contains at least two distinct class levels
     if (length(unique(truth[idx])) < 2) next
-    roc_obj <- tryCatch(pROC::roc(truth[idx], prob[idx], direction = "auto", quiet = TRUE),
-                        error = function(e) NULL)
+    
+    roc_obj <- tryCatch(
+      pROC::roc(truth[idx], prob[idx], direction = "auto", quiet = TRUE),
+      error = function(e) NULL
+    )
     if (is.null(roc_obj)) next
+    
     aucs[i] <- as.numeric(pROC::auc(roc_obj))
-    tprs[i, ] <- approx(roc_obj$thresholds, roc_obj$sensitivities, xout = base_t, rule = 2)$y
-    fprs[i, ] <- approx(roc_obj$thresholds, 1 - roc_obj$specificities, xout = base_t, rule = 2)$y
+    
+    # Extract FPR (1 - Specificity) and TPR (Sensitivity)
+    fpr <- 1 - roc_obj$specificities
+    tpr <- roc_obj$sensitivities
+    
+    # Sort FPR in strictly ascending order (0 -> 1) to comply with approx() prerequisites
+    ord <- order(fpr)
+    fpr_sorted <- fpr[ord]
+    tpr_sorted <- tpr[ord]
+    
+    # Remove duplicate FPR values to avoid interpolation ties
+    non_dup <- !duplicated(fpr_sorted)
+    
+    # Interpolate True Positive Rate (TPR) over the fixed base FPR grid
+    tprs[i, ] <- approx(x = fpr_sorted[non_dup],
+                        y = tpr_sorted[non_dup],
+                        xout = base_fpr,
+                        rule = 2)$y
   }
   
-  aucs   <- aucs[!is.na(aucs)]
-  tprs   <- tprs[rowSums(!is.na(tprs)) > 0, ]
-  fprs   <- fprs[rowSums(!is.na(fprs)) > 0, ]
+  # Filter out failed bootstrap iterations
+  valid_rows <- rowSums(!is.na(tprs)) > 0
+  aucs_valid <- aucs[!is.na(aucs) & aucs > 0]
+  tprs_valid <- tprs[valid_rows, , drop = FALSE]
   
-  list(thresholds = base_t,
-       mean_tpr   = colMeans(tprs, na.rm = TRUE),
-       mean_fpr   = colMeans(fprs, na.rm = TRUE),
-       tpr_lower  = apply(tprs, 2, quantile, 0.025, na.rm = TRUE),
-       tpr_upper  = apply(tprs, 2, quantile, 0.975, na.rm = TRUE),
-       mean_auc   = mean(aucs),
-       auc_sd     = sd(aucs))
+  if (nrow(tprs_valid) == 0) {
+    stop("Bootstrap evaluation failed across all iterations. Check sample size and class balance.")
+  }
+  
+  list(
+    thresholds = base_fpr,  # Added for 100% backward compatibility with PlotIDICurve
+    fpr        = base_fpr,
+    mean_fpr   = base_fpr,
+    mean_tpr   = colMeans(tprs_valid, na.rm = TRUE),
+    tpr_lower  = apply(tprs_valid, 2, quantile, 0.025, na.rm = TRUE),
+    tpr_upper  = apply(tprs_valid, 2, quantile, 0.975, na.rm = TRUE),
+    mean_auc   = mean(aucs_valid, na.rm = TRUE),
+    auc_sd     = sd(aucs_valid, na.rm = TRUE)
+  )
 }
 
 # -- 3. ROC curve comparison -----------------------------------------------
@@ -247,6 +319,59 @@ PlotROCCompare <- function(truth,
 }
 
 # -- 4. IDI curve ----------------------------------------------------------
+
+#' Bootstrap Resampling for IDI Curve Interpolation
+#'
+#' @description
+#' Internal helper function that performs bootstrap resampling to compute average
+#' Sensitivity and 1-Specificity (False Positive Rate) profiles across a fixed grid
+#' of risk cutoff thresholds (0 to 1) for IDI curve plotting.
+#'
+#' @param truth A numeric vector of binary outcomes (1 for cases/events, 0 for controls/non-events).
+#' @param prob A numeric vector of predicted probabilities for the positive class.
+#' @param n_boot Integer. Number of bootstrap iterations. Default is 500.
+#'
+#' @return A named list containing:
+#' \item{cutoffs}{Numeric vector of 101 risk cutoff threshold points from 0 to 1.}
+#' \item{mean_sens}{Numeric vector of bootstrapped mean Sensitivity values at each cutoff.}
+#' \item{mean_spec}{Numeric vector of bootstrapped mean 1-Specificity (FPR) values at each cutoff.}
+#'
+#' @keywords internal
+#' @noRd
+BootstrapIDICurveData <- function(truth, prob, n_boot = 500) {
+  .check_nri_pkgs()
+  n <- length(truth)
+  cutoff_grid <- seq(0, 1, length.out = 101)
+  
+  sens_mat <- matrix(NA_real_, n_boot, 101)
+  spec_mat <- matrix(NA_real_, n_boot, 101) # Stores 1 - Specificity (FPR)
+  
+  for (i in seq_len(n_boot)) {
+    idx <- sample(n, replace = TRUE)
+    t_boot <- truth[idx]
+    p_boot <- prob[idx]
+    
+    cases <- p_boot[t_boot == 1]
+    ctrls <- p_boot[t_boot == 0]
+    
+    if (length(cases) == 0 || length(ctrls) == 0) next
+    
+    sens_mat[i, ] <- sapply(cutoff_grid, function(t) mean(cases >= t))
+    spec_mat[i, ] <- sapply(cutoff_grid, function(t) mean(ctrls >= t))
+  }
+  
+  valid_rows <- rowSums(!is.na(sens_mat)) > 0
+  if (sum(valid_rows) == 0) {
+    stop("Bootstrap IDI evaluation failed across all iterations. Check sample size or class balance.")
+  }
+  
+  list(
+    cutoffs   = cutoff_grid,
+    mean_sens = colMeans(sens_mat[valid_rows, , drop = FALSE], na.rm = TRUE),
+    mean_spec = colMeans(spec_mat[valid_rows, , drop = FALSE], na.rm = TRUE)
+  )
+}
+
 #' Plot Integrated Discrimination Improvement (IDI) Curve
 #'
 #' @description
@@ -317,39 +442,31 @@ PlotIDICurve <- function(truth,
                          save_filename = "idi_curve.png",
                          ...) {
   
-  # ---- Data Pre-processing ----
   if (is.factor(truth)) truth <- as.character(truth)
   u_vals <- unique(truth)
   if (length(u_vals) != 2) stop("truth must be binary.")
   
   if (is.null(positive)) {
     positive <- sort(u_vals, decreasing = TRUE)[1]
-    message("Using '", positive, "' as positive class.")
-  }
-  
-  if (is.null(n_boot) || length(n_boot) != 1 || !is.numeric(n_boot) || n_boot <= 0) {
-    warning("Invalid n_boot, using default 500")
-    n_boot <- 500
   }
   
   truth_num <- as.numeric(truth == positive)
   
-  # ---- IDI Stats ----
-  is_val  <- mean(new_prob[truth_num == 1]) - mean(ref_prob[truth_num == 1])
-  ip_val  <- mean(ref_prob[truth_num == 0]) - mean(new_prob[truth_num == 0])
+  # NA-safe IDI Statistics
+  is_val  <- mean(new_prob[truth_num == 1], na.rm = TRUE) - mean(ref_prob[truth_num == 1], na.rm = TRUE)
+  ip_val  <- mean(ref_prob[truth_num == 0], na.rm = TRUE) - mean(new_prob[truth_num == 0], na.rm = TRUE)
   idi_val <- is_val + ip_val
   
-  # ---- Curve Data (Assumes BootstrapROC exists) ----
-  ref_boot <- BootstrapROC(truth_num, ref_prob, n_boot)
-  new_boot <- BootstrapROC(truth_num, new_prob, n_boot)
+  # Bootstrapped IDI Curves over Risk Cutoffs t
+  ref_idi_data <- BootstrapIDICurveData(truth_num, ref_prob, n_boot)
+  new_idi_data <- BootstrapIDICurveData(truth_num, new_prob, n_boot)
   
   df <- data.frame(
-    threshold = new_boot$thresholds,
-    ref_sens = ref_boot$mean_tpr, new_sens = new_boot$mean_tpr,
-    ref_spec = ref_boot$mean_fpr, new_spec = new_boot$mean_fpr
+    threshold = new_idi_data$cutoffs,
+    ref_sens  = ref_idi_data$mean_sens, new_sens = new_idi_data$mean_sens,
+    ref_spec  = ref_idi_data$mean_spec, new_spec = new_idi_data$mean_spec
   )
   
-  # ---- Theme & Plotting ----
   if (is.null(theme)) {
     theme <- ggplot2::theme_minimal(base_size = 12) +
       ggplot2::theme(panel.grid.minor = ggplot2::element_blank(),
@@ -358,27 +475,23 @@ PlotIDICurve <- function(truth,
   }
   
   p <- ggplot2::ggplot(df) +
-    # Sens lines
-    ggplot2::geom_line(ggplot2::aes(x=threshold, y=ref_sens), color=sensitivity_color, linetype="dashed", alpha=alpha) +
-    ggplot2::geom_line(ggplot2::aes(x=threshold, y=new_sens), color=sensitivity_color, linewidth=linewidth) +
-    # 1-Spec lines
-    ggplot2::geom_line(ggplot2::aes(x=threshold, y=ref_spec), color=colors[1], linetype="dashed", alpha=alpha) +
-    ggplot2::geom_line(ggplot2::aes(x=threshold, y=new_spec), color=colors[1], linewidth=linewidth) +
-    # Ribbons
-    ggplot2::geom_ribbon(ggplot2::aes(x=threshold, ymin=ref_sens, ymax=new_sens), fill=sensitivity_color, alpha=ribbon_alpha) +
-    ggplot2::geom_ribbon(ggplot2::aes(x=threshold, ymin=new_spec, ymax=ref_spec), fill=colors[1], alpha=ribbon_alpha) +
-    # Labels
-    ggplot2::annotate("text", x=annotation_position$x, y=annotation_position$y, label=sprintf("IS = %.4f", is_val), fontface="bold", hjust=0) +
-    ggplot2::annotate("text", x=annotation_position$x, y=annotation_position$ip_y, label=sprintf("IP = %.4f", ip_val), fontface="bold", color=colors[1], hjust=0) +
-    ggplot2::annotate("label", x=annotation_position$x, y=annotation_position$idi_y, label=sprintf("IDI = %.4f", idi_val), color="white", fill=colors[2], fontface="bold") +
-    ggplot2::scale_x_continuous(limits=xlim, breaks=xbreaks) +
-    ggplot2::scale_y_continuous(limits=ylim, breaks=ybreaks) +
-    ggplot2::labs(title=title, subtitle=subtitle, x=xlab, y=ylab, caption=caption) + theme
+    ggplot2::geom_line(ggplot2::aes(x = threshold, y = ref_sens), color = sensitivity_color, linetype = "dashed", alpha = alpha) +
+    ggplot2::geom_line(ggplot2::aes(x = threshold, y = new_sens), color = sensitivity_color, linewidth = linewidth) +
+    ggplot2::geom_line(ggplot2::aes(x = threshold, y = ref_spec), color = colors[1], linetype = "dashed", alpha = alpha) +
+    ggplot2::geom_line(ggplot2::aes(x = threshold, y = new_spec), color = colors[1], linewidth = linewidth) +
+    ggplot2::geom_ribbon(ggplot2::aes(x = threshold, ymin = ref_sens, ymax = new_sens), fill = sensitivity_color, alpha = ribbon_alpha) +
+    ggplot2::geom_ribbon(ggplot2::aes(x = threshold, ymin = new_spec, ymax = ref_spec), fill = colors[1], alpha = ribbon_alpha) +
+    ggplot2::annotate("text", x = annotation_position$x, y = annotation_position$y, label = sprintf("IS = %.4f", is_val), fontface = "bold", hjust = 0) +
+    ggplot2::annotate("text", x = annotation_position$x, y = annotation_position$ip_y, label = sprintf("IP = %.4f", ip_val), fontface = "bold", color = colors[1], hjust = 0) +
+    ggplot2::annotate("label", x = annotation_position$x, y = annotation_position$idi_y, label = sprintf("IDI = %.4f", idi_val), color = "white", fill = colors[2], fontface = "bold") +
+    ggplot2::scale_x_continuous(limits = xlim, breaks = xbreaks) +
+    ggplot2::scale_y_continuous(limits = ylim, breaks = ybreaks) +
+    ggplot2::labs(title = title, subtitle = subtitle, x = xlab, y = ylab, caption = caption) + theme
   
   if (save_plot) {
-    dir <- if(is.null(save_dir)) getwd() else save_dir
-    if(!dir.exists(dir)) dir.create(dir, recursive = TRUE)
-    ggplot2::ggsave(file.path(dir, save_filename), p, width=8, height=6, ...)
+    dir <- if (is.null(save_dir)) getwd() else save_dir
+    if (!dir.exists(dir)) dir.create(dir, recursive = TRUE)
+    ggplot2::ggsave(file.path(dir, save_filename), p, width = 8, height = 6, ...)
   }
   
   return(list(plot = p, is = is_val, ip = ip_val, idi = idi_val))
@@ -416,33 +529,36 @@ PlotNRIHeatmap <- function(nri_result,
   
   combined <- rbind(ev_df, nev_df)
   
-  # Auto-match labels to the actual number of categories
-  ref_ncat <- length(unique(combined$Ref))
-  new_ncat <- length(unique(combined$New))
+  ref_ncat <- length(levels(combined$Ref))
+  new_ncat <- length(levels(combined$New))
   
-  if (is.null(ref_category_labels)) {
-    ref_category_labels <- paste0("R", 1:ref_ncat)
-  } else if (length(ref_category_labels) != ref_ncat) {
-    warning("ref_category_labels length (", length(ref_category_labels),
-            ") does not match number of categories (", ref_ncat, "). Using default labels.")
+  # Safe label assignment with length validation
+  if (!is.null(ref_category_labels)) {
+    if (length(ref_category_labels) != ref_ncat) {
+      warning("ref_category_labels length (", length(ref_category_labels),
+              ") does not match categories (", ref_ncat, "). Falling back to defaults.")
+      ref_category_labels <- paste0("R", 1:ref_ncat)
+    }
+  } else {
     ref_category_labels <- paste0("R", 1:ref_ncat)
   }
   
-  if (is.null(new_category_labels)) {
-    new_category_labels <- paste0("N", 1:new_ncat)
-  } else if (length(new_category_labels) != new_ncat) {
-    warning("new_category_labels length (", length(new_category_labels),
-            ") does not match number of categories (", new_ncat, "). Using default labels.")
+  if (!is.null(new_category_labels)) {
+    if (length(new_category_labels) != new_ncat) {
+      warning("new_category_labels length (", length(new_category_labels),
+              ") does not match categories (", new_ncat, "). Falling back to defaults.")
+      new_category_labels <- paste0("N", 1:new_ncat)
+    }
+  } else {
     new_category_labels <- paste0("N", 1:new_ncat)
   }
   
-  combined$Ref <- factor(combined$Ref, labels = ref_category_labels)
-  combined$New <- factor(combined$New, labels = new_category_labels)
+  levels(combined$Ref) <- ref_category_labels
+  levels(combined$New) <- new_category_labels
   
   p <- ggplot2::ggplot(combined, ggplot2::aes(x = New, y = Ref, fill = Count)) +
     ggplot2::geom_tile(colour = "white", linewidth = 1) +
-    ggplot2::geom_text(ggplot2::aes(label = Count), colour = "white",
-                       fontface = "bold", size = 5) +
+    ggplot2::geom_text(ggplot2::aes(label = Count), colour = "white", fontface = "bold", size = 5) +
     ggplot2::facet_wrap(~ Type, ncol = 2) +
     ggplot2::scale_fill_viridis_c(option = "C", begin = 0.2, end = 0.9) +
     ggplot2::labs(
@@ -523,13 +639,20 @@ PlotPredDist <- function(truth,
                          save_plot = FALSE,
                          save_dir  = NULL) {
   .check_nri_pkgs()
+  
+  u_truth <- if (is.factor(truth)) levels(truth) else sort(unique(truth))
+  formatted_truth <- if (length(outcome_labels) == length(u_truth)) {
+    factor(truth, levels = u_truth, labels = outcome_labels)
+  } else {
+    factor(truth)
+  }
+  
   df <- data.frame(
-    outcome = factor(truth, labels = outcome_labels),
+    outcome   = formatted_truth,
     Reference = ref_prob,
-    New = new_prob
+    New       = new_prob
   )
   long_df <- tidyr::pivot_longer(df, -outcome, names_to = "Model", values_to = "Probability")
-  
   cols <- .get_palette("Darjeeling1", 2)
   
   p <- ggplot2::ggplot(long_df, ggplot2::aes(x = outcome, y = Probability, fill = Model)) +
@@ -603,6 +726,7 @@ PlotThresholdNRI <- function(truth, ref_prob, new_prob,
 #' @param new_prob        Raw new probabilities (optional).
 #' @param truth           Raw binary outcome (optional).
 #' @param newdata         Common data frame for prediction.
+#' @param positive The value in \code{truth} treated as the event. Defaults to the second unique value.
 #' @param risk_thresholds Numeric vector of risk category boundaries.
 #' @param ref_thresholds  Optional separate thresholds for the reference model.
 #' @param new_thresholds  Optional separate thresholds for the new model.
@@ -622,6 +746,7 @@ NRI_IDI_Analysis <- function(model_obj_ref = NULL,
                              new_prob       = NULL,
                              truth          = NULL,
                              newdata        = NULL,
+                             positive       = NULL,
                              risk_thresholds = c(0.02, 0.1, 0.5, 0.95),
                              ref_thresholds  = NULL,
                              new_thresholds  = NULL,
@@ -665,7 +790,16 @@ NRI_IDI_Analysis <- function(model_obj_ref = NULL,
   
   # 2. IDI curve
   cat("[2/6] IDI curve...\n")
-  idi_res <- PlotIDICurve(truth, ref_p, new_p, risk_thresholds, n_boot, save_plots, save_dir)
+  idi_res <- PlotIDICurve(
+    truth = truth,
+    ref_prob = ref_p,
+    new_prob = new_p,
+    positive = NULL,                
+    risk_thresholds = risk_thresholds,
+    n_boot = n_boot,
+    save_plot = save_plots,
+    save_dir = save_dir
+  )
   cat(sprintf("  IS = %.4f | IP = %.4f | IDI = %.4f\n", idi_res$is, idi_res$ip, idi_res$idi))
   
   # 3. NRI

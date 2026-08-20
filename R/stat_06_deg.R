@@ -39,25 +39,31 @@
 #' @param logfc_mat  Data frame used exclusively for logFC calculation.
 #' @param logfc_type One of `"log2ratio"` (default) or `"diff"`.
 #' @param p_threshold Numeric; only features with p < p_threshold are retained. Defaults to 0.05.
+#' @param logfc_threshold Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.
 #' @param save_dir   Directory to save results.
 #' @param save_data  Logical; whether to write CSV output.
 #' @param csv_filename  Output filename.
+#' @param use_adjusted_p Logical. If TRUE, uses adjusted p-values (p.adjust) 
+#'   for determining significance; if FALSE (default), uses raw p-values.
 #' @importFrom dplyr across all_of 
 #' @returns Data frame with W, p, mean_x/y, median_x/y, sd_x/y, p.adjust, logFC, change.
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' deg_res <- batch_Wilcoxon(stat_obj_test@clean.data, group_col = "SWAB", p_threshold = 0.05)
-#' }
+#' data(iris)
+#' iris_sub <- iris[iris$Species != "virginica", ]
+#' res <- batch_Wilcoxon(iris_sub, group_col = "Species", p_threshold = 0.05)
+#' head(res)
 batch_Wilcoxon <- function(mat,
                            group_col    = "group",
                            logfc_mat    = NULL,
                            logfc_type   = "log2ratio",
                            p_threshold  = 0.05,
+                           logfc_threshold=0.1,
                            save_dir     = NULL,
                            save_data    = FALSE,
-                           csv_filename = "last_test_sig.csv") {
+                           csv_filename = "last_test_sig.csv",
+                           use_adjusted_p=FALSE) {
   
   # Validate that exactly two groups exist
   group_levels <- unique(na.omit(as.character(mat[[group_col]])))
@@ -92,9 +98,15 @@ batch_Wilcoxon <- function(mat,
   tests     <- do.call(rbind, lapply(feat_cols, function(x) test.fun(mat_num, x)))
   rownames(tests) <- feat_cols
   
-  test_sig          <- tests[tests$p < p_threshold, , drop = FALSE]
-  test_sig$p.adjust <- p.adjust(test_sig$p, method = "bonferroni")
-  test_sig          <- test_sig[order(test_sig$p), ]
+  # Multiple-testing correction must be applied across ALL features tested,
+  # not just the subset that already passed the raw p-value threshold --
+  # otherwise the correction understates the true number of comparisons and
+  # p.adjust is not a valid adjusted p-value. (Mirrors the already-correct
+  # order used in .wilcoxon_two_groups() below.) Row selection is unchanged:
+  # test_sig still keeps only features with raw p < p_threshold.
+  tests$p.adjust <- p.adjust(tests$p, method = "BH")
+  test_sig       <- tests[tests$p < p_threshold, , drop = FALSE]
+  test_sig       <- test_sig[order(test_sig$p), ]
   
   # -- 2. SD (from test mat) -------------------------------------------------
   sd_file <- mat_num %>%
@@ -144,10 +156,11 @@ batch_Wilcoxon <- function(mat,
   last_test_sig <- merge(last_test_sig, logFC, by = "id")
   last_test_sig <- last_test_sig[order(last_test_sig$p), ]
   
+  p_col <- if (use_adjusted_p) "p.adjust" else "p"
   last_test_sig$change <- as.factor(
-    ifelse(last_test_sig$p < p_threshold,
-           ifelse(last_test_sig$logFC >  0.5, "Up",
-                  ifelse(last_test_sig$logFC < -0.5, "Down", "Stable")),
+    ifelse(last_test_sig[[p_col]] < p_threshold,
+           ifelse(last_test_sig$logFC >  logfc_threshold, "Up",
+                  ifelse(last_test_sig$logFC < -logfc_threshold, "Down", "Stable")),
            "Stable")
   )
   
@@ -217,7 +230,7 @@ batch_Wilcoxon <- function(mat,
   tests     <- do.call(rbind, lapply(feat_cols, function(x) test.fun(mat_num, x)))
   rownames(tests) <- feat_cols
 
-  tests$p.adjust <- p.adjust(tests$p, method = "bonferroni")
+  tests$p.adjust <- p.adjust(tests$p, method = "BH")
  
   ref_mat <- if (!is.null(logfc_mat) && nrow(logfc_mat) > 0) logfc_mat else mat_num
 
@@ -269,28 +282,32 @@ batch_Wilcoxon <- function(mat,
 #' @param group_col Name of the grouping column (can have 2+ groups).
 #' @param logfc_mat Optional data frame for logFC calculation.
 #' @param logfc_type One of "log2ratio" (default) or "diff".
+#' @param logfc_threshold Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.
 #' @param p_threshold P-value threshold for feature significance. Default 0.05.
 #' @param only.pos Logical; if TRUE, only keep features with logFC > 0. Default FALSE.
 #' @param save_dir Directory to save results.
 #' @param save_data Logical; whether to write CSV output.
 #' @param csv_filename Output filename.
-#'
+#' @param use_adjusted_p Logical. If TRUE, uses adjusted p-values (p.adjust) 
+#'   for determining significance; if FALSE (default), uses raw p-values.
 #' @return Data frame combining results for all groups, with added "target_group" column.
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' result <- batch_Wilcoxon_MultiClass(mat = iris,group_col = "Species",only.pos = FALSE)
-#' }
+#' data(iris)
+#' res <- batch_Wilcoxon_MultiClass(iris, group_col = "Species")
+#' head(res)
 batch_Wilcoxon_MultiClass <- function(mat,
                                       group_col = "group",
                                       logfc_mat = NULL,
                                       logfc_type = "log2ratio",
                                       p_threshold = 0.05,
+                                      logfc_threshold=0.1,
                                       only.pos = FALSE,
                                       save_dir = NULL,
                                       save_data = FALSE,
-                                      csv_filename = "deg_multiclass_all.csv") {
+                                      csv_filename = "deg_multiclass_all.csv",
+                                      use_adjusted_p = FALSE) {
   
   # Get unique groups
   group_levels <- unique(na.omit(as.character(mat[[group_col]])))
@@ -347,10 +364,12 @@ batch_Wilcoxon_MultiClass <- function(mat,
       deg_result <- deg_result[deg_result$logFC > 0, , drop = FALSE]
     }
     
-    # Add annotation
+    p_col <- if (use_adjusted_p) "p.adjust" else "p"
     deg_result$change <- as.factor(
-      ifelse(deg_result$logFC > 0.5, "Up",
-             ifelse(deg_result$logFC < -0.5, "Down", "Stable"))
+      ifelse(deg_result[[p_col]] < p_threshold,
+             ifelse(deg_result$logFC > logfc_threshold, "Up",
+                    ifelse(deg_result$logFC < -logfc_threshold, "Down", "Stable")),
+             "Stable")
     )
     
     deg_result$target_group <- target_group
@@ -389,28 +408,31 @@ batch_Wilcoxon_MultiClass <- function(mat,
 #' @param logfc_mat Optional data frame for logFC calculation.
 #' @param logfc_type One of "log2ratio" (default) or "diff".
 #' @param p_threshold P-value threshold for feature significance. Default 0.05.
+#' @param logfc_threshold Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.
 #' @param only.pos Logical; if TRUE, only keep features with logFC > 0. Default TRUE.
 #' @param save_dir Directory to save results.
 #' @param save_data Logical; whether to write CSV output.
 #' @param csv_filename Output filename.
-#'
+#' @param use_adjusted_p Logical; if TRUE, uses adjusted p-values (p.adjust) to determine significance; 
 #' @return Data frame combining results for all consecutive pairs.
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' iris$Species=factor(iris$Species,levels = unique(iris$Species))
-#' result <- batch_Wilcoxon_OrderedMultiClass(mat = iris,group_col = "Species",only.pos = FALSE)
-#' }
+#' data(iris)
+#' iris$Species <- factor(iris$Species, levels = unique(iris$Species))
+#' res <- batch_Wilcoxon_OrderedMultiClass(iris, group_col = "Species")
+#' head(res)
 batch_Wilcoxon_OrderedMultiClass <- function(mat,
                                              group_col = "group",
                                              logfc_mat = NULL,
                                              logfc_type = "log2ratio",
                                              p_threshold = 0.05,
+                                             logfc_threshold=0.1,
                                              only.pos = TRUE,
                                              save_dir = NULL,
                                              save_data = FALSE,
-                                             csv_filename = "deg_ordered_sequential.csv") {
+                                             csv_filename = "deg_ordered_sequential.csv",
+                                             use_adjusted_p = FALSE) {
   
   # Get unique groups in order
   group_levels <- levels(as.factor(as.character(mat[[group_col]])))
@@ -456,9 +478,12 @@ batch_Wilcoxon_OrderedMultiClass <- function(mat,
     }
     
     # Add annotation
+    p_col <- if (use_adjusted_p) "p.adjust" else "p"
     deg_result$change <- as.factor(
-      ifelse(deg_result$logFC > 0.5, "Up",
-             ifelse(deg_result$logFC < -0.5, "Down", "Stable"))
+      ifelse(deg_result[[p_col]] < p_threshold,
+             ifelse(deg_result$logFC > logfc_threshold, "Up",
+                    ifelse(deg_result$logFC < -logfc_threshold, "Down", "Stable")),
+             "Stable")
     )
     
     deg_result$comparison <- paste0(group1, " vs. ", group2)
@@ -501,18 +526,18 @@ batch_Wilcoxon_OrderedMultiClass <- function(mat,
 #'   - "ordered": sequential pairwise comparison (2+ groups with order)
 #' @param logfc_mat Optional data frame for logFC calculation.
 #' @param logfc_type One of "log2ratio" (default) or "diff".
+#' @param logfc_threshold Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.
 #' @param p_threshold P-value threshold. Default 0.05.
 #' @param only.pos Logical; filter to positive logFC. Default depends on analysis_type.
 #' @param save_dir Directory to save results.
 #' @param save_data Logical; whether to write CSV. Default TRUE.
 #' @param csv_filename Output filename. If NULL, auto-generated based on analysis_type.
-#'
+#' @param use_adjusted_p Logical; if TRUE, uses adjusted p-values (p.adjust) to determine significance; 
 #' @return Data frame with DEG results. For multi-class: includes "target_group" column.
 #'         For ordered: includes "comparison" column.
 #' @export
 #'
 #' @examples
-#' \dontrun{
 #' # Binary analysis (2 groups) - automatic
 #' result_binary <- batch_Wilcoxon_Unified(mtcars,group_col = 'vs')
 #' # Multi-class analysis (3+ groups) - automatic
@@ -521,17 +546,17 @@ batch_Wilcoxon_OrderedMultiClass <- function(mat,
 #' iris$Species=factor(iris$Species,levels = unique(iris$Species))
 #' result_ordered <- batch_Wilcoxon_Unified(
 #' iris,group_col = "Species",analysis_type = "ordered")
-#' }
 batch_Wilcoxon_Unified <- function(mat,
                                    group_col = "group",
                                    analysis_type = "auto",
                                    logfc_mat = NULL,
                                    logfc_type = "log2ratio",
                                    p_threshold = 0.05,
+                                   logfc_threshold = 0.1,
                                    only.pos = NULL,
                                    save_dir = NULL,
                                    save_data = FALSE,
-                                   csv_filename = NULL) {
+                                   csv_filename = NULL,use_adjusted_p = FALSE) {
   
   # Detect number of groups
   group_levels <- unique(na.omit(as.character(mat[[group_col]])))
@@ -585,9 +610,11 @@ batch_Wilcoxon_Unified <- function(mat,
                      logfc_mat = logfc_mat,
                      logfc_type = logfc_type,
                      p_threshold = p_threshold,
+                     logfc_threshold=logfc_threshold,
                      save_dir = save_dir,
                      save_data = save_data,
-                     csv_filename = csv_filename
+                     csv_filename = csv_filename,
+                     use_adjusted_p = use_adjusted_p
                    ),
                    multiclass = batch_Wilcoxon_MultiClass(
                      mat = mat,
@@ -595,10 +622,12 @@ batch_Wilcoxon_Unified <- function(mat,
                      logfc_mat = logfc_mat,
                      logfc_type = logfc_type,
                      p_threshold = p_threshold,
+                     logfc_threshold=logfc_threshold,
                      only.pos = only.pos,
                      save_dir = save_dir,
                      save_data = save_data,
-                     csv_filename = csv_filename
+                     csv_filename = csv_filename,
+                     use_adjusted_p = use_adjusted_p
                    ),
                    ordered = batch_Wilcoxon_OrderedMultiClass(
                      mat = mat,
@@ -606,10 +635,12 @@ batch_Wilcoxon_Unified <- function(mat,
                      logfc_mat = logfc_mat,
                      logfc_type = logfc_type,
                      p_threshold = p_threshold,
+                     logfc_threshold=logfc_threshold,
                      only.pos = only.pos,
                      save_dir = save_dir,
                      save_data = save_data,
-                     csv_filename = csv_filename
+                     csv_filename = csv_filename,
+                     use_adjusted_p = use_adjusted_p
                    )
   )
   
@@ -647,25 +678,33 @@ batch_Wilcoxon_Unified <- function(mat,
 #'                  is determined by the scale method.
 #' @param p_threshold Passed through to `batch_Wilcoxon`; features with p >= p_threshold
 #'                    are excluded. Defaults to 0.05.
+#' @param logfc_threshold Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.
 #' @param save_dir  Output directory.
 #' @param save_data Logical; save CSV output.
 #' @param csv_filename  Output filename.
-#'
+#' @param use_adjusted_p Logical. If TRUE, uses adjusted p-values (p.adjust) 
+#'   for determining significance; if FALSE (default), uses raw p-values.
 #' @returns Updated `Stat` object (if input is Stat) or a data frame of DEG results.
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' # Recommended: let the function choose automatically
-#' stat_obj <- stat_var_feature(stat_obj_test, p_threshold = 0.05)
+#' data(iris)
+#' iris_sub <- iris[iris$Species != "virginica", ]
+#' stat <- CreateStatObject(clean.data = iris_sub, group_col = "Species")
+#' stat <- stat_var_feature(stat, p_threshold = 0.05)
+#' last <- ExtractLastTestSig(stat)
+#' head(last)
 #' }
 stat_var_feature <- function(object,
                              group_col    = "group",
                              data_type    = "auto",
                              p_threshold  = 0.05,
+                             logfc_threshold  = 0.1,
                              save_dir     = NULL,
                              save_data    = FALSE,
-                             csv_filename = "last_test_sig.csv") {
+                             csv_filename = "last_test_sig.csv",
+                             use_adjusted_p = FALSE) {
   # ---- Auto-generate default save directory ----
   if (save_data && is.null(save_dir)) {
     if (exists("get_output_dir")) {
@@ -816,9 +855,11 @@ stat_var_feature <- function(object,
     logfc_mat    = logfc_dat,
     logfc_type   = lfc_type,
     p_threshold  = p_threshold,
+    logfc_threshold  = logfc_threshold,
     save_dir     = save_dir,
     save_data    = save_data,
-    csv_filename = csv_filename
+    csv_filename = csv_filename,
+    use_adjusted_p = use_adjusted_p
   )
   
   # -- 4. Store result -------------------------------------------------------
@@ -845,12 +886,14 @@ stat_var_feature <- function(object,
 #' If the `last_test_sig` is not found, it returns `NULL`.
 #'
 #' @export
-#'
 #' @examples
 #' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' last_sig <- ExtractLastTestSig(stat_obj)
-#' print(last_sig)
+#' data(iris)
+#' iris_sub <- iris[iris$Species != "virginica", ]
+#' stat <- CreateStatObject(clean.data = iris_sub, group_col = "Species")
+#' stat <- stat_var_feature(stat, p_threshold = 0.05)
+#' last <- ExtractLastTestSig(stat)
+#' head(last)
 #' }
 ExtractLastTestSig <- function(object) {
   last_test_sig <- tryCatch(object@var.result[["last_test_sig"]],
@@ -858,149 +901,288 @@ ExtractLastTestSig <- function(object) {
   return(last_test_sig)
 }
 
-#' Plot DEG Radar Chart
+#' Plot a Radar-Style Chart for Differential Expression Results
 #'
-#' This function generates a radar chart visualizing the differential expression (DEG) results from a data frame.
-#' It uses a set of custom parameters to customize the appearance, such as colors, size, and grouping. The chart can be
-#' saved to a specified directory as a PDF file.
+#' Generates a circular (radar-style) bar-and-point chart summarizing
+#' differential expression results, typically produced by
+#' \code{\link{batch_Wilcoxon}} or similar DEG testing functions. Bar
+#' (sector) height reflects statistical significance, while point size and
+#' color both reflect fold-change magnitude. Feature labels are placed
+#' close to each bar, radially angled (slanted) for readability, with font
+#' size scaled by significance rank so the most significant features stand
+#' out slightly.
 #'
+#' @param df A data frame containing the columns referenced by \code{x_col},
+#'   \code{size_col}, \code{fill_col}, and \code{p_col}.
+#' @param palette_name Character. \pkg{wesanderson} palette name used for the
+#'   categorical bar fill (Down / Stable / Up). Default \code{"Zissou1"}.
+#' @param x_col Character. Column used as the angular (category) axis and
+#'   as the feature label text. Default \code{"id"}.
+#' @param size_col Character. Column used to size and color points
+#'   (typically log fold-change). Default \code{"logFC"}.
+#' @param fill_col Character. Column indicating regulation direction
+#'   (\code{"Down"}, \code{"Stable"}, \code{"Up"}). Default \code{"change"}.
+#' @param p_col Character. Column holding (adjusted) p-values. Default
+#'   \code{"p.adjust"}.
+#' @param point_color_palette Character. \pkg{viridis} option used for the
+#'   continuous point color scale (mapped to \code{abs(size_col)}).
+#'   Default \code{"viridis"}.
+#' @param point_alpha Numeric in [0, 1]. Transparency of points. Default
+#'   \code{0.5}.
+#' @param point_size_range Numeric vector of length 2, or \code{NULL}.
+#'   Min/max point size (mm). If \code{NULL} (default), computed
+#'   automatically from the number of features.
+#' @param label_size_range Numeric vector of length 2. Min/max feature-label
+#'   font size **in mm** (not a relative scale), applied in ascending order
+#'   of significance rank. This is independent of \code{point_size_range}.
+#'   Sensible values are typically in the range 2.5-6. Default
+#'   \code{c(3, 4.2)}.
+#' @param label_offset_frac Numeric. Distance of the feature label from the
+#'   bar tip, expressed as a fraction of the tallest bar's height. Default
+#'   \code{0.06}.
+#' @param sort_by Character. Criterion used to order features around the
+#'   circle: \code{"logFC"} or \code{"pvalue"}. Default \code{"logFC"}.
+#' @param height_mode Character. \code{"rank"} (default) or \code{"value"}.
+#' @param drop_stable Logical. If \code{TRUE}, features labeled
+#'   \code{"Stable"} are excluded before plotting. Default \code{FALSE}.
+#' @param plot_width Numeric. Width in inches for \code{ggsave}. Default 5.
+#' @param plot_height Numeric. Height in inches for \code{ggsave}. Default 5.
+#' @param save_dir Character or \code{NULL}. Directory to save the plot as
+#'   \code{"radar_chart.pdf"}. If \code{NULL}, the plot is not saved.
+#' @param base_size Numeric. Base font size for \code{ggprism::theme_prism}.
+#'   Default 14.
+#' @param title Character. Plot title.
 #'
-#' @importFrom dplyr mutate %>%
-#' @importFrom tidyr pivot_longer
-#' @import wesanderson
-#' @import here
-#' @param df A data frame containing the DEG results with columns for ID, means, log-fold change, p-values,
-#' adjusted p-values, and other necessary data.
-#' @param palette_name A string indicating the name of the color palette to use for the chart .
-#' @param x_col The column name to use as the x-axis (default: "id").
-#' @param y_cols A vector of column names to be plotted on the y-axis (default: c("mean_x", "mean_y")).
-#' @param size_col The column name for the size of the points (default: "logFC").
-#' @param color_col The column name for the color of the points, typically for p-values (default: "logp").
-#' @param fill_col The column name for the fill color, which defines the grouping (default: "change").
-#' @param p_adjust_col The column name for the adjusted p-values (default: "p.adjust").
-#' @param plot_width The width of the plot (default: 5).
-#' @param plot_height The height of the plot (default: 5).
-#' @param save_dir The directory where the radar chart image will be saved (default: "here('StatObject', 'deg_info')").
-#' @param base_size The base font size for the plot (default: 14).
-#' @param title The title of the radar chart (default: "Radar Chart Title").
+#' @return A \code{ggplot} object. If \code{save_dir} is not \code{NULL},
+#'   the plot is also saved as a PDF file in that directory.
 #'
-#' @returns The ggplot object representing the radar chart.
+#' @details
+#' Sector (bar) height encodes statistical significance only. Fold-change
+#' magnitude is encoded via point size and color. Feature name labels are
+#' drawn manually with \code{geom_text} at a fixed radial angle, close to
+#' the bar tip. Label font size uses \code{size = I(...)} internally so it
+#' is decoupled from the point-size scale and controlled purely by
+#' \code{label_size_range}.
+#'
+#' @importFrom ggplot2 ggplot aes geom_col geom_point geom_text coord_polar
+#'   scale_fill_manual scale_size_continuous scale_color_viridis_c theme
+#'   element_blank element_text labs ggsave unit margin
 #' @export
-#'
+#' 
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' last_sig <- ExtractLastTestSig(stat_obj)
-#' print(last_sig)
-#' plot_deg_radarchart(last_sig, palette_name = "Zissou1", title = "Differential Expression Radar")
+#' if (interactive()) {
+#'   data(iris)
+#'   res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+#'   plot_deg_radarchart(res, drop_stable = TRUE, save_dir = NULL)
 #' }
 plot_deg_radarchart <- function(df,
                                 palette_name = "Zissou1",
                                 x_col = "id",
-                                y_cols = c("mean_x", "mean_y"),
                                 size_col = "logFC",
-                                color_col = "logp",
                                 fill_col = "change",
-                                p_adjust_col = "p.adjust",
+                                p_col = "p.adjust",
+                                point_color_palette = "viridis",
+                                point_alpha = 0.5,
+                                point_size_range = NULL,
+                                label_size_range = c(3, 4.2),
+                                label_offset_frac = 0.06,
+                                sort_by = c("logFC", "pvalue"),
+                                height_mode = c("rank", "value"),
+                                drop_stable = FALSE,
                                 plot_width = 5,
                                 plot_height = 5,
                                 save_dir = NULL,
                                 base_size = 14,
                                 title = "Radar Chart Title") {
   
+  sort_by     <- match.arg(sort_by)
+  height_mode <- match.arg(height_mode)
+  
+  if (length(label_size_range) != 2 || label_size_range[1] <= 0) {
+    stop("'label_size_range' should be two positive numbers (font size in mm), e.g. c(3, 5).")
+  }
+  
   colors <- wes_palette(n = 3, name = palette_name, type = "continuous")
-  
   colors <- as.list(colors)
-  
-  
-  primary_color <- colors[[1]]
+  primary_color   <- colors[[1]]
   secondary_color <- colors[[2]]
+  third_color     <- colors[[3]]
   
+  if (drop_stable) {
+    df <- df %>% dplyr::filter(.data[[fill_col]] != "Stable")
+  }
   
   df <- df %>%
     mutate(
-      logp = -log10(get(p_adjust_col)),
-      group = factor(get(fill_col), levels = c("Down", "Stable"))
+      group    = factor(.data[[fill_col]], levels = c("Down", "Stable", "Up")),
+      .neglogp = -log10(.data[[p_col]])
     )
   
-  df_long <- df %>%
-    tidyr::pivot_longer(cols = dplyr::all_of(y_cols), names_to = "var", values_to = "value")
+  df$.sig_rank  <- rank(df$.neglogp, ties.method = "average")
+  df$.sector_ht <- if (height_mode == "rank") df$.sig_rank else df$.neglogp
   
-  plot <- ggplot(df_long, aes(x = get(x_col), y = value, fill = group)) +
-    geom_bar(stat = "identity", position = "stack", alpha = 0.7) +
-    geom_point(aes(size = abs(get(size_col)), color = get(color_col)), position = position_dodge(width = 0.9)) +
-    coord_polar(start = 0) +
-    scale_fill_manual(values = c("Down" = primary_color, "Stable" = secondary_color)) +
-    scale_color_gradient(low = primary_color, high = secondary_color) +
-    scale_size_continuous(range = c(2, 10)) +
+  df <- switch(
+    sort_by,
+    logFC  = df[order(abs(df[[size_col]])), , drop = FALSE],
+    pvalue = df[order(df$.sector_ht), , drop = FALSE]
+  )
+  df[[x_col]] <- factor(df[[x_col]], levels = df[[x_col]])
+  
+  n_feat <- nrow(df)
+  if (is.null(point_size_range)) {
+    max_pt <- max(4, min(12, 260 / n_feat))
+    min_pt <- max(1, max_pt / 4)
+    point_size_range <- c(min_pt, max_pt)
+  }
+  
+  # ---- manual radial (slanted) label placement ----
+  df$.id_seq <- seq_len(n_feat)
+  df$.angle  <- 90 - 360 * (df$.id_seq - 0.5) / n_feat
+  df$.hjust  <- ifelse(df$.angle < -90, 1, 0)
+  df$.angle  <- ifelse(df$.angle < -90, df$.angle + 180, df$.angle)
+  
+  label_offset  <- max(df$.sector_ht) * label_offset_frac
+  df$.label_y   <- df$.sector_ht + label_offset
+  
+  # font size scales with significance rank, fully independent of point size scale
+  df$.label_size <- label_size_range[1] +
+    (label_size_range[2] - label_size_range[1]) *
+    (df$.sig_rank - 1) / max(1, n_feat - 1)
+  
+  height_caption <- if (height_mode == "rank") {
+    paste0("Bar height = significance rank (based on -log10(", p_col,
+           "); taller = more significant)")
+  } else {
+    paste0("Bar height = -log10(", p_col, ") (taller = more significant)")
+  }
+  
+  plot <- ggplot(df, aes(x = .data[[x_col]], y = .data$.sector_ht, fill = .data$group)) +
+    geom_col(alpha = 0.7, width = 0.85) +
+    geom_point(aes(size = abs(.data[[size_col]]), color = abs(.data[[size_col]])),
+               alpha = point_alpha) +
+    geom_text(
+      aes(y = .data$.label_y, label = .data[[x_col]],
+          angle = .data$.angle, hjust = .data$.hjust,
+          size = I(.data$.label_size)),   # <-- decoupled from point size scale
+      fontface = "bold"
+    ) +
+    coord_polar(start = 0, clip = "off") +
+    scale_fill_manual(values = c("Down" = primary_color, "Stable" = secondary_color, "Up" = third_color)) +
+    scale_size_continuous(range = point_size_range, guide = "none") +
+    scale_color_viridis_c(option = point_color_palette) +
     ggprism::theme_prism(base_size = base_size) +
     theme(
-      axis.title = element_blank(),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-      legend.position = "right",
-      legend.key.size = unit(0.5, 'cm'),
-      legend.text = element_text(size = 10),
-      legend.title = element_text(size = 12)
+      axis.title  = element_blank(),
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks  = element_blank(),
+      axis.line   = element_blank(),
+      legend.position  = "right",
+      legend.key.size  = unit(0.5, 'cm'),
+      legend.text      = element_text(size = 10),
+      legend.title     = element_text(size = 12),
+      plot.caption     = element_text(size = 10, hjust = 0.5),
+      plot.margin      = margin(30, 60, 30, 60)
     ) +
-    labs(fill = "Change", color = "-log10(p.adjust)", size = "LogFC", title = title) +
-    geom_hline(yintercept = 0, color = "gray60", linetype = "dashed")
-  
+    labs(fill = "Change", color = "|LogFC|", title = title, caption = height_caption)
   
   if (!is.null(save_dir)) {
     if (!dir.exists(save_dir)) {
       dir.create(save_dir, recursive = TRUE)
     }
-    ggsave(filename = file.path(save_dir, "radar_chart.pdf"), plot = plot, width = plot_width, height = plot_height,
-           device = "pdf")
-    cat("Radar chart saved to: ", file.path(save_dir, "radar_chart.pdf"))
+    ggsave(filename = file.path(save_dir, "radar_chart.pdf"), plot = plot,
+           width = plot_width, height = plot_height, device = "pdf")
+    cat("Radar chart saved to:", file.path(save_dir, "radar_chart.pdf"), "\n")
   }
   
   return(plot)
 }
 
-#' Generate Radar Chart for Variable Features (with auto-save option)
+#' Generate a Variable Feature Radar Chart from a Stat Object or Data Frame
 #'
-#' @param object Stat object or data frame.
-#' @param group_col Group column name. If NULL, auto-detect from Stat object.
-#' @param palette_name Colour palette.
-#' @param plot_width,plot_height Plot dimensions (inches).
-#' @param save_dir Output directory. If NULL and save_plots=TRUE, will use
-#'   "./figures/deg_info" or get_output_dir() if available.
-#' @param save_plots Logical. Save the plot? Default TRUE.
-#' @param base_size Base font size.
-#' @param title Plot title.
+#' High-level wrapper that extracts differential expression results from a
+#' \code{Stat} S4 object (or accepts a data frame directly), generates a
+#' radar-style chart via \code{\link{plot_deg_radarchart}}, optionally saves
+#' it to disk, and (for \code{Stat} inputs) stores the resulting plot back
+#' into the object's \code{var.result} slot.
 #'
-#' @return Updated Stat object or ggplot.
+#' @param object An object of class \code{Stat}, or a data frame of
+#'   differential expression results (e.g. output of
+#'   \code{\link{batch_Wilcoxon}}).
+#' @param group_col Character or \code{NULL}. Name of the grouping column.
+#'   If \code{NULL} and \code{object} is a \code{Stat} object, inferred from
+#'   its \code{group_col} slot; if \code{object} is a data frame, defaults
+#'   to \code{"group"}.
+#' @param palette_name Character. \pkg{wesanderson} palette name passed to
+#'   \code{\link{plot_deg_radarchart}}. Default \code{"Zissou1"}.
+#' @param sort_by Character. Ordering criterion: \code{"logFC"} or
+#'   \code{"pvalue"}. Default \code{"logFC"}.
+#' @param height_mode Character. \code{"rank"} (default) or \code{"value"}.
+#' @param drop_stable Logical. If \code{TRUE}, features labeled
+#'   \code{"Stable"} are excluded before plotting. Default \code{FALSE}.
+#' @param point_size_range Numeric vector of length 2, or \code{NULL} for
+#'   automatic sizing. Default \code{NULL}.
+#' @param label_size_range Numeric vector of length 2. Min/max feature-label
+#'   font size in mm, scaled by significance rank. Default \code{c(3, 4.2)}.
+#' @param label_offset_frac Numeric. Distance of feature labels from bar
+#'   tips as a fraction of the tallest bar. Default \code{0.06}.
+#' @param plot_width Numeric. Width in inches for saving. Default 5.
+#' @param plot_height Numeric. Height in inches for saving. Default 5.
+#' @param save_dir Character or \code{NULL}. Directory to save the plot. If
+#'   \code{NULL} and \code{save_plots = TRUE}, a default output directory is
+#'   used via \code{get_output_dir("Figures", "deg_info")} if available,
+#'   otherwise \code{"./figures/deg_info"}. Ignored if
+#'   \code{save_plots = FALSE}.
+#' @param save_plots Logical. Whether to save the plot to disk. Default
+#'   \code{TRUE}.
+#' @param base_size Numeric. Base font size for \code{ggprism::theme_prism}.
+#'   Default 14.
+#' @param title Character. Plot title.
+#'
+#' @return If \code{object} is a \code{Stat} object, the same object with
+#'   the plot stored in \code{object@var.result[["VarFeaturePlot"]]}.
+#'   If \code{object} is a data frame, a \code{ggplot} object.
 #' @export
+#' 
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' VarFeature_radarchart(stat_obj, palette_name = "Zissou1", title = "Differential Expression Radar")
+#' if (interactive()) {
+#'   data(iris)
+#'   stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+#'   stat <- stat_var_feature(stat, p_threshold = 0.05)
+#'   VarFeature_radarchart(stat, drop_stable = TRUE, save_plots = FALSE)
 #' }
 VarFeature_radarchart <- function(object,
                                   group_col = NULL,
                                   palette_name = "Zissou1",
+                                  sort_by = c("logFC", "pvalue"),
+                                  height_mode = c("rank", "value"),
+                                  drop_stable = FALSE,
+                                  point_size_range = NULL,
+                                  label_size_range = c(3, 4.2),
+                                  label_offset_frac = 0.06,
                                   plot_width = 5,
                                   plot_height = 5,
                                   save_dir = NULL,
                                   save_plots = TRUE,
                                   base_size = 14,
                                   title = "Variable Feature Radar Chart") {
+  sort_by     <- match.arg(sort_by)
+  height_mode <- match.arg(height_mode)
   cat("Generating variable feature radar chart...\n")
   
-  # ---- Handle default save_dir ----
-  if (is.null(save_dir) && save_plots) {
-    if (exists("get_output_dir")) {
-      save_dir <- get_output_dir("Figures", "deg_info")
-    } else {
-      save_dir <- file.path(".", "figures", "deg_info")
+  if (save_plots) {
+    if (is.null(save_dir)) {
+      if (exists("get_output_dir", mode = "function")) {
+        save_dir <- get_output_dir("Figures", "deg_info")
+      } else {
+        save_dir <- file.path(".", "figures", "deg_info")
+      }
     }
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-  } else if (!save_plots) {
-    save_dir <- NULL   # force no saving
+  } else {
+    save_dir <- NULL
   }
   
-  # ---- Extract data and group_col ----
   if (inherits(object, "Stat")) {
     mat <- ExtractLastTestSig(object)
     if (is.null(group_col)) {
@@ -1018,15 +1200,20 @@ VarFeature_radarchart <- function(object,
     stop("No valid data found in the input.")
   }
   
-  # ---- Generate radar chart ----
   plot <- plot_deg_radarchart(
     mat,
-    palette_name = palette_name,
-    plot_width = plot_width,
-    plot_height = plot_height,
-    save_dir = save_dir,        # now correctly NULL if save_plots = FALSE
-    base_size = base_size,
-    title = title
+    palette_name      = palette_name,
+    sort_by           = sort_by,
+    height_mode       = height_mode,
+    drop_stable       = drop_stable,
+    point_size_range  = point_size_range,
+    label_size_range  = label_size_range,
+    label_offset_frac = label_offset_frac,
+    plot_width        = plot_width,
+    plot_height       = plot_height,
+    save_dir          = save_dir,
+    base_size         = base_size,
+    title             = title
   )
   
   print(plot)
@@ -1060,12 +1247,10 @@ VarFeature_radarchart <- function(object,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' last_sig <- ExtractLastTestSig(stat_obj)
-#' print(last_sig)
-#' plot_deg_volcano(last_test_sig = last_sig, logFC_col = "logFC", p_adjust_col = "p.adjust")
-#' plot_deg_volcano(last_test_sig = last_sig, title = "Custom Volcano Plot", palette_name = "Zissou1")
+#' if (interactive()) {
+#'   data(iris)
+#'   res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+#'   plot_deg_volcano(res, save_dir = NULL)
 #' }
 plot_deg_volcano <- function(last_test_sig,
                              logFC_col = "logFC",
@@ -1142,10 +1327,10 @@ plot_deg_volcano <- function(last_test_sig,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' VarFeature_volcano(object = stat_obj, logFC_col = "logFC", p_adjust_col = "p.adjust")
-#' VarFeature_volcano(object = stat_obj, title = "Custom Volcano Plot", palette_name = "Zissou1")
+#' if (interactive()) {
+#'   stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+#'   stat <- stat_var_feature(stat, p_threshold = 0.05)
+#'   VarFeature_volcano(stat, save_dir = NULL)
 #' }
 VarFeature_volcano <- function(object,
                                logFC_col = "logFC",
@@ -1227,14 +1412,11 @@ VarFeature_volcano <- function(object,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' last_sig <- ExtractLastTestSig(stat_obj)
-#' print(last_sig)
-#' plot_deg_boxplot(last_test_sig = last_sig, data = stat_obj@clean.data,
-#' group='SWAB',save_dir = "./")
-#' plot_deg_boxplot(last_test_sig = last_sig,data = stat_obj@clean.data,
-#' group='SWAB',save_dir = "./",top_n = 3)
+#' if (interactive()) {
+#'   data(iris)
+#'   res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+#'   plot_deg_boxplot(res, iris[iris$Species != "virginica", ], 
+#'   group_col = "Species", save_plots = FALSE)
 #' }
 plot_deg_boxplot <- function(last_test_sig,
                                 data,
@@ -1361,9 +1543,10 @@ plot_deg_boxplot <- function(last_test_sig,
 #' @return Updated Stat object or ggplot.
 #' @export
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' VarFeature_boxplot(object = stat_obj)
+#' if (interactive()) {
+#'   stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+#'   stat <- stat_var_feature(stat, p_threshold = 0.05)
+#'   VarFeature_boxplot(stat, save_plots = FALSE)
 #' }
 VarFeature_boxplot <- function(object,
                                   control = 'health',
@@ -1445,7 +1628,6 @@ VarFeature_boxplot <- function(object,
   return(boxplot)
 }
 
-####----here
 #' Plot ROC Curve for Differential Expression Gene Analysis
 #'
 #' This function generates a ROC curve for the top features identified in differential expression analysis.
@@ -1463,7 +1645,9 @@ VarFeature_boxplot <- function(object,
 #' @param control The label used to indicate the control group in the data. Default is `'health'`.
 #' @param case The label used to indicate the case group in the data. Default is `'lung cancer'`.
 #' @param top_n The number of top features to consider based on log fold change. Default is 5.
-#' @param palette_name The name of the palette to be used for the ROC curves.
+#' @param palette_name The name of the RColorBrewer palette to be used for the ROC curves.
+#'                     Default is `"Paired"`. Only the top 9 curves (by AUC) receive these colors;
+#'                     additional curves are shown in light gray.
 #' @param name_identity The name or identifier used for the features in the `deg_test` data frame. Default is `'deg'`.
 #' @param save_plots A logical value indicating whether the plot should be saved. Default is `TRUE`.
 #' @param save_dir The directory path where the plot will be saved. Default is `get_output_dir("StatObject", "deg_info")`.
@@ -1481,12 +1665,11 @@ VarFeature_boxplot <- function(object,
 #'
 #' @examples
 #' \dontrun{
-#' data(stat_obj_test)
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' last_sig <- ExtractLastTestSig(stat_obj)
-#' print(last_sig)
-#' plot_deg_Roc_plot(deg_test = last_sig, mat_test = stat_obj@clean.data,
-#' group_col = 'SWAB',save_dir = "./")
+#' if (requireNamespace("pROC", quietly = TRUE)) {
+#'   data(iris)
+#'   res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+#'   plot_deg_Roc_plot(res, iris[, 1:5], group_col = "Species", save_plots = FALSE)
+#' }
 #' }
 plot_deg_Roc_plot <- function(deg_test,
                               mat_test,
@@ -1494,7 +1677,7 @@ plot_deg_Roc_plot <- function(deg_test,
                               control = 'health',
                               case = 'lung cancer',
                               top_n = 5,
-                              palette_name = "Royal1",
+                              palette_name = "Paired",     
                               name_identity = 'deg',
                               save_plots = TRUE,
                               save_dir = NULL,
@@ -1545,15 +1728,36 @@ plot_deg_Roc_plot <- function(deg_test,
     auc_tem[j] <- round(roc_obj$auc, 2)
   }
   
+  order_idx <- order(auc_tem, decreasing = F)
+  roc_tem   <- roc_tem[order_idx]
+  auc_tem   <- auc_tem[order_idx]
+  for_label <- for_label[order_idx, , drop = FALSE] 
+  
   n_curves <- length(roc_tem)
-  base_colors <- tryCatch(
-    as.vector(wes_palette(n = min(n_curves, 5), name = palette_name, type = "discrete")),
-    error = function(e) as.vector(wes_palette(name = palette_name))
-  )
-  if (n_curves > length(base_colors)) {
-    colors <- colorRampPalette(base_colors)(n_curves)
+  
+  if (requireNamespace("RColorBrewer", quietly = TRUE)) {
+    avail_colors <- RColorBrewer::brewer.pal.info[palette_name, "maxcolors"]
+    if (is.na(avail_colors)) {
+      warning("Palette '", palette_name, "' not found in RColorBrewer. Using default 'Paired'.")
+      palette_name <- "Paired"
+      avail_colors <- RColorBrewer::brewer.pal.info[palette_name, "maxcolors"]
+    }
+    n_colored <- min(9, n_curves)
+    if (avail_colors >= n_colored) {
+      colors_colored <- RColorBrewer::brewer.pal(n = n_colored, name = palette_name)
+    } else {
+      base_colors <- RColorBrewer::brewer.pal(n = avail_colors, name = palette_name)
+      colors_colored <- colorRampPalette(base_colors)(n_colored)
+    }
+    
+    if (n_curves > n_colored) {
+      colors <- c(rep("gray80", n_curves - n_colored),colors_colored)
+    } else {
+      colors <- colors_colored
+    }
   } else {
-    colors <- base_colors[seq_len(n_curves)]
+    warning("RColorBrewer not available, using default grey palette.")
+    colors <- rep("gray50", n_curves)
   }
   
   p <- ggroc(roc_tem) +
@@ -1592,7 +1796,7 @@ plot_deg_Roc_plot <- function(deg_test,
 #' @param control Control group label.
 #' @param case Case group label.
 #' @param top_n Number of top features to show.
-#' @param palette_name Colour palette.
+#' @param palette_name Colour palette (RColorBrewer palette name). Default `"Paired"`.
 #' @param name_identity Analysis identifier.
 #' @param data_type "clean" or "scale".
 #' @param save_dir Output directory. If NULL and save_plots=TRUE, will use
@@ -1608,15 +1812,18 @@ plot_deg_Roc_plot <- function(deg_test,
 #' @export
 #' @examples
 #' \dontrun{
-#' stat_obj <- stat_var_feature(stat_obj_test)
-#' VarFeature_ROC(stat_obj)
+#' if (requireNamespace("pROC", quietly = TRUE)) {
+#'   stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+#'   stat <- stat_var_feature(stat, p_threshold = 0.05)
+#'   VarFeature_ROC(stat, save_plots = FALSE)
+#' }
 #' }
 VarFeature_ROC <- function(object,
                            group_col = NULL,
                            control = 'health',
                            case = 'cancer',
                            top_n = 5,
-                           palette_name = "Royal1",
+                           palette_name = "Paired",      
                            name_identity = 'deg',
                            data_type = "clean",
                            save_dir = NULL,
@@ -1704,3 +1911,4 @@ VarFeature_ROC <- function(object,
   
   return(roc_plot)
 }
+

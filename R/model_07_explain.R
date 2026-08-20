@@ -8,7 +8,6 @@
 #
 # Functions:
 #   CreateExplainer()          -- Create DALEX explainer
-#   ExplainModelPerformance()  -- ROC / LIFT / residual boxplot
 #   ExplainVariableImportance()-- Permutation importance (with error bars)
 #   ExplainSHAP()              -- Single-observation SHAP waterfall
 #   ExplainSHAPBeeswarm()      -- Global SHAP beeswarm *
@@ -299,10 +298,12 @@ ExplainVariableImportance <- function(explainer,
   
   # Build dot-and-whisker plot
   p <- ggplot2::ggplot(importance_summary, ggplot2::aes(x = mean_loss, y = variable)) +
-    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = mean_loss - se_loss, xmax = mean_loss + se_loss),
-                            height = 0.2, color = "#4361ee") +
-    ggplot2::geom_point(size = 3, color = "#4361ee") +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", color = "grey60", size = 0.3) +
+    ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = mean_loss - se_loss, xmax = mean_loss + se_loss),
+      height = 0.15, color = "black", size = 0.4, alpha = 0.6
+    ) +
+    ggplot2::geom_point(size = 2.5, color = "black", fill = "black", shape = 21, stroke = 0.3) +
     ggplot2::labs(
       title    = paste("Variable Importance -", explainer$label),
       subtitle = sprintf("Permutation importance (B = %d), mean +/- SE", B),
@@ -419,8 +420,12 @@ ExplainSHAP <- function(explainer,
     )
   
   print(p)
-  
-  .save_plot(p, save_plots, save_dir, "shap_waterfall", plot_width, plot_height)
+  if (save_plots) {
+    if (is.null(save_dir) || !nzchar(save_dir)) save_dir <- "ModelExplain"
+    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+    ggsave(filename = file.path(save_dir, "shap_individual.pdf"), plot = p, width = plot_width, height = plot_height)
+    cat("SHAP individual saved to:", file.path(save_dir, "shap_individual.pdf"), "\n")
+  }
   
   invisible(shap_obj)
 }
@@ -801,29 +806,39 @@ ExplainCeterisParibus <- function(explainer,
       ggprism::theme_prism(base_size = 13) +
       ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
     print(p_cont)
-    .save_plot(p_cont, save_plots, save_dir, "cp_continuous", plot_width, plot_height)
-  }
-  
-  if (!is.null(categorical_variables) && length(categorical_variables) > 0) {
-    p_cat <- plot(cp, variables = categorical_variables,
-                  categorical_type = "bars") +
-      ggplot2::labs(
-        title    = paste0("Ceteris Paribus (categorical) -- ", explainer$label),
-        subtitle = "Predicted probability per category"
-      ) +
-      ggprism::theme_prism(base_size = 13) +
-      ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
-    print(p_cat)
-   
+    
     if (save_plots) {
       if (is.null(save_dir) || !nzchar(save_dir)) save_dir <- "ModelExplain"
       if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
-      ggsave(filename = file.path(save_dir, "cp_categorical.pdf"), plot = p, width = plot_width, height = plot_height)
-      cat("cp_categorical saved to:", file.path(save_dir, "cp_categorical.pdf"), "\n")
+      ggsave(filename = file.path(save_dir, "cp_continuous.pdf"),
+             plot = p_cont, width = plot_width, height = plot_height)
+      cat("Continuous CP plot saved to:", file.path(save_dir, "cp_continuous.pdf"), "\n")
     }
-    
   }
-  
+
+  if (!is.null(categorical_variables) && length(categorical_variables) > 0) {
+    available_cat <- intersect(categorical_variables, names(cp))
+    if (length(available_cat) == 0) {
+      warning("None of the specified categorical variables are available in the profile object. Skipping categorical plot.")
+    } else {
+      p_cat <- plot(cp, variables = available_cat, categorical_type = "bars") +
+        ggplot2::labs(
+          title    = paste0("Ceteris Paribus (categorical) -- ", explainer$label),
+          subtitle = "Predicted probability per category"
+        ) +
+        ggprism::theme_prism(base_size = 13) +
+        ggplot2::theme(plot.title = ggplot2::element_text(face = "bold"))
+      print(p_cat)
+      
+      if (save_plots) {
+        if (is.null(save_dir) || !nzchar(save_dir)) save_dir <- "ModelExplain"
+        if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+        ggsave(filename = file.path(save_dir, "cp_categorical.pdf"),
+               plot = p_cat, width = plot_width, height = plot_height)
+        cat("Categorical CP plot saved to:", file.path(save_dir, "cp_categorical.pdf"), "\n")
+      }
+    }
+  }
   invisible(cp)
 }
 
@@ -905,129 +920,6 @@ ExplainPartialDependence <- function(explainer,
 }
 
 
-# -- 6. ExplainAll -------------------------------------------------------------
-
-#' Explanatory Model Analysis -- Full Pipeline
-#'
-#' @description Runs the complete DALEX-based explanation suite, including global 
-#' performance, variable importance, SHAP, Break Down, and PDP/CP profiles.
-#'
-#' @param object A Train_Model S4 object or a caret::train object.
-#' @param new_observation Row index or data frame for local explanations.
-#' @param variables Character vector. Continuous variables for PDP/CP.
-#' @param categorical_variables Character vector. Categorical variables for CP.
-#' @param B Integer. Permutations for SHAP and Importance.
-#' @param N_shap_bee Integer. Sample size for SHAP beeswarm.
-#' @param B_bee Integer. Permutations for SHAP beeswarm.
-#' @param N_pdp Integer. Sample size for PDP calculation.
-#' @param save_plots Logical. Save all plots to PDF.
-#' @param save_dir Character. Directory for saving results.
-#' @param group_col Character. Name of the target column. If NULL, inferred from object.
-#' @param verbose Logical. Print DALEX diagnostic messages.
-#'
-#' @return Invisibly returns a list of all explanation objects.
-#' @export
-ExplainAll <- function(object,
-                       new_observation       = NULL,
-                       variables             = NULL,
-                       categorical_variables = NULL,
-                       B                     = 25,
-                       N_shap_bee            = 100,
-                       B_bee                 = 10,
-                       N_pdp                 = 300,
-                       save_plots            = FALSE,
-                       save_dir              = "ModelExplain",
-                       group_col             = NULL, 
-                       verbose               = FALSE) {
-  
-  .check_xai_packages()
-  
-  cat("\n==================================================================\n")
-  cat("  Explanatory Model Analysis -- Full Pipeline\n")
-  cat("==================================================================\n\n")
-  
-  # --- 1. Robust group_col resolution ---
-  # If user didn't provide group_col, try to pull it from the S4 object
-  if (is.null(group_col) && inherits(object, "Train_Model")) {
-    group_col <- object@group_col
-  }
-  if (is.null(group_col)) group_col <- "group" # Final fallback
-  
-  # Initialize Explainer
-  explainer <- CreateExplainer(object, group_col = group_col, verbose = verbose)
-  
-  # Resolve the observation for local explanations
-  obs_idx <- if (is.null(new_observation)) 1L else new_observation
-  obs     <- .resolve_observation(explainer, obs_idx)
-  pred    <- explainer$predict_function(explainer$model, obs)
-  
-  cat(sprintf("Instance for local explanations: row %s | predicted probability = %.4f\n\n",
-              if (is.numeric(obs_idx)) as.character(obs_idx) else "custom", pred))
-  
-  # --- 2. Run Global Explanations ---
-  cat("[1/7] Model performance...\n")
-  perf <- tryCatch(
-    ExplainModelPerformance(explainer, save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! Performance plot failed: ", e$message); NULL }
-  )
-  
-  cat("\n[2/7] Variable importance (permutation)...\n")
-  vi <- tryCatch(
-    ExplainVariableImportance(explainer, B = B, save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! Importance plot failed: ", e$message); NULL }
-  )
-  
-  cat("\n[3/7] SHAP beeswarm (global)...\n")
-  bee <- tryCatch(
-    ExplainSHAPBeeswarm(explainer, N = N_shap_bee, B = B_bee, save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! SHAP Beeswarm failed: ", e$message); NULL }
-  )
-  
-  # --- 3. Run Local Explanations ---
-  cat("\n[4/7] Single-observation SHAP waterfall...\n")
-  shap <- tryCatch(
-    ExplainSHAP(explainer, new_observation = obs, B = B, save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! SHAP Waterfall failed: ", e$message); NULL }
-  )
-  
-  cat("\n[5/7] Break Down decomposition...\n")
-  bd <- tryCatch(
-    ExplainBreakDown(explainer, new_observation = obs, save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! Break Down failed: ", e$message); NULL }
-  )
-  
-  cat("\n[6/7] Ceteris Paribus curves...\n")
-  cp <- tryCatch(
-    ExplainCeterisParibus(explainer, new_observation = obs, 
-                          variables = variables, 
-                          categorical_variables = categorical_variables, 
-                          save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! CP curves failed: ", e$message); NULL }
-  )
-  
-  cat("\n[7/7] Partial dependence (PDP)...\n")
-  pdp <- tryCatch(
-    ExplainPartialDependence(explainer, variables = variables, N = N_pdp, 
-                             save_plots = save_plots, save_dir = save_dir),
-    error = function(e) { message("  ! PDP failed: ", e$message); NULL }
-  )
-  
-  cat("\n==================================================================\n")
-  cat("  Explanation pipeline completed.\n")
-  if (save_plots) cat(sprintf("  All plots saved to: %s\n", save_dir))
-  cat("==================================================================\n\n")
-  
-  invisible(list(
-    explainer   = explainer,
-    performance = perf,
-    importance  = vi,
-    beeswarm    = bee,
-    shap        = shap,
-    breakdown   = bd,
-    cp          = cp,
-    pdp         = pdp
-  ))
-}
 
 
 # -- Internal helper functions ------------------------------------------------

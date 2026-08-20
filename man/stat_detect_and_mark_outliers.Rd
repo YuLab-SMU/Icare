@@ -36,7 +36,7 @@ stat_detect_and_mark_outliers(
 Detect and Mark Outliers in Stat Object
 }
 \examples{
-\dontrun{
-out_info <- stat_detect_and_mark_outliers(stat_obj_test, method = "zscore", threshold = 3)
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_detect_and_mark_outliers(stat, method = "zscore", threshold = 3)
+print(stat@process.info$outlier_detection)
 }

@@ -18,3 +18,8 @@ Returns a data frame listing all tuneable parameters and their default
 ranges (when available), so the user can review and modify them before
 passing to \code{BuildTuningBounds}.
 }
+\examples{
+if (requireNamespace("caret", quietly = TRUE)) {
+  InspectHyperParams("rf")
+}
+}

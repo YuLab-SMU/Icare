@@ -9,7 +9,7 @@ PlotDegBoxplot(
   expr_data,
   group_col = "group",
   top_n = 5,
-  palette_fill = c("#edf8b1", "#2c7fb8"),
+  palette_fill = c("#999999", "#ef8a62"),
   base_size = 12,
   save_plot = FALSE,
   save_dir = NULL,

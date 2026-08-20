@@ -39,9 +39,9 @@ impute_missing_values(
 Impute Missing Values in Data
 }
 \examples{
-\dontrun{
-imp_result <- impute_missing_values(stat_obj_test@raw.data, group_col = "group",
-impute_method = "median_mode", return_imputation_info = TRUE)
-imputed_data <- imp_result$imputed_data
-}
+data(iris)
+iris_na <- iris
+iris_na[1:5, 1] <- NA
+imp <- impute_missing_values(iris_na, impute_method = "median_mode", return_imputation_info = FALSE)
+head(imp)
 }

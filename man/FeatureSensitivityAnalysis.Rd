@@ -73,24 +73,11 @@ object ready for downstream analysis and plotting.
 }
 \examples{
 \dontrun{
-# Basic usage with default settings
-sens <- FeatureSensitivityAnalysis(
-  object = model_obj,
-  models = c("rf", "gbm")
-)
-
-# Custom elbow method with parallel processing
-sens <- FeatureSensitivityAnalysis(
-  object = model_obj,
-  models = c("rf", "gbm", "glmnet"),
-  elbow_method = "perf_tolerance",
-  tol = 0.02,
-  parallel = TRUE,
-  n_cores = 4
-)
-
-# Access results
-print(sens$results)
-print(sens$best_features)
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  sens <- FeatureSensitivityAnalysis(model, models = c("rf"), number = 3)
+  print(sens$best_features)
+}
 }
 }

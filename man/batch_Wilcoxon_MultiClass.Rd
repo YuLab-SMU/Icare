@@ -10,10 +10,12 @@ batch_Wilcoxon_MultiClass(
   logfc_mat = NULL,
   logfc_type = "log2ratio",
   p_threshold = 0.05,
+  logfc_threshold = 0.1,
   only.pos = FALSE,
   save_dir = NULL,
   save_data = FALSE,
-  csv_filename = "deg_multiclass_all.csv"
+  csv_filename = "deg_multiclass_all.csv",
+  use_adjusted_p = FALSE
 )
 }
 \arguments{
@@ -27,6 +29,8 @@ batch_Wilcoxon_MultiClass(
 
 \item{p_threshold}{P-value threshold for feature significance. Default 0.05.}
 
+\item{logfc_threshold}{Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.}
+
 \item{only.pos}{Logical; if TRUE, only keep features with logFC > 0. Default FALSE.}
 
 \item{save_dir}{Directory to save results.}
@@ -34,6 +38,9 @@ batch_Wilcoxon_MultiClass(
 \item{save_data}{Logical; whether to write CSV output.}
 
 \item{csv_filename}{Output filename.}
+
+\item{use_adjusted_p}{Logical. If TRUE, uses adjusted p-values (p.adjust) 
+for determining significance; if FALSE (default), uses raw p-values.}
 }
 \value{
 Data frame combining results for all groups, with added "target_group" column.
@@ -43,7 +50,7 @@ Performs DEG analysis for multi-class data by comparing each class against all o
 This function internally converts multi-class problem to binary comparisons (class_i vs. others).
 }
 \examples{
-\dontrun{
-result <- batch_Wilcoxon_MultiClass(mat = iris,group_col = "Species",only.pos = FALSE)
-}
+data(iris)
+res <- batch_Wilcoxon_MultiClass(iris, group_col = "Species")
+head(res)
 }

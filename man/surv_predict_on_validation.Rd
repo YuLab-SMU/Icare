@@ -19,3 +19,20 @@ Prediction object
 \description{
 Evaluate Model on a New Dataset (Validation/Test)
 }
+\examples{
+\dontrun{
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+
+set.seed(1)
+idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+train_task <- task$clone()$filter(idx)
+val_data   <- as.data.frame(task$data())[setdiff(seq_len(task$nrow), idx), ]
+
+lrn <- surv_get_learner("surv.coxph", train_task)
+lrn$train(train_task)
+
+res <- surv_predict_on_validation(lrn, val_data, train_task)
+res$prediction$score(mlr3::msr("surv.cindex"))
+}
+}

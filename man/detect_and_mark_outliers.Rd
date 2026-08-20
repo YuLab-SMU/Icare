@@ -36,8 +36,6 @@ detect_and_mark_outliers(
 Detect and Mark Outliers
 }
 \examples{
-\dontrun{
-out_info <- detect_and_mark_outliers(stat_obj_test@clean.data, 
-group_col = "SWAB", method = "zscore", threshold = 3)
-}
+data(iris)
+detect_and_mark_outliers(iris[, 1:4], method = "zscore", threshold = 3)
 }

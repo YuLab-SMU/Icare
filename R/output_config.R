@@ -10,8 +10,10 @@
 # Global environment to store configuration
 .icare_config <- new.env(parent = emptyenv())
 
-# Default: use local output folder (./icare_output)
-.icare_config$output_root <- path.expand("./icare_output")
+# Default: NULL until the user explicitly calls set_output_root() or
+# use_local_output(). get_output_dir() falls back to tempdir() when this
+# is NULL, so loading the package never touches the user's working directory.
+.icare_config$output_root <- NULL
 
 #' Set Global Output Root Directory
 #'
@@ -79,8 +81,11 @@ get_output_root <- function() {
 #'
 #' @description
 #' Returns the appropriate output directory for a specific module.
-#' If a global output root is set, returns a path under that root.
-#' Otherwise, returns the default path under the code folder.
+#' If a global output root has been explicitly set via \code{set_output_root()}
+#' or \code{use_local_output()}, returns a path under that root. Otherwise,
+#' falls back to a subdirectory under \code{tempdir()} for the current R
+#' session, so the package never writes to the user's working directory
+#' unless the user has explicitly opted in.
 #'
 #' @param module Character string. Module name: "m1", "m2", "m3", "m4", 
 #'   "Figures", "StatObject", "ModelData", or "Subtyping".
@@ -107,7 +112,14 @@ get_output_dir <- function(module = c("m1", "m2", "m3", "m4", "Figures",
   
   root <- .icare_config$output_root
   
-  # Use local output root (default: ./icare_output)
+  # If the user has never explicitly called set_output_root()/use_local_output(),
+  # root will be NULL -- fall back to the R session's temp directory instead of
+  # the current working directory, so the package never writes to the user's
+  # working directory without explicit consent.
+  if (is.null(root)) {
+    root <- file.path(tempdir(), "icare_output")
+  }
+  
   base_path <- file.path(root, module)
   
   # Add subdirectory if specified

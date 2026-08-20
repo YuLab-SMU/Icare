@@ -4,6 +4,27 @@
 # Required: NMF, nnls, here, ggplot2, gridExtra, pheatmap, cluster,
 #           RColorBrewer, wesanderson, reshape2
 
+#' Extract cluster assignments from a fitted NMF model
+#'
+#' Internal helper: each sample assigned to the component with highest
+#' coefficient weight (max row of H matrix).
+#'
+#' @param fit NMFfit object.
+#' @return Integer vector of cluster assignments.
+#' @keywords internal
+#' @noRd
+.nmf_get_groups <- function(fit) {
+  if (missing(fit)) stop("'fit' is required.")
+  if (!inherits(fit, c("NMFfit", "NMFfitX1"))) {
+    stop("'fit' must be an NMF object.")
+  }
+  H <- NMF::coef(fit)  # components × samples
+  if (nrow(H) == 0 || ncol(H) == 0) {
+    stop("Coefficient matrix is empty.")
+  }
+  as.integer(apply(H, 2, which.max))
+}
+
 # =============================================================================
 # SECTION 1: Rank Evaluation
 # =============================================================================
@@ -84,6 +105,7 @@ generate_nmf_rank_plots <- function(estimate,
 #' @param object     Subtyping object (or numeric matrix).
 #' @param rank_range Integer vector of ranks to evaluate.
 #' @param seed       Random seed.
+#' @param nmf_shift  nmf_shift.
 #' @param nrun       Number of NMF runs per rank.
 #' @param method     NMF algorithm (default \code{"brunet"}).
 #' @param save_dir   Output directory.
@@ -92,12 +114,33 @@ generate_nmf_rank_plots <- function(estimate,
 #' @export
 #' @examples
 #' \dontrun{
-#'   # Assuming 'obj' is a Subtyping object with scale.data
-#'   obj <- Sub_nmf_estimate(subtype_obj_test, rank_range = 2:5, nrun = 10)
+#' set.seed(1)
+#' require('NMF')
+#'set.seed(1)
+#'demo_df <- data.frame(
+#'  group = rep(c(0, 1), each = 30),
+#'  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'  feat3 = rnorm(60, 10, 2),
+#'  feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+#')
+#'rownames(demo_df) <- paste0("S", 1:60)
+#'
+#'stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                            group_col = "group", na.action = "allow")
+#'sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#'sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+#'
+#'sub_obj <- Sub_nmf_estimate(sub_obj, rank_range = 2:3, nrun = 2,
+#'                            method = "brunet", seed = 1)
+#' sub_obj <- Sub_nmf_best_rank(sub_obj, nrun = 2, method = "brunet")
+#' sub_obj <- Sub_nmf_assign_subtypes(sub_obj)
+#' table(sub_obj@info.data$cluster_nmf)
 #' }
 Sub_nmf_estimate <- function(object,
                              rank_range = 2:4,
                              seed       = 8891,
+                             nmf_shift  = 0,
                              nrun       = 10,
                              method     = "brunet",
                              save_dir   = file.path(get_output_dir("m3", "cluster_results"), "nmf_results"),
@@ -106,8 +149,10 @@ Sub_nmf_estimate <- function(object,
   data <- .extract_data(object, scaled = TRUE)
 
   if (any(data < 0)) {
-    warning("Negative values detected - replaced with 0 for NMF.")
-    data[data < 0] <- 0
+    warning("Negative values detected. NMF requires non-negative input. ",
+            "Currently applying shift = ", nmf_shift, " (add to all values). ",
+            "Consider using a larger shift if your data contains meaningful negatives.")
+    data <- data + nmf_shift
   }
 
   cat("Starting NMF rank estimation (ranks:", paste(rank_range, collapse = "\u2013"), ")...\n")
@@ -165,7 +210,7 @@ nmf_consensus_heatmap <- function(fit,
   if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
 
   cons   <- NMF::consensus(fit)
-  groups <- tryCatch(predict(fit), error = function(e) NULL)
+  groups <- tryCatch(.nmf_get_groups(fit), error = function(e) NULL)
 
   ann <- if (!is.null(groups)) {
     a <- data.frame(Subtype = paste0("S", groups))
@@ -322,7 +367,7 @@ nmf_coef_heatmap <- function(fit,
   H_norm <- sweep(H, 2, colSums(H) + 1e-10, "/")
 
   # Predicted subtype per sample
-  groups <- tryCatch(as.integer(predict(fit)), error = function(e) NULL)
+  groups <- tryCatch(as.integer(.nmf_get_groups(fit)), error = function(e) NULL)
 
   if (!is.null(groups)) {
     # Sort samples by subtype -> within subtype by dominant component value
@@ -405,7 +450,7 @@ nmf_silhouette_plot <- function(fit,
 
   pub_theme <- .pub_theme(base_size)
   cons      <- NMF::consensus(fit)
-  groups    <- as.numeric(predict(fit))
+  groups    <- as.numeric(.nmf_get_groups(fit))
   n_groups  <- length(unique(groups))
 
   sil <- cluster::silhouette(groups, stats::as.dist(1 - cons))
@@ -456,6 +501,7 @@ nmf_silhouette_plot <- function(fit,
 #' @param object        Subtyping object (or NMF.rank estimate list).
 #' @param nrun          Number of NMF runs.
 #' @param seed          Random seed.
+#' @param nmf_shift     nmf_shift.
 #' @param method        NMF algorithm.
 #' @param palette_name  wesanderson palette.
 #' @param save_dir      Output directory.
@@ -469,6 +515,7 @@ nmf_silhouette_plot <- function(fit,
 Sub_nmf_best_rank <- function(object,
                               nrun         = 10,
                               seed         = 8891,
+                              nmf_shift   =  0,
                               method       = "brunet",
                               palette_name = "Zissou1",
                               save_dir     = file.path(get_output_dir("Subtyping", "cluster_results"), "nmf_results")) {
@@ -486,7 +533,12 @@ Sub_nmf_best_rank <- function(object,
   if (is.null(estimate)) stop("Run 'Sub_nmf_estimate' first.")
   if (is.null(data) || nrow(data) == 0) stop("No valid data found.")
 
-  if (any(data < 0)) data[data < 0] <- 0
+  if (any(data < 0)) {
+    warning("Negative values detected. NMF requires non-negative input. ",
+            "Currently applying shift = ", nmf_shift, " (add to all values). ",
+            "Consider using a larger shift if your data contains meaningful negatives.")
+    data <- data + nmf_shift
+  }
 
   ms         <- summary(estimate)
   best_idx   <- which.max(ms$cophenetic)
@@ -587,6 +639,39 @@ Sub_nmf_assign_subtypes <- function(object) {
 #'   obj <- Sub_nmf_train_model(obj, best_k = 3, nrun = 50, save_dir = "./nmf_model")
 #' }
 #' @export
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' require('NMF')
+#' demo_df <- data.frame(
+#'   group = rep(c(0, 1), each = 30),
+#'   feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'   feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'   feat3 = rnorm(60, 10, 2),
+#'   feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+#'  )
+#' rownames(demo_df) <- paste0("S", 1:60)  
+#' stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                              group_col = "group", na.action = "allow")
+#' sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#' split <- SplitSubtypingObject(sub_obj, p = 0.7, stratify_by = "group")
+#' sub_train <- Sub_normalize_process(split$train, normalize_method = "min_max")
+#' norm_params <- Sub_extract_norm_params(sub_train, verbose = FALSE)
+#' sub_test <- Sub_apply_norm_params(split$test, norm_params = norm_params, verbose = FALSE)
+#'
+#' sub_train <- Sub_nmf_estimate(sub_train, rank_range = 2:3, nrun = 2, seed = 1)
+#' sub_train <- Sub_nmf_best_rank(sub_train, nrun = 2)
+#' sub_train <- Sub_nmf_assign_subtypes(sub_train)
+#' sub_train <- Sub_nmf_train_model(
+#'   sub_train, best_k = sub_train@Optimal.cluster, nrun = 2,
+#'   model_name = "demo_nmf_model",save_dir   ="./"
+#' )
+#'
+#' # Predict subtypes on the held-out validation split.
+#' sub_test <- Sub_predict_subtypes(sub_test, train_object = sub_train,
+#'                                  method = "nmf", verbose = FALSE)
+#' table(sub_test@info.data$cluster_nmf)
+#' }
 Sub_nmf_train_model <- function(object,
                                 best_k,
                                 nrun       = 50,
@@ -907,6 +992,38 @@ Sub_nmf_plot_consensus_all <- function(object,
       slot(object, "scale.data")
     else
       slot(object, "clean.data")
+    # IMPORTANT: Sub_normalize_process()/normalize_data() only overwrites the
+    # columns it identifies as numeric IN PLACE -- it never drops the
+    # remaining columns from the data frame it returns (this is intentional
+    # for Module 1's descriptive/reporting use case, where you typically
+    # want to keep ID/categorical columns around). If `group_col` wasn't
+    # passed to Sub_normalize_process() and doesn't match the real outcome
+    # column name, or if clean.data has any other non-numeric column (ID,
+    # site, free text, etc.), that column silently survives into scale.data.
+    #
+    # as.matrix() on a data.frame with even ONE non-numeric column coerces
+    # the ENTIRE matrix to character -- not just that column -- and
+    # NMF::nmf() (or k-means/LPA) then fails deep inside with a cryptic,
+    # unrelated-looking error such as "'x' must be numeric". Catch this
+    # here, at the point of conversion, with a clear and specific message
+    # instead.
+    non_numeric <- names(d)[!vapply(d, is.numeric, logical(1))]
+    if (length(non_numeric) > 0) {
+      stop(
+        "Non-numeric column(s) found in ", if (scaled) "scale.data" else "clean.data",
+        ": ", paste(non_numeric, collapse = ", "), ". Clustering methods ",
+        "(NMF/K-means/LPA) require a purely numeric matrix. This usually ",
+        "means the real outcome/ID column name doesn't match the ",
+        "`group_col` argument you passed (or didn't pass) to ",
+        "Sub_normalize_process() -- it only excludes a column from ",
+        "normalization by exact name match, and never removes non-numeric ",
+        "columns from its output. Either pass the correct `group_col`, or ",
+        "drop these columns manually before clustering, e.g.:\n",
+        "  object@clean.data <- object@clean.data[, setdiff(colnames(object@clean.data), c(",
+        paste(sprintf('\"%s\"', non_numeric), collapse = ", "), ")), drop = FALSE]",
+        call. = FALSE
+      )
+    }
     as.matrix(d)
   } else {
     as.matrix(object)

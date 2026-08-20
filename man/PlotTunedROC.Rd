@@ -41,3 +41,24 @@ Generates an ROC curve for the fine-tuned model and optionally
 compares it with the original best model. Automatically handles factor level 
 alignment for numeric-origin groups.
 }
+\examples{
+\dontrun{
+if (interactive()) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+  control = list(method = "cv", number = 3), save_plots = FALSE)
+  # Assume we have a tuned model (from FineTuneModel)
+  # For demo, use the trained model as tuned (not actually tuned)
+  PlotTunedROC(trained@train.models$glm, test_data = trained@filtered.set$testing, 
+  group_col = "am", save_plot = FALSE)
+  PlotTunedConfusion(trained@train.models$glm, test_data = trained@filtered.set$testing, 
+  group_col = "am", save_plot = FALSE)
+  PlotTunedCalibration(trained@train.models$glm, test_data = trained@filtered.set$testing, 
+  group_col = "am", save_plot = FALSE)
+}
+}
+}

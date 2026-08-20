@@ -2,59 +2,33 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_generate_nomogram}
 \alias{surv_generate_nomogram}
-\title{Generate Clinical Nomogram for Survival Model}
+\title{Generate Clinical Nomogram for Survival Model (with PH test)}
 \usage{
 surv_generate_nomogram(
   object,
   selected_features = NULL,
-  time_points = c(3, 5),
+  time_points = NULL,
   time_unit = NULL
 )
 }
 \arguments{
 \item{object}{A \code{TaskSurv} or \code{PrognosiX} object.}
 
-\item{selected_features}{A character vector of feature names to include in the
-nomogram. Defaults to the top 5 features from the task.}
+\item{selected_features}{Character vector of feature names to include.
+If \code{NULL}, uses the top 5 features from the task.}
 
-\item{time_points}{A numeric vector of time points at which to predict survival
-probabilities (e.g., \code{c(3, 5)}).}
+\item{time_points}{Numeric vector of time points; if \code{NULL} or if
+the model fails at these points, falls back to quantiles of event times.}
 
-\item{time_unit}{An optional character string specifying the time unit label
-(e.g., \code{"days"}, \code{"months"}, \code{"years"}). If \code{NULL},
-no unit is shown. Default is \code{NULL}.}
+\item{time_unit}{Optional label for the x‑axis (e.g., "days", "months").}
 }
 \value{
-A \code{nomogram} object (invisibly) and prints the nomogram plot.
-  The object can be used for further customization.
+A \code{nomogram} object (invisibly) and prints the nomogram plot,
+  or \code{NULL} if the model cannot be fitted.
 }
 \description{
-Creates a nomogram for visualizing and predicting survival probabilities
-at specified time points using a fitted Cox proportional hazards model.
-The nomogram is generated using the \code{rms} package.
-}
-\note{
-This function uses \code{rms::datadist()} for model fitting. The \code{datadist}
-is set locally to avoid polluting the global environment.
-}
-\examples{
-\dontrun{
-library(mlr3proba)
-library(survival)
-
-data("veteran", package = "survival")
-task <- surv_create_surv_task(veteran, "time", "status")
-
-# Generate nomogram with top 5 features
-nom <- surv_generate_nomogram(
-  object = task,
-  selected_features = c("age", "karno", "diagtime", "celltype", "prior"),
-  time_points = c(3, 5),
-  time_unit = "months"
-)
-}
-
-}
-\seealso{
-\code{\link[rms]{nomogram}}, \code{\link[rms]{cph}}
+Creates a nomogram for predicting survival probabilities at specified time
+points. Automatically selects time points from observed event quantiles if
+the user-provided ones fail. Also performs a proportional hazards assumption
+test using \code{cox.zph} and prints the result.
 }

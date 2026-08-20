@@ -24,11 +24,35 @@ that ensures new data is normalized and processed using the training set's param
 }
 \examples{
 \dontrun{
-# Assuming 'sub_train' is your trained model object
-manager <- New_Sub_Manager(sub_train)
-}
+library(NMF)
+set.seed(1)
+demo_df <- data.frame(
+  group = rep(c(0, 1), each = 30),
+  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+  feat3 = rnorm(60, 10, 2),
+  feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+)
+rownames(demo_df) <- paste0("S", 1:60)
 
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                             group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+
+sub_obj <- Sub_nmf_estimate(sub_obj, rank_range = 2:3, nrun = 2, seed = 1)
+sub_obj <- Sub_nmf_best_rank(sub_obj, nrun = 2)
+sub_obj <- Sub_nmf_assign_subtypes(sub_obj)
+sub_obj <- Sub_nmf_train_model(
+  sub_obj, best_k = sub_obj@Optimal.cluster, nrun = 2, model_name = "demo_model",save_dir ="./")
+
+# Wrap the trained object in a deployment manager for reuse on new samples.
+manager <- New_Sub_Manager(sub_obj)
+
+# Console-only prediction on a few "new" samples (here, reusing training
+# rows purely to demonstrate the call -- in practice supply genuinely new data).
+new_samples <- head(sub_obj@clean.data, 5)
+pred <- manager$sub_predict(new_samples, method = "nmf")
+pred@info.data$cluster_nmf
 }
-\author{
-Huaichao Luo
 }

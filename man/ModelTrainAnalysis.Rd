@@ -2,88 +2,112 @@
 % Please edit documentation in R/model_05_train.R
 \name{ModelTrainAnalysis}
 \alias{ModelTrainAnalysis}
-\title{Comprehensive Model Training and Analysis Pipeline}
+\title{Comprehensive Model Training and Analysis (Binary-Compatible Mode)}
 \usage{
 ModelTrainAnalysis(
   object,
-  methods = c("glm", "rpart", "naive_bayes", "bayesglm", "rf", "xgbTree", "svmRadial",
-    "svmLinear", "gbm", "earth", "glmnet"),
-  control = list(method = "repeatedcv", number = 10, repeats = 5),
-  tune_grids = list(glm = NULL, rpart = expand.grid(cp = seq(1e-04, 0.01, length.out =
-    10)), naive_bayes = NULL, bayesglm = NULL, rf = expand.grid(mtry = 1:5), xgbTree =
-    expand.grid(nrounds = 100, max_depth = c(2, 4, 6), eta = c(0.01, 0.1), gamma = 0,
-    colsample_bytree = 1, min_child_weight = 1, subsample = 1), svmRadial =
-    expand.grid(sigma = 0.01, C = 2^(-1:2)), svmLinear = expand.grid(C = c(0.01, 0.1,
-    1)), gbm = expand.grid(n.trees = c(50, 100), interaction.depth = c(2, 3), shrinkage =
-    c(0.001, 0.01), n.minobsinnode = c(10, 
-     20)), earth = expand.grid(degree = 1:2,
-    nprune = 2:10), glmnet = expand.grid(alpha = c(0.1, 0.5, 0.9), lambda = 10^seq(-4,
-    -1, 1))),
+  methods = c("glmnet", "rf", "knn", "svmRadial", "rpart"),
+  control = list(method = "repeatedcv", number = 10, repeats = 3),
+  tune_grids = NULL,
+  tuneLength = 3,
+  preProcess = c("center", "scale"),
   loocv_threshold = 100,
   classProbs = TRUE,
   allowParallel = FALSE,
-  group_col = "group",
-  palette_name = "AsteroidCity1",
-  base_size = 14,
+  group_col = NULL,
+  task_type = c("auto", "binary", "multiclass", "regression"),
+  metric_selection = NULL,
+  imbalance_handling = c("none", "auto", "up", "down", "smote", "rose", "weights"),
+  imbalance_threshold = 0.2,
+  seed = 123,
   save_plots = FALSE,
   save_dir = NULL,
-  plot_width = 5,
-  plot_height = 5,
-  seed = 123,
-  alpha = 0.8,
-  custom_cutoff = NULL
+  ...
 )
 }
 \arguments{
-\item{object}{Either a Train_Model object or a list containing training and test data}
+\item{object}{Train_Model object (must have filtered.set with training/testing)}
 
-\item{methods}{Character vector of caret model methods to train (default: common classifiers)}
+\item{methods}{Character vector of caret model methods}
 
-\item{control}{List of control parameters for trainControl (default: 10-fold repeated CV)}
+\item{control}{List of trainControl parameters (passed to train_and_evaluate_models)}
 
-\item{tune_grids}{List of tuning grids for each model method}
+\item{tune_grids}{List of tuning grids per model (if NULL, uses tuneLength)}
 
-\item{loocv_threshold}{Sample size threshold below which LOOCV is used (default: 100)}
+\item{tuneLength}{Integer, number of automatic tuning levels}
 
-\item{classProbs}{Logical indicating whether class probabilities should be computed}
+\item{preProcess}{Character vector of preprocessing methods. Default c("center","scale").
+Set to NULL if your data truly needs no transformation at all (e.g. it was
+already centered/scaled upstream -- passing a non-NULL preProcess here on
+top of already-scaled data will re-transform it a second time).}
 
-\item{allowParallel}{Logical indicating whether to allow parallel processing}
+\item{loocv_threshold}{Threshold for LOOCV}
 
-\item{group_col}{Name of the target variable column (default: "group")}
+\item{classProbs}{Logical. Ignored (forced FALSE) for regression.}
 
-\item{palette_name}{Name of color palette for ROC curves (default: "AsteroidCity1")}
+\item{allowParallel}{Logical}
 
-\item{base_size}{Base font size for plots (default: 14)}
+\item{group_col}{Target column name (will be taken from object if possible)}
 
-\item{save_plots}{Logical indicating whether to save plots (default: FALSE)}
+\item{task_type}{One of "auto" (default), "binary", "multiclass", "regression".}
 
-\item{save_dir}{Directory path to save plots (default: here("ModelData", "best_model_result"))}
+\item{metric_selection}{Metric to select best model on CV. If NULL, a sensible
+default is chosen per task_type: "ROC" (binary), "Accuracy" (multiclass),
+"RMSE" (regression).}
 
-\item{plot_width}{Width of saved plots in inches (default: 5)}
+\item{imbalance_handling}{Character: "none", "auto", "up", "down", "smote",
+"rose", or "weights". Passed to train_and_evaluate_models.}
 
-\item{plot_height}{Height of saved plots in inches (default: 5)}
+\item{imbalance_threshold}{Numeric (0-1), passed to train_and_evaluate_models.}
 
-\item{seed}{Random seed for reproducibility (default: 123)}
+\item{seed}{Random seed (set once at the start, and re-used per model
+inside train_and_evaluate_models() for reproducible, fold-shared CV).}
 
-\item{alpha}{Transparency level for ROC curves (default: 0.8)}
+\item{save_plots}{Logical. If `TRUE`, generates and saves diagnostic plots
+to `save_dir`: for binary tasks, ROC curves for every trained model via
+[plot_roc_curve()] on the held-out test set; for multiclass/regression,
+a cross-validation comparison bar chart. CSVs of the underlying metrics
+are saved alongside the plots.}
 
-\item{custom_cutoff}{Optional custom probability cutoff (overrides Youden if provided)}
+\item{save_dir}{Directory to save plots/CSVs to. Required if `save_plots = TRUE`.}
+
+\item{...}{Additional arguments passed to train_and_evaluate_models}
 }
 \value{
-If input is Train_Model object, returns updated object with results in slots.
-        If input is list, returns list with performance metrics and ROC data.
+Updated Train_Model object (or list if input was list). When
+  preprocessing is learned internally (`preProcess` non-NULL), the fitted
+  `caret::preProcess` object is now also stored -- in
+  `object@process.info$preprocess_model` for `Train_Model` input, or as
+  `$preProcess_model` in the returned list otherwise -- so it can be
+  reapplied later (e.g. to new/external validation data at deployment
+  time) instead of being learned-and-discarded.
 }
 \description{
-This function performs a complete machine learning workflow including:
-1. Data preparation and validation
-2. Model training with cross-validation
-3. Performance evaluation on training data
-4. ROC curve generation
-5. Results organization and visualization
+Supports binary classification, multiclass classification, and regression.
+Data is assumed to already be clean and analysis-ready.
+}
+\details{
+For binary classification, this function stores test-set performance as a
+data frame in `@all.results`, identical to the original `ModelTrainAnalysis`,
+so all downstream functions (SelectBestModel, plots, ensembles) work unchanged.
+For other task types, `@all.results` is stored as a list; see
+`model_05b_nonbinary_downstream.R` for a matching set of downstream
+plotting/summary functions built specifically for that list shape (this
+function's *output* is left exactly as-is -- multiclass/regression results
+are still stored in the same list layout as before).
 }
 \examples{
 \dontrun{
-# Example with Train_Model object
-result <- ModelTrainAnalysis(object = train_obj_test)
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+# Split (simulated)
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model,
+                              methods = c("glm", "rf"),
+                              control = list(method = "cv", number = 3),
+                              save_plots = FALSE)
+                              
 }
 }

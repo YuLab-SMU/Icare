@@ -15,29 +15,64 @@ normalize_data(
 )
 }
 \arguments{
-\item{data}{Data frame.}
+\item{data}{A data frame containing the data to normalize.}
 
-\item{method}{Normalization method ("auto" or specific).}
+\item{method}{Normalization method. Either \code{"auto"} for automatic
+selection based on data characteristics, or one of the specific methods:
+\code{"log"}, \code{"min_max"}, \code{"z_score"}, \code{"center"},
+\code{"scale"}, \code{"max_abs"}, \code{"box_cox"}, \code{"yeo_johnson"}.
+Default is \code{"auto"}.}
 
-\item{group_col}{Group column.}
+\item{group_col}{Character string specifying the grouping column name.
+This column is excluded from normalization. Default is \code{"group"}.}
 
-\item{max_unique_values}{Max unique values.}
+\item{max_unique_values}{Integer. Maximum number of unique values for a
+variable to be considered categorical. Default is \code{5}.}
 
-\item{save_dir}{Save directory.}
+\item{save_dir}{Character string specifying the directory to save the
+normalized data. If \code{NULL}, uses the default output directory.
+Default is \code{NULL}.}
 
-\item{save_data}{Logical.}
+\item{save_data}{Logical. If \code{TRUE}, writes the normalized data to
+a CSV file. Default is \code{TRUE}.}
 
-\item{csv_filename}{Filename.}
+\item{csv_filename}{Character string. Name of the output CSV file.
+Default is \code{"scale_data.csv"}.}
 }
 \value{
-Normalized data frame.
+A normalized data frame with two attributes:
+  \itemize{
+    \item \code{normalization_info}: Named list of methods used per column.
+    \item \code{normalization_params}: Named list of fitted parameters
+      for each column, enabling reproduction on new data.
+  }
 }
 \description{
-Normalize Data
+This function applies normalization to numeric variables in a data frame.
+Supports both automatic method selection and user-specified methods.
+Normalization parameters are stored as attributes for later reproduction.
+}
+\details{
+When \code{method = "auto"}, the function selects a normalization method
+based on the following criteria:
+\itemize{
+  \item Constant or near-constant columns are skipped (method = "none").
+  \item For large samples (>5000), Anderson-Darling test is used for
+    normality assessment; otherwise Shapiro-Wilk test is used.
+  \item If the data is approximately normal, \code{"z_score"} is selected.
+  \item If skewness > 1 or < -1, \code{"box_cox"} (for positive data) or
+    \code{"yeo_johnson"} (for data with non-positive values) is selected.
+  \item Otherwise, \code{"min_max"} scaling is applied.
+}
+
+The function stores the fitted parameters (mean, sd, min, max, lambda, shift)
+as attributes of the returned data frame. These parameters can be retrieved
+and applied to new data using \code{process_new_data()} or
+\code{Sub_apply_norm_params()}.
 }
 \examples{
-\dontrun{
-nor <- normalize_data(stat_obj_test@clean.data, method = "z_score", group_col = "SWAB")
-print(nor)
-}
+data(iris)
+iris_num <- iris[, 1:4]
+norm <- normalize_data(iris_num, method = "min_max")
+summary(norm)
 }

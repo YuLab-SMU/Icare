@@ -44,3 +44,16 @@ List with \code{result} (sbf object), \code{opt_vars}, \code{plot}.
 \description{
 Univariate Filter Feature Selection for Train_Model objects
 }
+\examples{
+\dontrun{
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  str(mtcars)
+  mtcars$vs=as.numeric(mtcars$vs)
+  mtcars$cyl=as.numeric(mtcars$cyl)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  sbf_res <- FeatureSelectSBF(model, method = "cv", number = 5)
+  print(sbf_res$opt_vars)
+}
+}
+}

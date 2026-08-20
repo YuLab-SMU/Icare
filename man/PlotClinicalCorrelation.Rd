@@ -2,13 +2,15 @@
 % Please edit documentation in R/model_08_clinical_analysis.R
 \name{PlotClinicalCorrelation}
 \alias{PlotClinicalCorrelation}
-\title{Prediction-Clinical Correlation Matrix (corrplot Style)}
+\title{Plot Clinical Correlation with Model Predictions}
 \usage{
 PlotClinicalCorrelation(
   model_obj,
   clinical_data = NULL,
   newdata = NULL,
   model_name = NULL,
+  dataset_type = c("testing", "training", "external"),
+  ordinal_vars = NULL,
   save_plot = FALSE,
   save_dir = NULL,
   palette_name = "Royal1",
@@ -16,17 +18,103 @@ PlotClinicalCorrelation(
 )
 }
 \arguments{
-\item{model_obj, clinical_data, newdata, model_name}{See \code{\link{ClinicalAnalysis}}.}
+\item{model_obj}{A trained model object compatible with \code{predict} method
+(e.g., \code{train}, \code{glm}, \code{randomForest}) that supports
+\code{type = "prob"} for classification.}
 
-\item{save_plot, save_dir, palette_name}{Output options.}
+\item{clinical_data}{A data frame containing clinical variables and a sample
+identifier column that matches the row names of \code{newdata}. All columns
+except the identifier will be used as clinical covariates.}
 
-\item{...}{Further arguments passed to \code{corrplot::corrplot}.}
+\item{newdata}{A data frame containing the feature data (predictors) used to
+generate predictions. The row names (or a column) must match those in
+\code{clinical_data} for alignment.}
+
+\item{model_name}{Optional character string naming the model (used in plot
+subtitle). If \code{NULL}, the model's \code{method} or class is used.}
+
+\item{dataset_type}{Character string indicating the dataset origin for plot
+labelling. Must be one of \code{"testing"}, \code{"training"}, or
+\code{"external"}. Default is \code{"testing"}.}
+
+\item{ordinal_vars}{Character vector of column names in \code{clinical_data}
+that are ordinal (i.e. have a meaningful order) even though they may be
+stored as character/unordered factor. These will be treated as ordered
+and included in the Spearman correlation panel. Default \code{NULL}.}
+
+\item{save_plot}{Logical; if \code{TRUE}, saves the plot(s) as PDF to
+\code{save_dir}. Default is \code{FALSE}.}
+
+\item{save_dir}{Character string specifying the directory where the PDF(s)
+should be saved. Required if \code{save_plot = TRUE}.}
+
+\item{palette_name}{Character string naming the Wes Anderson palette to use
+for the color gradient / boxplot fills. Default is \code{"Royal1"}. See
+\code{wesanderson::wes_palette()} for available options.}
+
+\item{...}{Additional arguments passed to \code{corrplot::corrplot()} for
+fine-tuning the correlation plot appearance (e.g., \code{tl.cex}).}
 }
 \value{
-Invisibly returns the correlation matrix.
+Invisibly returns a list with two elements:
+  \describe{
+    \item{\code{spearman}}{A list with \code{matrix} (the Spearman
+      correlation matrix among Prediction + continuous/ordinal variables)
+      and \code{p.values} (the corresponding p-value matrix). \code{NULL}
+      if no continuous/ordinal variables are present.}
+    \item{\code{categorical}}{A data frame summarizing, for each nominal
+      variable, the test used (Wilcoxon or Kruskal-Wallis), the test
+      statistic, and the p-value. \code{NULL} if no nominal variables are
+      present.}
+  }
 }
 \description{
-Converts categorical variables to numeric, combines them with model
-predictions, and draws a Spearman correlation matrix using \code{corrplot}.
-Significant correlations are annotated with stars.
+Computes and visualizes associations between model predictions
+(probabilities) and clinical variables from a given dataset.
+}
+\details{
+Unlike a naive approach that coerces ALL clinical variables to numeric
+via \code{as.numeric(as.factor(...))} before computing Spearman
+correlation, this function distinguishes variable types:
+
+\itemize{
+  \item \strong{Continuous / ordinal variables} (numeric, or factors
+        explicitly marked \code{ordered = TRUE}) are included in the
+        Spearman correlation matrix, since a monotonic relationship is
+        a meaningful concept for them.
+  \item \strong{Unordered categorical (nominal) variables} (character or
+        unordered factor, e.g. sex, tumor site, treatment arm) are
+        analyzed separately using a group-difference test
+        (Wilcoxon rank-sum for 2 groups, Kruskal-Wallis for 3+ groups)
+        comparing the predicted probability across categories, and
+        visualized with boxplots rather than forced into a correlation
+        coefficient.
+}
+
+This avoids assigning nominal categories an artificial numeric order,
+which would make the resulting correlation coefficient and p-value
+uninterpretable.
+}
+\section{Required Packages}{
+
+\pkg{corrplot}, \pkg{wesanderson}, \pkg{ggplot2}, and internal helper
+functions (\code{.check_clinical_pkgs()}, \code{.align_clinical_and_newdata()},
+\code{.predict_probs()}). These dependencies are checked automatically.
+}
+
+\examples{
+\dontrun{
+if (interactive()) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+  control = list(method = "cv", number = 3), save_plots = FALSE)
+  clin <- data.frame(row.names = rownames(mtcars), age = runif(nrow(mtcars), 30, 80))
+  PlotClinicalCorrelation(trained, clinical_data = clin,
+   newdata = mtcars, dataset_type = "testing", save_plot = FALSE)
+}
+}
 }

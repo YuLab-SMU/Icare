@@ -14,6 +14,7 @@ PlotAUCPval(
   removed_fill = "#7f8fa6",
   arrow = TRUE,
   base_size = 13,
+  text_repel_size = 3,
   save_plot = FALSE,
   save_dir = NULL,
   width = 7,
@@ -39,6 +40,8 @@ PlotAUCPval(
 \item{arrow}{Logical. Draw arrows from labels to points.}
 
 \item{base_size}{Base font size.}
+
+\item{text_repel_size}{Annotation text font size.}
 
 \item{save_plot}{Logical. Save the plot? Default \code{FALSE}.}
 

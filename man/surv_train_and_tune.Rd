@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_train_and_tune}
 \alias{surv_train_and_tune}
-\title{Train and tune a survival learner with hyperparameter optimization}
+\title{Train and Tune a Survival Learner with Hyperparameter Optimization}
 \usage{
 surv_train_and_tune(
   object,
@@ -16,53 +16,52 @@ surv_train_and_tune(
 )
 }
 \arguments{
-\item{object}{A survival task object (e.g., from \code{mlr3} package).}
+\item{object}{A \code{TaskSurv} or \code{PrognosiX} object.}
 
-\item{learner_id}{Character string identifying the learner (e.g., \code{"surv.coxph"}).}
+\item{learner_id}{Character string identifying the learner (e.g., "surv.coxph").}
 
 \item{search_space}{A \code{\link[paradox]{ParamSet}} defining the hyperparameter
-search space. If \code{NULL}, a default is generated.}
+search space. If \code{NULL}, a default is generated via
+\code{surv_get_search_space}.}
 
-\item{resampling}{A \code{\link[mlr3]{Resampling}} object. If \code{NULL},
-defaults to 5-fold cross-validation.}
+\item{resampling}{A \code{\link[mlr3]{Resampling}} object. Defaults to 5-fold CV.}
 
-\item{measure}{A \code{\link[mlr3]{Measure}} object. If \code{NULL},
-defaults to the concordance index (\code{surv.cindex}).}
+\item{measure}{A \code{\link[mlr3]{Measure}} object. Defaults to \code{surv.cindex}.}
 
 \item{tuning_budget}{Integer number of evaluations allowed during tuning.}
 
-\item{tuner}{A \code{\link[mlr3tuning]{Tuner}} object. If \code{NULL},
-random search is used.}
+\item{tuner}{A \code{\link[mlr3tuning]{Tuner}} object. Defaults to random search.}
 
 \item{seed}{Integer seed for reproducibility.}
 }
 \value{
 A list with four components:
 \describe{
-\item{learner}{The trained learner object with optimal parameters.}
-\item{best_params}{List of best hyperparameter values.}
-\item{tuning_result}{Data frame of all evaluated parameter sets and performance.}
-\item{cv_performance}{Numeric cross-validated performance score.}
+  \item{learner}{The trained learner with optimal parameters.}
+  \item{best_params}{List of best hyperparameter values (names are prefixed
+        if a \code{GraphLearner} was used).}
+  \item{tuning_result}{Data frame of all evaluated parameter sets and performance.}
+  \item{cv_performance}{Numeric cross-validated performance score.}
 }
 }
 \description{
-Train and tune a survival learner with hyperparameter optimization
-}
-\details{
-The function extracts a task from \code{object}, instantiates the specified
-learner, and - if a non-empty search space is provided - tunes its
-hyperparameters using the chosen resampling and measure. The best parameters
-are then applied to the learner, which is retrained on the full task.
-After training, predictions are validated to ensure the model produces
-sensible \code{crank} values. If the search space is empty, training
-proceeds directly without tuning.
+Trains a survival learner on a given task, optionally tuning its
+hyperparameters using a predefined or custom search space. Handles
+\code{GraphLearner} objects by correctly prefixing parameter names when an
+automatic encoding pipeline is added (e.g., for factor features).
 }
 \examples{
 \dontrun{
-library(mlr3)
-library(mlr3proba)
-task <- tsk("lung")
-result <- surv_train_and_tune(task, "surv.coxph", tuning_budget = 10)
-print(result$best_params)
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+
+tune <- surv_train_and_tune(task, "surv.ranger", tuning_budget = 5)
+lrn <- tune$learner
+round(tune$cv_performance, 3)
+
+lrn$predict_type <- "distr"
+perf <- surv_evaluate_model(lrn, task,
+                            measures = list(mlr3::msr("surv.cindex")))
+perf$surv.cindex
 }
 }

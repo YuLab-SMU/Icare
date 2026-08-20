@@ -47,12 +47,10 @@ are converted to factors. The function uses `variable_types` to determine which
 variables should be treated as numeric and which should be treated as factors.
 }
 \examples{
-\dontrun{
-# Example of usage
-data <- data.frame(a = c(1, 2, 3), b = c("low", "medium", "high"))
-variable_types <- list(numeric_vars = c("a"))
-converted_data <- convert_variables(data, variable_types)
-}
+data(iris)
+types <- diagnose_variable_type(iris, group_col = "Species")
+converted <- convert_variables(iris, types, save_data = FALSE)
+str(converted)
 \dontrun{
 types <- diagnose_variable_type(stat_obj_test@clean.data, group_col = "SWAB")
 converted <- convert_variables(stat_obj_test@clean.data, types, 

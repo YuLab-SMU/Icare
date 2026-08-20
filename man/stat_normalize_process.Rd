@@ -33,7 +33,7 @@ stat_normalize_process(
 Normalize Data in Stat Object
 }
 \examples{
-\dontrun{
-stat_obj_test <- stat_normalize_process(stat_obj_test, method = "z_score")
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_normalize_process(stat, method = "z_score")
+head(stat@scale.data)
 }

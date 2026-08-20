@@ -22,7 +22,10 @@ surv_plot_comparison_calibration(
 
 \item{time_point}{Numeric. Evaluation time point for calibration.}
 
-\item{n_bins}{Integer. Number of bins (default 10; minimum 5).}
+\item{n_bins}{Integer. Requested number of bins (default 10; each of
+\code{train_task} and \code{val_task} is independently adjusted for its
+own sample size, see \code{.prepare_cal_data} -- a message is printed
+when the two datasets end up with different effective bin counts).}
 
 \item{print_metrics}{Logical. Print metrics for both datasets (default TRUE).}
 }
@@ -35,7 +38,6 @@ a held-out validation set on the same plot.
 }
 \examples{
 \dontrun{
-# Requires trained learner, training task and validation task
-# comp_plot <- surv_plot_comparison_calibration(learner, train_task, val_task, time_point = 365)
+comp_plot <- surv_plot_comparison_calibration(learner, train_task, val_task, time_point = 365)
 }
 }

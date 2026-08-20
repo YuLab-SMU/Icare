@@ -26,7 +26,7 @@ PlotFeatureHeatmap(
   show_rownames = FALSE,
   show_colnames = FALSE,
   palette_name = "RdYlBu",
-  color_palette = c("lightgray", "steelblue", "#7B1FA2", "black", "gold"),
+  color_palette = c("lightgray", "#7B1FA2", "black", "gold"),
   color_range = NULL,
   na_col = "grey90",
   ann_colors = NULL,

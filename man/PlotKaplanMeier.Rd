@@ -2,7 +2,7 @@
 % Please edit documentation in R/viz_functions.R
 \name{PlotKaplanMeier}
 \alias{PlotKaplanMeier}
-\title{Kaplan-Meier survival curve}
+\title{Kaplan-Meier Survival Curve with Clinical Group Support}
 \usage{
 PlotKaplanMeier(
   object,
@@ -20,35 +20,35 @@ PlotKaplanMeier(
 )
 }
 \arguments{
-\item{object}{A \code{PrognosiX} object or a survival data frame with
-\code{time} and \code{status} columns.}
+\item{object}{A \code{PrognosiX} object or a data frame with \code{time} and
+\code{status} columns.}
 
-\item{group_col}{Column to stratify on. When \code{NULL} the entire
-cohort is shown as one curve.}
+\item{group_col}{Character; name of the grouping column. If \code{NULL},
+a single overall curve is drawn.}
 
-\item{time_unit}{Label for the x-axis: \code{"days"}, \code{"months"},
-\code{"years"}.}
+\item{time_unit}{Label for x‑axis (e.g., "days", "months").}
 
-\item{conf_int}{Draw confidence bands. Default \code{FALSE}.}
+\item{conf_int}{Logical; show confidence bands.}
 
-\item{pairwise_p}{Add pairwise p-value table. Default \code{FALSE}.}
+\item{pairwise_p}{Logical; add pairwise log‑rank p‑values.}
 
-\item{palette_name}{Palette.}
+\item{palette_name}{Color palette name.}
 
 \item{base_size}{Base font size.}
 
-\item{save_plot}{Logical.}
+\item{save_plot}{Logical; save to PDF.}
 
 \item{save_dir}{Output directory.}
 
-\item{width, height}{Inches.}
+\item{width, height}{Plot dimensions.}
 
 \item{format}{File format.}
 }
 \value{
-A \code{ggsurvplot} object (list).
+A \code{ggsurvplot} object.
 }
 \description{
-Draws KM curves for up to 4 groups with risk table, median survival lines,
-log-rank p-value, and optional pairwise p-value annotations.
+Draws a KM curve stratified by a grouping variable. If a \code{PrognosiX}
+object is provided, the grouping variable can be from either \code{survival.data}
+or \code{info.data}.
 }

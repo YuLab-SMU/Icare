@@ -19,103 +19,52 @@ plot_roc_curve(
 )
 }
 \arguments{
-\item{model_list}{A named list of model objects. Each model must support
-the `predict()` method with `type = "prob"` and return a two-column
-probability matrix where the second column corresponds to the positive class.}
+\item{model_list}{A named list of model objects.}
 
-\item{validation_data}{A data frame containing the validation dataset. Must include
-the response variable specified by `group_col`.}
+\item{validation_data}{A data frame containing the validation dataset.}
 
-\item{group_col}{A character string specifying the name of the column in
-`validation_data` that contains the binary response variable. Default is `"group"`.}
+\item{group_col}{A character string specifying the outcome column. Default `"group"`.}
 
-\item{palette_name}{A character string specifying the name of the Wes Anderson
-color palette to use (e.g., `"AsteroidCity1"`, `"Darjeeling1"`). If the palette
-is not available, falls back to viridis colors. Default is `"AsteroidCity1"`.}
+\item{palette_name}{Wes Anderson palette name. Default `"AsteroidCity1"`.}
 
-\item{base_size}{Base font size for the plot theme. Passed to
-[ggprism::theme_prism()]. Default is `14`.}
+\item{base_size}{Base font size. Default `14`.}
 
-\item{save_plots}{Logical. If `TRUE`, saves the ROC plot as a PDF file.
-Default is `FALSE`.}
+\item{save_plots}{Logical. Save the ROC plot as PDF. Default `FALSE`.}
 
-\item{save_dir}{A character string specifying the directory where plots and/or
-data should be saved. If `NULL` and `save_plots` or `save_data` is `TRUE`,
-an error will be thrown. Default is `NULL`.}
+\item{save_dir}{Directory to save plots/data.}
 
-\item{plot_width}{Width of the saved plot in inches. Default is `5`.}
+\item{plot_width}{Width in inches. Default `5`.}
 
-\item{plot_height}{Height of the saved plot in inches. Default is `5`.}
+\item{plot_height}{Height in inches. Default `5`.}
 
-\item{alpha}{Transparency level for the ROC curve lines. Value between 0 and 1.
-Default is `1` (opaque).}
+\item{alpha}{Line transparency. Default `1`.}
 
-\item{save_data}{Logical. If `TRUE`, saves the ROC curve data as a CSV file.
-Default is `FALSE`.}
+\item{save_data}{Logical. Save ROC curve data as CSV. Default `FALSE`.}
 }
 \value{
-A list containing three elements:
-  \describe{
-    \item{roc_objects}{A named list of \code{\link[pROC:roc]{roc}} objects 
-      for each model.}
-    \item{plot_data}{A data frame containing the combined ROC curve data for
-      all models, with columns \code{Specificity}, \code{Sensitivity}, and 
-      \code{Dataset}.}
-    \item{auc_results}{A named numeric vector of AUC values for each model,
-      sorted in decreasing order.}
-  }
+A list with `roc_objects`, `plot_data`, `auc_results`.
 }
 \description{
 This function generates ROC curves with AUC and confidence intervals for a list of
 binary classification models evaluated on validation data. It supports customizable
 color palettes, plot saving, and data export.
 }
-\details{
-The function computes ROC curves using [pROC::roc()] and AUC values with
-95\% confidence intervals via [pROC::ci.auc()]. Models are sorted by AUC
-in descending order in the final plot. The legend displays both AUC and
-confidence intervals for each model.
-
-The plot is generated using [ggplot2] with a Prism-inspired theme from
-the \pkg{ggprism} package. The diagonal reference line represents random
-classification (AUC = 0.5).
-}
-\note{
-The response variable specified by `group_col` must have exactly two levels.
-If more or fewer levels are found, the function stops with an error.
-
-This function requires the following packages: \pkg{pROC}, \pkg{ggplot2},
-\pkg{wesanderson}, \pkg{viridis}, and \pkg{ggprism}.
-}
 \examples{
 \dontrun{
-# Load required libraries
-library(randomForest)
-
-# Prepare binary classification data
-data(iris)
-iris_binary <- iris[iris$Species != "setosa", ]
-iris_binary$Species <- droplevels(iris_binary$Species)
-
-# Split data
-set.seed(123)
-train_idx <- sample(1:nrow(iris_binary), 0.7 * nrow(iris_binary))
-train_data <- iris_binary[train_idx, ]
-test_data <- iris_binary[-train_idx, ]
-
-# Train models
-model1 <- randomForest(Species ~ ., data = train_data, ntree = 100)
-model2 <- randomForest(Species ~ ., data = train_data, ntree = 200)
-model_list <- list(RF100 = model1, RF200 = model2)
-
-# Basic usage
-results <- plot_roc_curve(
-  model_list = model_list,
-  validation_data = test_data,
-  group_col = "Species"
-)
-
-# Print AUC results
-print(results$auc_results)
+if (requireNamespace("pROC", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+                                control = list(method = "cv", number = 3),
+                                save_plots = FALSE)
+  if (interactive()) {
+    plot_roc_curve(trained@train.models, 
+    validation_data = trained@filtered.set$testing, 
+    group_col = "am", save_plots = FALSE)
+  }
+}
 }
 }

@@ -17,5 +17,25 @@ SelectBestModel(object, metric = "auc", custom_selection = NULL)
 Updated Train_Model object.
 }
 \description{
-Select Best Performing Model (Fixed)
+NOTE: this assumes `object@all.results` is a data.frame with a `Model`
+column and the requested `metric` column, which is only true for BINARY
+task_type. Do not call this on a `Train_Model` object produced by
+`ModelTrainAnalysis()` in multiclass/regression mode -- that mode already
+selects and stores the best model internally in `@best.model.result`; use
+the downstream functions in `model_05b_nonbinary_downstream.R` instead.
+}
+\examples{
+\dontrun{
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+                              control = list(method = "cv", number = 3),
+                              task_type = "binary", metric_selection = "ROC",
+                              save_plots = FALSE)
+trained <- SelectBestModel(trained, metric = "auc")
+print(trained@best.model.result$model_type)
+}
 }

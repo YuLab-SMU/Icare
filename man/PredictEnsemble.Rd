@@ -24,6 +24,9 @@ predictions on new data.
 }
 \examples{
 \dontrun{
-probs <- PredictEnsemble(model_obj, newdata = test_data)
+# Assuming 'ens' from TrainEnsemble
+# newdata <- mtcars[1:5, ]
+# probs <- PredictEnsemble(ens, newdata)
+# print(probs)
 }
 }

@@ -13,17 +13,21 @@ PlotThresholdROC(
 )
 }
 \arguments{
-\item{thresh_result}{Output from `CalculateThresholds`.}
+\item{thresh_result}{Output list from \code{CalculateThresholds}.}
 
-\item{compare_model}{A second `thresh_result` for another model (optional).}
+\item{compare_model}{Optional second threshold result list for model comparison.}
 
-\item{compare_label}{Label for the comparison model.}
+\item{compare_label}{Character label for the comparison model. Default is \code{"Clinician"}.}
 
-\item{save_plot, save_dir}{Output options.}
+\item{save_plot}{Logical; whether to save the rendered ROC plot as a PDF. Default is \code{FALSE}.}
+
+\item{save_dir}{Directory path where the output PDF will be saved.}
 }
 \value{
-A ggplot object.
+A \code{ggplot} object representing the ROC curve with marked threshold points.
 }
 \description{
-Compare Threshold-Based Classifiers with Original Score (Final, Fixed)
+Evaluates and visualizes ROC curves overlaid with specific threshold operating
+points (e.g., Youden index, custom targets). Optionally compares performance
+against a second classifier model.
 }

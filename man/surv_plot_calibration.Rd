@@ -2,7 +2,7 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_plot_calibration}
 \alias{surv_plot_calibration}
-\title{Plot Calibration Curve with Quantitative Metrics}
+\title{Plot Calibration Curve (Apparent)}
 \usage{
 surv_plot_calibration(
   learner,
@@ -15,42 +15,47 @@ surv_plot_calibration(
 )
 }
 \arguments{
-\item{learner}{Trained mlr3 learner with predict_type "distr"}
+\item{learner}{Trained mlr3 learner (must support "distr" predict_type)}
 
-\item{object}{TaskSurv or PrognosiX object}
+\item{object}{A \code{TaskSurv} or \code{PrognosiX} object}
 
-\item{time_point}{Numeric. Time horizon for calibration.}
+\item{time_point}{Numeric. Evaluation time point for calibration.}
 
-\item{n_bins}{Integer. Number of bins (default 10; minimum 5 recommended).}
+\item{n_bins}{Integer. Requested number of bins (default 10; automatically
+reduced for small datasets, see \code{.prepare_cal_data}).}
 
-\item{apparent}{Logical. If TRUE (default) labels the plot as APPARENT
-(training-set) calibration and prints a reminder.}
+\item{apparent}{Logical. Whether this is apparent (training-set,
+optimistic) calibration (default TRUE).}
 
-\item{print_metrics}{Logical. Print metrics to console (default TRUE).}
+\item{print_metrics}{Logical. Print calibration metrics to console (default TRUE).}
 
-\item{show_ici}{Logical. Include ICI in plot subtitle (default TRUE).}
+\item{show_ici}{Logical. Show ICI in the plot subtitle (default TRUE).}
 }
 \value{
-ggplot object; calibration metrics attached as attribute "calibration_metrics".
+A ggplot object (invisibly carrying \code{calibration_metrics} and
+  \code{calibration_data} as attributes), or \code{NULL} if calibration
+  could not be computed.
 }
 \description{
-Calibration is assessed by grouping predicted survival probabilities into
-quantile bins and comparing the bin mean predicted probability to the
-Kaplan-Meier observed survival probability in that bin.
-}
-\details{
-IMPORTANT: When evaluated on the TRAINING SET the curve reflects "apparent"
-(optimistic) calibration. For valid calibration use an independent test set
-or cross-validated out-of-fold predictions.
-
-ICI follows Austin & Steyerberg (2019): loess of observed ~ predicted fitted
-on bin centres (span = 1.0), then |loess(x) - x| integrated over the
-prediction range. Falls back to trapezoidal rule when fewer than 4 bins.
-https://doi.org/10.1002/sim.8281
+Plots predicted vs. observed (KM-based) survival probability at a fixed
+evaluation time, using adaptively-sized quantile bins.
 }
 \examples{
 \dontrun{
-# Requires trained learner with distr predict_type and task
-# cal_plot <- surv_plot_calibration(learner, task, time_point = 365)
+veteran <- survival::veteran
+veteran$celltype <- as.character(veteran$celltype)
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+lrn <- surv_get_learner("surv.ranger", task)
+lrn$train(task)
+
+cal <- surv_plot_calibration(lrn, task, time_point = 90)
+
+set.seed(1)
+idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+train_task <- task$clone()$filter(idx)
+val_task   <- task$clone()$filter(setdiff(seq_len(task$nrow), idx))
+lrn2 <- surv_get_learner("surv.ranger", train_task)
+lrn2$train(train_task)
+cal_cmp <- surv_plot_comparison_calibration(lrn2, train_task, val_task, time_point = 90)
 }
 }

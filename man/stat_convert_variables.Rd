@@ -46,17 +46,9 @@ conversion will update its \code{clean.data} slot. If the input is a data frame,
 it will directly return the converted data frame.
 }
 \examples{
-\dontrun{
-# Convert variables in a Stat object
-updated_stat <- stat_convert_variables(stat_obj_test, save_dir = "./output")
-
-# Convert variables in a data frame
-converted_df <- stat_convert_variables(
-  object = my_data,
-  group_col = "group",
-  save_data = FALSE
-)
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+stat <- stat_convert_variables(stat, save_data = FALSE)
+str(stat@clean.data)
 }
 \seealso{
 \code{\link{diagnose_variable_type}}, \code{\link{convert_variables}}

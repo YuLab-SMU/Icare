@@ -66,6 +66,7 @@ perform_tsne <- function(data,
 #' @param dims Dims.
 #' @param iterations Iterations.
 #' @param use_scaled_data Logical.
+#' @param seed Numeric.
 #' @examples
 #' \dontrun{
 #'   # Assuming 'obj' is a Subtyping object
@@ -76,7 +77,8 @@ Sub_tsne_analyse <- function(object,
                              perplexity = 30,
                              dims = 2,
                              iterations = 1000,
-                             use_scaled_data = TRUE) {
+                             use_scaled_data = TRUE,
+                             seed = 123) {
   cat("Starting Sub_tsne_analyse...\n")
   if (inherits(object, "Subtyping")) {
     if (use_scaled_data) {
@@ -100,13 +102,11 @@ Sub_tsne_analyse <- function(object,
   if (ncol(numeric_data) == 0) {
     stop("Input data must be entirely numeric. Please check and process non-numeric data.")
   }
-  
+  set.seed(seed)
   re <- perform_tsne(numeric_data,
                      perplexity = perplexity,
                      dims = dims,
                      iterations = iterations)
-  
-  
   if (inherits(object, "Subtyping")) {
     object@visualization.results[["tsne.result"]] <- re$tsne_result
     object@visualization.results[["tsne.df"]] <- re$tsne_df
@@ -129,23 +129,41 @@ Sub_tsne_analyse <- function(object,
 #' @param plot_width Width.
 #' @param plot_height Height.
 #' @param base_size Base size.
-#' @param seed Seed.
+#' @export
 #' @examples
 #' \dontrun{
-#'   # Assuming 'obj' is a Subtyping object with tsne results
-#'   obj <- Sub_plot_tsne(obj, palette_name = "AsteroidCity1", save_plots = FALSE)
+#' set.seed(1)
+#' demo_df <- data.frame(
+#'  group = rep(c(0, 1), each = 30),
+#'  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'  feat3 = rnorm(60, 10, 2),
+#'  feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+#')
+#' rownames(demo_df) <- paste0("S", 1:60)
+
+#' stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                             group_col = "group", na.action = "allow")
+#' sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#' sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+
+#'  #Sub_plot_tsne colors points by cluster assignment, so a clustering step
+#'  #must run first to populate info.data with cluster labels.
+#' sub_obj <- Sub_kmeans_with_optimal_k(sub_obj, k.max = 3, save_plots = FALSE, seed = 1)
+
+#' sub_obj <- Sub_tsne_analyse(sub_obj, perplexity = 10, use_scaled_data = TRUE, seed = 1)
+
+#' p <- Sub_plot_tsne(sub_obj)
+#' p
 #' }
-#' @export
 Sub_plot_tsne <- function(object,
                           palette_name = "AsteroidCity1",
                           save_plots = TRUE,
                           save_dir = file.path(get_output_dir("m3", "visualization_results"), "tsne"),
                           plot_width = 5,
                           plot_height = 5,
-                          base_size = 14,
-                          seed = 123) {
+                          base_size = 14) {
   
-  set.seed(seed)
   if (inherits(object, "Subtyping")) {
     clustered.data <- object@clustered.data
     tsne_df <- object@visualization.results[["tsne.df"]]
@@ -223,3 +241,4 @@ Sub_plot_tsne <- function(object,
     return(p)
   }
 }
+

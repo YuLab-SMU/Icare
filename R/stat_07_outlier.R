@@ -10,10 +10,8 @@
 #' @param csv_filename Filename.
 #' @export
 #' @examples
-#' \dontrun{
-#' out_info <- detect_and_mark_outliers(stat_obj_test@clean.data, 
-#' group_col = "SWAB", method = "zscore", threshold = 3)
-#' }
+#' data(iris)
+#' detect_and_mark_outliers(iris[, 1:4], method = "zscore", threshold = 3)
 detect_and_mark_outliers <- function(data,
                                      method = "zscore",
                                      threshold = 3,
@@ -75,12 +73,25 @@ detect_and_mark_outliers <- function(data,
     cat("Outlier summary saved to:", full_path, "\n")
   }
   
+  stats_per_var <- list()
+  for (col in numeric_vars) {
+    x <- data[[col]]
+    if (method == "zscore") {
+      stats_per_var[[col]] <- list(mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE))
+    } else if (method == "iqr") {
+      Q1 <- quantile(x, 0.25, na.rm = TRUE)
+      Q3 <- quantile(x, 0.75, na.rm = TRUE)
+      stats_per_var[[col]] <- list(Q1 = Q1, Q3 = Q3, IQR = Q3 - Q1)
+    }
+  }
+  
   return(list(
     outlier_info = outlier_info,
     total_outliers = length(all_outliers),
     outlier_indices = all_outliers,
     method = method,
-    threshold = threshold
+    threshold = threshold,
+    stats = stats_per_var  
   ))
 }
 
@@ -96,9 +107,9 @@ detect_and_mark_outliers <- function(data,
 #' @param csv_filename Filename.
 #' @export
 #' @examples
-#' \dontrun{
-#' out_info <- stat_detect_and_mark_outliers(stat_obj_test, method = "zscore", threshold = 3)
-#' }
+#' stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+#' stat <- stat_detect_and_mark_outliers(stat, method = "zscore", threshold = 3)
+#' print(stat@process.info$outlier_detection)
 stat_detect_and_mark_outliers <- function(object,
                                           method = "zscore",
                                           threshold = 3,
@@ -152,9 +163,10 @@ stat_detect_and_mark_outliers <- function(object,
 #' @param object Stat object.
 #' @export
 #' @examples
-#' \dontrun{
-#' out_info <- extract_outlier_data (stat_obj_test)
-#' }
+#' stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#' stat <- stat_detect_and_mark_outliers(stat)
+#' out <- extract_outlier_data(stat)
+#' print(out)
 extract_outlier_data <- function(object) {
   if (inherits(object, "Stat")) {
     outlier_info <- object@process.info[["outlier_detection"]]
@@ -179,11 +191,10 @@ extract_outlier_data <- function(object) {
 #' @param csv_filename Filename.
 #' @export
 #' @examples
-#' \dontrun{
-#' out_info <- extract_outlier_data (stat_obj_test)
-#' clean_after <- handle_outliers(stat_obj_test@clean.data, out_info,
-#'  method = "remove", save_data = FALSE)
-#' }
+#' data(iris)
+#' out_info <- detect_and_mark_outliers(iris[, 1:4], method = "zscore", threshold = 3)
+#' cleaned <- handle_outliers(iris[, 1:4], out_info, method = "remove", save_data = FALSE)
+#' head(cleaned)
 handle_outliers <- function(data,
                             outlier_info,
                             method = "remove",
@@ -252,10 +263,10 @@ handle_outliers <- function(data,
 #' @param csv_filename Filename.
 #' @export
 #' @examples
-#' \dontrun{
-#' stat_obj <- stat_handle_outliers(stat_obj_test, method = "remove")
-#' stat_obj <- stat_handle_outliers(stat_obj_test, method = "impute")
-#' }
+#' stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+#' stat <- stat_detect_and_mark_outliers(stat)
+#' stat <- stat_handle_outliers(stat, method = "remove", save_data = FALSE)
+#' head(stat@clean.data)
 stat_handle_outliers <- function(object,
                                  method = "remove",
                                  impute_value = "median",
@@ -295,7 +306,9 @@ stat_handle_outliers <- function(object,
   object@clean.data <- cleaned_data
   object@process.info[["outlier_handling"]] <- list(
     method = method,
-    impute_value = impute_value
+    impute_value = impute_value,
+    detection_stats = outlier_info$stats,   
+    threshold = outlier_info$threshold
   )
   cat("- 'clean.data' slot updated.\n")
   cat("- 'process.info' slot updated.\n")

@@ -7,14 +7,64 @@
 ClinicalCorrelation(model_obj, clinical_data = NULL, ...)
 }
 \arguments{
-\item{model_obj}{A Train_Model or caret model.}
+\item{model_obj}{A \code{Train_Model} S4 object containing a trained model,
+and optionally clinical data attached via \code{\link{AttachClinicalData}}.}
 
-\item{clinical_data}{Data frame of clinical variables. If NULL, uses
-\code{@process.info$clinical_data} (set by \code{AttachClinicalData}).}
+\item{clinical_data}{Optional data frame with clinical variables. If
+\code{NULL} (default), the function attempts to use
+\code{model_obj@process.info$clinical_data}.}
 
-\item{...}{Additional arguments passed to \code{CalculateThresholds}
-(e.g., \code{target_se}, \code{target_ppv}).}
+\item{...}{Additional arguments passed to \code{\link{PlotClinicalCorrelation}},
+such as:
+\describe{
+  \item{newdata}{Data frame containing the feature data used for prediction.
+    Required if not using the default from the model object.}
+  \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+    \code{"external"}. Default is \code{"testing"}.}
+  \item{model_name}{Character. Specific model name from
+    \code{model_obj@train.models}, or \code{"ensemble"} to use an ensemble.
+    Defaults to the best model.}
+  \item{ordinal_vars}{Character vector of column names in \code{clinical_data}
+    that should be treated as ordinal (included in Spearman correlation).}
+  \item{palette_name}{Character. Wes Anderson palette name for boxplots.
+    Default \code{"Royal1"}.}
+  \item{save_plot}{Logical. Save plots as PDF? Default \code{FALSE}.}
+  \item{save_dir}{Character. Directory to save plots if \code{save_plot = TRUE}.}
+}}
+}
+\value{
+Invisibly returns a list with two components:
+  \itemize{
+    \item \code{spearman}: Spearman correlation matrix and p-values for
+      continuous/ordinal variables (or \code{NULL} if none).
+    \item \code{categorical}: Data frame of group-difference test results
+      (Wilcoxon or Kruskal-Wallis) for nominal variables (or \code{NULL}).
+  }
+  The correlation heatmap and boxplots are drawn as side effects.
 }
 \description{
-Clinical Correlation Analysis (Standalone)
+Convenience wrapper around \code{\link{PlotClinicalCorrelation}}.
+Automatically extracts clinical data from the model object if not provided,
+and passes all additional arguments to \code{PlotClinicalCorrelation} to
+compute and visualize associations between model predictions and clinical
+variables.
+}
+\examples{
+\dontrun{
+# Prepare binary classification model
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+
+# Attach clinical data (using other mtcars columns as "clinical")
+clin <- data.frame(row.names = rownames(mtcars),
+                   wt = mtcars$wt,
+                   cyl = factor(mtcars$cyl))
+model <- AttachClinicalData(model, clinical_data = clin)
+
+# Run correlation analysis
+ClinicalCorrelation(model, dataset_type = "training", save_plot = FALSE)
+}
+}
+\seealso{
+\code{\link{PlotClinicalCorrelation}}, \code{\link{AttachClinicalData}}
 }

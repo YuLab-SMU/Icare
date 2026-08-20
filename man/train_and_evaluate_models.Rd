@@ -2,65 +2,124 @@
 % Please edit documentation in R/model_05_train.R
 \name{train_and_evaluate_models}
 \alias{train_and_evaluate_models}
-\title{Train and Evaluate Multiple Machine Learning Models}
+\title{Train Multiple caret Models with Automatic Tuning and Imbalance Handling}
 \usage{
 train_and_evaluate_models(
   data,
   methods,
-  control,
-  tune_grids,
+  control = list(method = "repeatedcv", number = 10, repeats = 3),
+  tune_grids = NULL,
+  tuneLength = 3,
+  preProcess = NULL,
+  loocv_threshold = 100,
   classProbs = TRUE,
-  allowParallel = TRUE,
+  allowParallel = FALSE,
   group_col = "group",
-  loocv_threshold = 100
+  metric = "ROC",
+  imbalance_handling = c("none", "auto", "up", "down", "smote", "rose", "weights"),
+  imbalance_threshold = 0.2,
+  seed = NULL
 )
 }
 \arguments{
-\item{data}{A data frame containing both features and the target variable}
+\item{data}{Training data frame.}
 
-\item{methods}{Character vector of caret model methods to train}
+\item{methods}{Character vector of caret model methods.}
 
-\item{control}{List of control parameters for trainControl (method, number, repeats)}
+\item{control}{List with elements `method`, `number`, `repeats` for trainControl.}
 
-\item{tune_grids}{List of tuning grids for each model method}
+\item{tune_grids}{Named list of data frames of tuning parameters (optional).}
 
-\item{classProbs}{Logical indicating whether class probabilities should be computed}
+\item{tuneLength}{Integer, number of automatic tuning levels (default 3).}
 
-\item{allowParallel}{Logical indicating whether to allow parallel processing}
+\item{preProcess}{Character vector of preprocessing methods (passed to caret::train).
+Set to `NULL` if data already preprocessed externally.}
 
-\item{group_col}{Name of the target variable column (default: "group")}
+\item{loocv_threshold}{Numeric, sample size below which LOOCV is forced.}
 
-\item{loocv_threshold}{Sample size threshold below which LOOCV is used (default: 100)}
+\item{classProbs}{Logical, compute class probabilities.}
+
+\item{allowParallel}{Deprecated and ignored (kept only for backward
+compatibility with existing call sites). This function always runs
+sequentially now; see Details.}
+
+\item{group_col}{Name of outcome column.}
+
+\item{metric}{Evaluation metric (e.g., "ROC", "Accuracy", "RMSE").}
+
+\item{imbalance_handling}{Character: "none" (default), "auto", "up", "down",
+"smote", "rose", or "weights". Defines how to handle class imbalance.
+"auto" applies "smote" if minority class proportion < imbalance_threshold
+AND the task is binary; for multiclass tasks "auto" is not supported by
+caret's `trainControl(sampling = ...)` and is downgraded to "none" with
+a warning.
+NOTE: "smote" requires the (CRAN-archived) 'DMwR' package and "rose"
+requires the 'ROSE' package; both are checked explicitly and a clear
+error (with install instructions) is raised if missing, rather than
+letting caret fail with an opaque internal error.}
+
+\item{imbalance_threshold}{Numeric (0-1), proportion below which auto
+handling is triggered. Default 0.2.}
+
+\item{seed}{Optional integer. If supplied, set ONCE at the start of this
+function (before the CV fold indices are built), so that (a) fold
+construction is reproducible and (b) every model in `methods` starts
+from the same RNG state for anything not already fixed by the shared
+folds (e.g. `smote`/`rose` resampling inside a fold, or stochastic
+algorithms like `rf`/`gbm`/`nnet`). The seed is intentionally NOT reset
+again inside the per-model loop: re-seeding before every single model
+would make later models in `methods` replay the exact same random draws
+as earlier ones for anything caret does internally between folds (tree
+bootstraps, random restarts, etc.), which is not what "reproducible" is
+meant to guarantee -- it should reproduce the whole run end-to-end, not
+force every model onto an identical internal random trajectory.}
 }
 \value{
-A list of trained caret models, one for each method that was successfully trained
+List of caret train objects.
 }
 \description{
-This function trains and evaluates multiple machine learning models using caret,
-with automatic selection of cross-validation strategy based on sample size.
-Supports both Leave-One-Out Cross-Validation (LOOCV) for small datasets and
-K-fold cross-validation for larger datasets.
+Supports binary classification, multiclass classification, and regression.
+Automatically selects the appropriate summary function. User can supply
+custom tune grids or use `tuneLength` for automatic grid generation.
+}
+\details{
+All methods requested in a single call are evaluated on the SAME
+cross-validation folds (built once via [caret::createFolds()] /
+[caret::createMultiFolds()] and passed to `trainControl(index = ...)`),
+so that CV-based comparisons across models are fair rather than each
+model drawing its own random resamples. This is only done automatically
+for `control$method %in% c("cv", "repeatedcv")`; for other resampling
+schemes (e.g. `"boot"`), folds are not pre-shared and a message is
+printed to make that explicit.
+
+NOTE on parallel processing: this function runs strictly sequentially.
+Parallel backends (`doParallel`/`foreach`) were removed because, combined
+with a shared RNG seed and per-fold sampling (`smote`/`rose`), parallel
+workers do not reliably reproduce the same random state across runs/
+platforms, and because failures inside a parallel worker are much harder
+to diagnose/report per-model than a sequential `tryCatch`. If you need
+speed, parallelize across `methods` yourself at a higher level (e.g. one
+\code{train_and_evaluate_models()} call per method, dispatched with your
+own scheduler) with `set.seed()` fixed inside each worker.
+
+NOTE on robustness: each method is checked BEFORE training for (a)
+availability in \code{caret::modelLookup()}, (b) installed dependency
+packages (via \code{caret::getModelInfo()$library}), (c) task-type
+compatibility (Classification vs. Regression), and (d) known
+binary-classification-only methods (e.g. `glm`, `glmStepAIC`) being used
+on outcomes with more than 2 classes. Methods failing any check are
+skipped with an informative message rather than aborting the whole run.
 }
 \examples{
 \dontrun{
-# Example usage:
-data <- data.frame(
-  group = factor(c(rep("Class1", 50), rep("Class2", 50))),
-  feature1 = rnorm(100),
-  feature2 = rnorm(100)
-)
-
-control <- list(method = "repeatedcv", number = 10, repeats = 3)
-methods <- c("rf", "glm", "svmRadial")
-tune_grids <- list(
-  rf = data.frame(mtry = c(2, 5)),
-  svmRadial = data.frame(sigma = 0.1, C = 1)
-)
-
-results <- train_and_evaluate_models(
-  data = data,
-  methods = methods,
-  control = control,
-  tune_grids = tune_grids)
+mtcars$am <- as.factor(mtcars$am)
+control <- list(method = "cv", number = 3)
+results <- train_and_evaluate_models(data = mtcars,
+                                     methods = c("glm", "rf"),
+                                     control = control,
+                                     group_col = "am",
+                                     metric = "Accuracy",
+                                     seed = 123)
+print(names(results))
 }
 }

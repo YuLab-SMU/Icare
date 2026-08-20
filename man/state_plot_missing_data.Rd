@@ -52,11 +52,8 @@ an object of class 'Stat' or a data frame. It also updates the 'Stat' object wit
 and returns the object or the missing data summary, depending on the input type.
 }
 \examples{
-\dontrun{
-data("stat_obj_test")
-# Generate missing data plots for a Stat object
-updated_stat <- state_plot_missing_data(stat_obj_test, save_plots = TRUE)
-# Generate missing data plots for a data frame
-missing_info <- state_plot_missing_data(stat_obj_test@raw.data, save_plots = FALSE)
+if (interactive()) {
+  stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+  state_plot_missing_data(stat, save_plots = FALSE)
 }
 }

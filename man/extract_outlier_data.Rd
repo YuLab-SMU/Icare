@@ -13,7 +13,8 @@ extract_outlier_data(object)
 Extract Outlier Data
 }
 \examples{
-\dontrun{
-out_info <- extract_outlier_data (stat_obj_test)
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+stat <- stat_detect_and_mark_outliers(stat)
+out <- extract_outlier_data(stat)
+print(out)
 }

@@ -8,64 +8,44 @@ Stat_to_PrognosiX(
   stat_obj,
   time_col,
   status_col,
-  na_action = c("omit", "impute_median"),
+  na_action = c("omit", "impute_median", "allow"),
   min_events = 20,
   verbose = TRUE
 )
 }
 \arguments{
-\item{stat_obj}{A \code{Stat} S4 object from \code{CreateStatObject()}.}
+\item{stat_obj}{A \code{Stat} S4 object.}
 
-\item{time_col}{Name of the survival time column (character string).}
+\item{time_col}{Character string naming the survival time column.}
 
-\item{status_col}{Name of the event status column (character string;
-1 = event occurred, 0 = censored).}
+\item{status_col}{Character string naming the event status column (1 = event, 0 = censored).}
 
-\item{na_action}{How to handle missing feature values:
-\describe{
-  \item{\code{"omit"}}{(default) Delete any row that contains an NA in
-        a feature column.}
-  \item{\code{"impute_median"}}{Replace numeric NAs with the column
-        median; replace categorical NAs with the column mode.}
-}}
+\item{na_action}{Character; one of \code{"omit"} (remove rows with any NA in features),
+\code{"impute_median"} (replace NAs with median/mode), or \code{"allow"} (keep NAs).}
 
-\item{min_events}{Minimum event count; a \code{warning()} is issued when
-fewer events are present (default 20).}
+\item{min_events}{Integer; minimum number of events required; a warning is issued if fewer.}
 
-\item{verbose}{Print a step-by-step conversion log (default \code{TRUE}).}
+\item{verbose}{Logical; print progress messages.}
 }
 \value{
-A \code{PrognosiX} S4 object ready for \code{run_prognosis_pipeline()}.
+A \code{PrognosiX} S4 object.
 }
 \description{
-Fixes all common upstream data issues so the resulting object is immediately
-ready for mlr3-based survival analysis:
+This function extracts the survival time and status columns from a \code{Stat}
+object and builds a \code{PrognosiX} object. It ensures that:
 \itemize{
-  \item Special characters in numeric columns (\code{">60"}, \code{"<40"})
-        are stripped and coerced to \code{numeric}.
-  \item \strong{All \code{character} feature columns are converted to
-        \code{factor}.}  mlr3 \code{TaskSurv} objects reject \code{character}
-        features; this conversion is the root fix for the
-        \emph{"unsupported feature types: character"} error.
-  \item Rows with non-positive / non-finite time are removed.
-  \item Rows where status is not \{0, 1\} are removed.
-  \item Missing feature values are omitted or imputed.
-  \item Row-name mismatches between \code{clean.data} and \code{info.data}
-        are resolved by intersection.
+  \item The \code{time} and \code{status} columns are moved to \code{info.data}.
+  \item \code{clean.data} contains only numeric feature columns.
+  \item All other columns (clinical, IDs, etc.) are preserved in \code{info.data}.
 }
+Missing values are handled according to \code{na_action}.
 }
 \examples{
 \dontrun{
-library(survival)
-data("veteran")
-veteran$celltype <- as.character(veteran$celltype)   # simulate dirty data
-
-stat_obj <- CreateStatObject(raw.data   = veteran,
-                              clean.data = veteran,
-                              group_col  = "celltype")
-
-prog_obj <- Stat_to_PrognosiX(stat_obj,
-                               time_col   = "time",
-                               status_col = "status")
+veteran <- survival::veteran
+stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+                         group_col = "status", na.action = "allow")
+prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+                          min_events = 10, verbose = TRUE)
 }
 }

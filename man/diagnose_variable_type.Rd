@@ -54,23 +54,11 @@ such. Numeric columns are kept as numeric by default, unless
 columns with few distinct values become categorical.
 }
 \examples{
-\dontrun{
-# Example data
 df <- data.frame(
   group = rep(1:2, each = 5),
   age = c(25, 30, 35, 40, 45, 50, 55, 60, 65, 70),
-  rating = c(1,2,1,2,3,2,1,3,2,1),   # low-cardinality numeric
-  city = c("A","B","A","C","D","E","F","G","H","I"),
-  stringsAsFactors = FALSE
+  rating = c(1,2,1,2,3,2,1,3,2,1),
+  city = c("A","B","A","C","D","E","F","G","H","I")
 )
-
-# Default: rating stays numeric
-res <- diagnose_variable_type(df, group_col = "group")
-print(res)
-
-# Force low-cardinality numerics to categorical
-res2 <- diagnose_variable_type(df, group_col = "group",
-                               treat_low_card_numeric_as_categorical = TRUE)
-print(res2)
-}
+diagnose_variable_type(df, group_col = "group")
 }

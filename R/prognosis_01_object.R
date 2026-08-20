@@ -155,49 +155,50 @@ save_plot_sur <- function(p, name, w=8, h=6) {
 
 #' Create PrognosiX Object
 #'
-#' This function constructs a PrognosiX S4 object from raw data frames or by
-#' converting an existing Stat, Subtyping, or PrognosiX object. It handles
-#' time/status column extraction, row matching, and initial preparation for
-#' downstream prognostic modeling.
-#' 
-#' @param clean.data Clean data.
-#' @param info.data Info data.
-#' @param time_col Time col.
-#' @param status_col Status col.
-#' @param baseline.table Baseline table.
-#' @param variable.types Variable types.
-#' @param survival.var Survival var.
-#' @param survival.data Survival data.
-#' @param sub.data Sub data.
-#' @param univariate.analysis Univariate analysis.
-#' @param split.data Split data.
-#' @param feature.result Feature result.
-#' @param filtered.set Filtered set.
-#' @param survival.model Survival model.
-#' @param best.model Best model.
-#' @param subgroup.risk Subgroup risk.
-#' @param object Input object.
-#' @return A PrognosiX S4 object.
+#' Constructs a PrognosiX S4 object. This function ensures that:
+#' \itemize{
+#'   \item The time and status columns are stored in \code{info.data}.
+#'   \item \code{clean.data} contains only numeric feature columns.
+#'   \item All other columns (clinical, IDs, etc.) are preserved in \code{info.data}.
+#' }
+#' It handles input from raw data frames or by converting existing \code{Stat},
+#' \code{Subtyping}, or \code{PrognosiX} objects.
+#'
+#' @param clean.data Data frame of numeric features (samples x features).
+#' @param info.data Data frame of metadata (including time, status, clinical vars).
+#' @param time_col Character; name of the survival time column (default "time").
+#' @param status_col Character; name of the event status column (default "status").
+#' @param baseline.table Optional baseline table (reserved).
+#' @param variable.types List of variable types (reserved).
+#' @param survival.var List of survival variables (reserved).
+#' @param survival.data Pre‑computed survival data (if NULL, built automatically).
+#' @param sub.data Data frame for subgroup analysis (reserved).
+#' @param univariate.analysis Results of univariate analysis (reserved).
+#' @param split.data Train/test split info (reserved).
+#' @param feature.result Feature selection results (reserved).
+#' @param filtered.set Filtered data sets (reserved).
+#' @param survival.model Fitted survival model (reserved).
+#' @param best.model Best model info (reserved).
+#' @param subgroup.risk Subgroup risk results (reserved).
+#' @param object Optional input object of class \code{Stat}, \code{Subtyping}, or \code{PrognosiX}.
+#' @return A \code{PrognosiX} S4 object.
 #' @export
-#' 
 #' @examples
 #' \dontrun{
-#'   # Create from data frames
-#'   clean <- data.frame(gene1 = c(1, 2, 3), gene2 = c(4, 5, 6),
-#'                       row.names = c("S1", "S2", "S3"))
-#'   info <- data.frame(time = c(10, 20, 30), status = c(1, 0, 1),
-#'                      row.names = c("S1", "S2", "S3"))
-#'   obj <- CreatePrognosiXObject(clean.data = clean, info.data = info,
-#'                                time_col = "time", status_col = "status")
-#'
-#'   # Create from existing Stat object
-#'   # obj <- CreatePrognosiXObject(object = stat_obj, time_col = "time", status_col = "status")
+#' veteran <- survival::veteran
+#' veteran$celltype <- as.character(veteran$celltype)
+#' prog <- CreatePrognosiXObject(
+#'   clean.data = veteran[, c("karno", "diagtime", "age")],
+#'   info.data = veteran[, c("time", "status", "celltype", "trt")],
+#'   time_col = "time", status_col = "status"
+#' )
+#' class(prog)
 #' }
 CreatePrognosiXObject <- function(
     clean.data = NULL,
     info.data = data.frame(),
-    time_col = "time",  
-    status_col = "status",  
+    time_col = "time",
+    status_col = "status",
     baseline.table = NULL,
     variable.types = list(),
     survival.var = list(),
@@ -213,29 +214,27 @@ CreatePrognosiXObject <- function(
     object = NULL
 ) {
   
+  # ---- 1. Input validation ----
   if (is.null(clean.data) && is.null(object)) {
     stop("At least one of 'clean.data' or 'object' must be provided.")
   }
+  
+  # ---- 2. Extract data from object if given ----
   if (!is.null(object)) {
     cat("Extracting data from provided object...\n")
-    
-    if (!inherits(object, "Stat") && !inherits(object, "PrognosiX") && !inherits(object, "Subtyping")) {
-      stop("The 'object' parameter must be an instance of class 'Stat' or 'PrognosiX'.")
+    if (!inherits(object, c("Stat", "PrognosiX", "Subtyping"))) {
+      stop("'object' must be of class 'Stat', 'PrognosiX', or 'Subtyping'.")
     }
-    
     if (inherits(object, "Stat")) {
       clean.data <- ExtractCleanData(object)
       info.data <- ExtractInfoData(object)
-      
       if (is.null(clean.data) || nrow(clean.data) == 0) {
-        stop("Failed to extract valid clean data from the provided 'Stat' object.")
+        stop("Failed to extract valid clean data from 'Stat' object.")
       }
-      
       if (is.null(info.data) || nrow(info.data) == 0) {
         info.data <- data.frame(row.names = rownames(clean.data))
         cat("info.data was created from clean.data with", nrow(info.data), "rows.\n")
       }
-      
     } else if (inherits(object, "PrognosiX")) {
       clean.data <- object@clean.data
       info.data <- object@info.data
@@ -243,12 +242,10 @@ CreatePrognosiXObject <- function(
       time_col <- object@time_col
       status_col <- object@status_col
     } else if (inherits(object, "Subtyping")) {
-      if (!is.null(slot(object, "clustered.data")) && nrow(slot(object, "clustered.data")) > 0) {
-        clean.data <- slot(object, "clustered.data")
-        cat("Using 'clustered.data' from 'Subtyping' object as 'clean.data'.\n")
+      clean.data <- if (!is.null(slot(object, "clustered.data")) && nrow(slot(object, "clustered.data")) > 0) {
+        slot(object, "clustered.data")
       } else {
-        clean.data <- slot(object, "clean.data")
-        cat("'clustered.data' not found. Using 'clean.data' from 'Subtyping' object.\n")
+        slot(object, "clean.data")
       }
       info.data <- slot(object, "info.data")
     }
@@ -257,116 +254,99 @@ CreatePrognosiXObject <- function(
   if (is.null(clean.data) || nrow(clean.data) == 0) {
     stop("'clean.data' must be provided and not empty.")
   }
+  
+  # ---- 3. Ensure info.data exists and has row names ----
   if (nrow(info.data) == 0) {
-    if (!is.null(time_col) && !is.null(status_col)) {
-      info.data <- clean.data[, c(time_col, status_col), drop = FALSE]
-      clean.data <- clean.data[, !colnames(clean.data) %in% c(time_col, status_col)]
-      rownames(info.data) <- rownames(clean.data)
-      colnames(info.data)[colnames(info.data) == time_col]<- "time"
-      colnames(info.data)[colnames(info.data) == status_col]<- "status"
-      cat("info.data created from clean.data with columns:", time_col, "and", status_col, "\n")
-    } else {
-      stop("Both 'time_col' and 'status_col' must be provided.")
-    }
+    info.data <- data.frame(row.names = rownames(clean.data))
   }
   
-  # Match info.data rows with clean.data rows with safety check
-  if (nrow(info.data) > 0) {
-    common_rows <- intersect(rownames(clean.data), rownames(info.data))
-    missing_rows <- setdiff(rownames(clean.data), rownames(info.data))
-    
-    if (length(missing_rows) > 0) {
-      warning("The following rows in clean.data are not found in info.data (", 
-              length(missing_rows), " rows): ", 
-              paste(head(missing_rows, 5), collapse = ", "),
-              ifelse(length(missing_rows) > 5, " ...", ""))
-    }
-    
-    if (length(common_rows) == 0) {
-      warning("No matching rows found between clean.data and info.data. Creating empty info.data.")
-      info.data <- data.frame(row.names = rownames(clean.data))
-    } else {
-      if (length(common_rows) < nrow(clean.data)) {
-        warning("Only ", length(common_rows), " of ", nrow(clean.data), 
-                " clean.data rows found in info.data. Subsetting clean.data to match.")
-        clean.data <- clean.data[common_rows, , drop = FALSE]
-      }
-      info.data <- info.data[rownames(clean.data), , drop = FALSE]
-    }
-  }
-  
-  if (nrow(info.data) != 0) {
-    if (!is.null(time_col) && !is.null(status_col)) {
-      # If time_col/status_col are in clean.data but not info.data, move them
-      if (time_col %in% colnames(clean.data) && !(time_col %in% colnames(info.data))) {
-        info.data[[time_col]] <- clean.data[[time_col]]
-        clean.data <- clean.data[, !colnames(clean.data) %in% time_col, drop=FALSE]
-      }
-      if (status_col %in% colnames(clean.data) && !(status_col %in% colnames(info.data))) {
-        info.data[[status_col]] <- clean.data[[status_col]]
-        clean.data <- clean.data[, !colnames(clean.data) %in% status_col, drop=FALSE]
-      }
-      colnames(info.data)[colnames(info.data) == time_col] <- "time"
-      colnames(info.data)[colnames(info.data) == status_col] <- "status"
-    } else {
-      exists <- c("time", "status") %in% colnames(info.data)
-      if (!all(exists)) {
-        stop("Both 'time_col' and 'status_col' must be provided or 'time' and 'status' columns must exist.")
-      }
-    }
-  }
-  prepare_data <- function(data, data_name) {
-    if (nrow(data) == 0) {
-      return(data)
-    }
-    
-    if (anyDuplicated(rownames(data))) {
-      warning(paste("Duplicate row names found in", data_name, "; they have been made unique."))
-      rownames(data) <- make.unique(rownames(data))
-    }
-    
-    if (anyDuplicated(colnames(data))) {
-      warning(paste("Duplicate column names found in", data_name, "; they have been made unique."))
-      colnames(data) <- make.unique(colnames(data))
-    }
-    
-    if (is.null(colnames(data))) {
-      stop(paste(data_name, "is missing column names."))
-    }
-    
-    data <- modify_column_names(data)
-    
-    return(data)
-  }
-  
-  time_col <- "time"
-  status_col <- "status"
-  
-  clean.data <- prepare_data(clean.data, "clean.data")
-  info.data <- prepare_data(info.data, "info.data")
-  
-  
-  if (!identical(rownames(clean.data), rownames(info.data))) {
-    info.data <- info.data[rownames(clean.data), ]
-    cat("info.data row names synchronized with clean.data.\n")
-  }
-  
-  if (any(is.na(clean.data))) {
-    stop("clean.data contains missing values. Please clean the data.")
-  }
-  
-  if (status_col %in% colnames(info.data)) {
-    info.data[[status_col]] <- as.numeric(as.character(info.data[[status_col]]))
+  # ---- 4. Synchronise row names ----
+  common <- intersect(rownames(clean.data), rownames(info.data))
+  if (length(common) == 0) {
+    warning("No matching row names between clean.data and info.data. Recreating info.data from clean.data.")
+    info.data <- data.frame(row.names = rownames(clean.data))
   } else {
-    warning("Column not found: ", status_col)
+    if (length(common) < nrow(clean.data)) {
+      warning("Subsetting clean.data to match info.data rows.")
+      clean.data <- clean.data[common, , drop = FALSE]
+    }
+    info.data <- info.data[rownames(clean.data), , drop = FALSE]
   }
   
-  survival.data <- cbind(clean.data, info.data[, c(time_col, status_col)])
-  cat("Removing rows with missing values in time or status columns...\n")  
-  survival.data <- survival.data[complete.cases(survival.data[, c(time_col, status_col)]), ]
+  # ---- 5. Extract time and status columns ----
+  # Define helper to find columns either in clean or info
+  .find_col <- function(col_name) {
+    if (col_name %in% colnames(info.data)) {
+      return(list(source = "info", col = col_name))
+    } else if (col_name %in% colnames(clean.data)) {
+      return(list(source = "clean", col = col_name))
+    } else {
+      return(NULL)
+    }
+  }
   
-  PrognosiX <- new(
-    Class = 'PrognosiX',
+  time_info <- .find_col(time_col)
+  status_info <- .find_col(status_col)
+  
+  if (is.null(time_info) || is.null(status_info)) {
+    stop(sprintf("Columns '%s' and/or '%s' not found in clean.data or info.data.", time_col, status_col))
+  }
+  
+  # Move time/status to info.data if they are currently in clean.data
+  if (time_info$source == "clean") {
+    info.data[[time_col]] <- clean.data[[time_col]]
+    clean.data[[time_col]] <- NULL
+  }
+  if (status_info$source == "clean") {
+    info.data[[status_col]] <- clean.data[[status_col]]
+    clean.data[[status_col]] <- NULL
+  }
+  
+  # ---- 6. Move all non‑numeric columns from clean.data to info.data ----
+  # Identify non‑numeric columns (character, factor, logical, etc.)
+  non_numeric <- names(which(!sapply(clean.data, is.numeric)))
+  if (length(non_numeric) > 0) {
+    for (col in non_numeric) {
+      info.data[[col]] <- clean.data[[col]]
+      clean.data[[col]] <- NULL
+    }
+    cat("Moved non‑numeric columns to info.data:", paste(non_numeric, collapse = ", "), "\n")
+  }
+  
+  # ---- 7. Ensure clean.data contains only numeric columns ----
+  if (ncol(clean.data) == 0) {
+    warning("clean.data has no columns after moving non‑numeric data. This may be acceptable if you only have clinical metadata.")
+  }
+  
+  # ---- 8. Prepare column names (sanitise) ----
+  .prepare_colnames <- function(df) {
+    if (nrow(df) == 0 || ncol(df) == 0) return(df)
+    # Use make.names to ensure valid R variable names
+    colnames(df) <- make.names(colnames(df), unique = TRUE)
+    df
+  }
+  clean.data <- .prepare_colnames(clean.data)
+  info.data  <- .prepare_colnames(info.data)
+  
+  # ---- 9. Build survival.data (features + time/status) ----
+  # Ensure time and status are numeric
+  info.data[[time_col]] <- as.numeric(as.character(info.data[[time_col]]))
+  info.data[[status_col]] <- as.numeric(as.character(info.data[[status_col]]))
+  
+  # Remove rows with missing time/status
+  valid <- complete.cases(info.data[, c(time_col, status_col)])
+  if (any(!valid)) {
+    warning(sprintf("Removing %d rows with missing time or status.", sum(!valid)))
+    clean.data <- clean.data[valid, , drop = FALSE]
+    info.data <- info.data[valid, , drop = FALSE]
+  }
+  
+  # Combine features and survival columns
+  survival.data <- cbind(clean.data, info.data[, c(time_col, status_col), drop = FALSE])
+  
+  # ---- 10. Create the S4 object ----
+  obj <- new(
+    Class = "PrognosiX",
     clean.data = clean.data,
     info.data = info.data,
     sub.data = sub.data,
@@ -386,6 +366,7 @@ CreatePrognosiXObject <- function(
   )
   
   cat("PrognosiX object created successfully.\n")
-  
-  return(PrognosiX)
+  cat(sprintf("  Features: %d | Samples: %d\n", ncol(clean.data), nrow(clean.data)))
+  cat(sprintf("  Metadata columns: %d (including time/status)\n", ncol(info.data)))
+  return(obj)
 }

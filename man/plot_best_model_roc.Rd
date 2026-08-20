@@ -6,10 +6,10 @@
 \usage{
 plot_best_model_roc(
   best_model,
-  train_data,
-  test_data,
-  validation_data,
-  external_validation,
+  train_data = NULL,
+  test_data = NULL,
+  validation_data = NULL,
+  external_validation = NULL,
   group_col = "group",
   palette_name = "AsteroidCity1",
   base_size = 14,
@@ -24,76 +24,66 @@ plot_best_model_roc(
 )
 }
 \arguments{
-\item{best_model}{A trained classification model object with predict method}
+\item{best_model}{A trained classification model object with a valid `predict` method.}
 
-\item{train_data}{Data frame containing training data with response variable}
+\item{train_data}{Data frame containing training data with the response variable 
+(required to establish authoritative factor levels). Default `NULL`.}
 
-\item{test_data}{Data frame containing testing data with response variable}
+\item{test_data}{Data frame containing testing data with the response variable. Default `NULL`.}
 
-\item{validation_data}{Data frame containing validation data (optional)}
+\item{validation_data}{Data frame containing validation data with the response variable. Default `NULL`.}
 
-\item{external_validation}{Data frame containing external validation data (optional)}
+\item{external_validation}{Data frame containing external validation data with the response variable. Default `NULL`.}
 
-\item{group_col}{Character string specifying the response variable column name (default: "group")}
+\item{group_col}{Character string specifying the response variable column name. Default `"group"`.}
 
-\item{palette_name}{Character string specifying Wes Anderson palette name (default: "AsteroidCity1")}
+\item{palette_name}{Character string specifying a Wes Anderson palette name. Default `"AsteroidCity1"`.}
 
-\item{base_size}{Numeric base font size for plot (default: 14)}
+\item{base_size}{Numeric base font size for the plot theme. Default `14`.}
 
-\item{save_plots}{Logical indicating whether to save plots (default: TRUE)}
+\item{save_plots}{Logical indicating whether to save the plot as a PDF. Default `FALSE`.}
 
-\item{save_dir}{Character string specifying directory to save outputs (default: here("ModelData", "best_model_result"))}
+\item{save_dir}{Character string specifying the directory to save outputs. Default `NULL`.}
 
-\item{plot_width}{Numeric plot width in inches (default: 5)}
+\item{plot_width}{Numeric plot width in inches. Default `5`.}
 
-\item{plot_height}{Numeric plot height in inches (default: 5)}
+\item{plot_height}{Numeric plot height in inches. Default `5`.}
 
-\item{alpha}{Numeric transparency value for ROC curves (default: 1)}
+\item{alpha}{Numeric transparency value for ROC curve lines. Default `1`.}
 
-\item{subtitle}{Character string for plot subtitle (default: "Training and Testing Datasets")}
+\item{subtitle}{Character string for the plot subtitle. Default `"Training and Testing Datasets"`.}
 
-\item{save_data}{Logical indicating whether to save ROC curve data (default: TRUE)}
+\item{save_data}{Logical indicating whether to save ROC curve data as a CSV. Default `FALSE`.}
 
-\item{csv_filename}{Character string for saved data filename (default: "best_model_roc_data.csv")}
+\item{csv_filename}{Character string for the saved data filename. Default `"best_model_roc_data.csv"`.}
 }
 \value{
-A list of data frames containing ROC curve coordinates and AUC information for each dataset:
-\itemize{
-  \item training - Data frame with training set ROC coordinates
-  \item testing - Data frame with testing set ROC coordinates
-  \item validation - Data frame with validation set ROC coordinates (if provided)
-  \item external_validation - Data frame with external validation ROC coordinates (if provided)
-}
+A named list of data frames containing ROC coordinates and performance metrics per dataset.
 }
 \description{
-Generates and optionally saves ROC curves comparing model performance across:
-- Training set
-- Testing set
-- Validation set (optional)
-- External validation set (optional)
-Includes AUC values with confidence intervals in legend labels.
+Generates and visualizes Receiver Operating Characteristic (ROC) curves 
+with Area Under the Curve (AUC) and confidence intervals for a trained 
+classification model evaluated across multiple datasets (training, testing, 
+validation, and external validation).
 }
 \examples{
 \dontrun{
-# After training a model (e.g., randomForest)
-model <- randomForest(group ~ ., data = train_data)
-
-# Basic usage with training and test sets
-roc_data <- plot_best_model_roc(
-  best_model = model,
-  train_data = train_data,
-  test_data = test_data
-)
-
-# Full usage with all datasets
-roc_data <- plot_best_model_roc(
-  best_model = model,
-  train_data = train_data,
-  test_data = test_data,
-  validation_data = valid_data,
-  external_validation = ext_data,
-  palette_name = "GrandBudapest1",
-  save_dir = "results/roc_plots"
-)
+if (requireNamespace("pROC", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+  control = list(method = "cv", number = 3), save_plots = FALSE)
+  best_model <- trained@train.models$glm
+  if (interactive()) {
+    plot_best_model_roc(best_model,
+    train_data = trained@filtered.set$training,
+    test_data = trained@filtered.set$testing,
+    group_col = "am",
+    save_plots = FALSE)
+  }
+}
 }
 }

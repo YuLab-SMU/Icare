@@ -2,19 +2,69 @@
 % Please edit documentation in R/model_08_clinical_analysis.R
 \name{ClinicalConfounder}
 \alias{ClinicalConfounder}
-\title{Confounder Adjustment (Standalone)}
+\title{Confounder Adjustment Analysis (Standalone)}
 \usage{
 ClinicalConfounder(model_obj, clinical_data = NULL, ...)
 }
 \arguments{
-\item{model_obj}{A Train_Model or caret model.}
+\item{model_obj}{A \code{Train_Model} S4 object containing a trained model,
+and optionally clinical data attached via \code{\link{AttachClinicalData}}.}
 
-\item{clinical_data}{Data frame of clinical variables. If NULL, uses
-\code{@process.info$clinical_data} (set by \code{AttachClinicalData}).}
+\item{clinical_data}{Optional data frame with clinical variables. If
+\code{NULL} (default), the function attempts to use
+\code{model_obj@process.info$clinical_data}.}
 
-\item{...}{Additional arguments passed to \code{CalculateThresholds}
-(e.g., \code{target_se}, \code{target_ppv}).}
+\item{...}{Additional arguments passed to \code{\link{PlotConfounderForest}},
+such as:
+\describe{
+  \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+    \code{"external"}. Determines which feature/clinical data are used.
+    Default is \code{"testing"}.}
+  \item{outcome_var}{Character. Name of the binary outcome column in the
+    data. This argument is \strong{required}; must be supplied either here
+    or via \code{...}.}
+  \item{adjust_vars}{Character vector of clinical column names to adjust
+    for. If \code{NULL} (default), all clinical columns except
+    \code{outcome_var} are used.}
+  \item{model_name}{Optional character. Specific model from
+    \code{model_obj@train.models} to use for prediction, or
+    \code{"ensemble"} to use an ensemble. Defaults to the best model.}
+  \item{positive_class}{Character. The positive outcome level. Defaults
+    to \code{"1"}.}
+  \item{save_plot}{Logical. Whether to save the plot as PDF. Default
+    \code{FALSE}.}
+  \item{save_dir}{Character. Directory to save the plot if
+    \code{save_plot = TRUE}.}
+}}
+}
+\value{
+A \code{ggplot} object (invisibly printed). The plot shows
+  -log10(p-values) for each covariate from the logistic regression model,
+  with a dashed line at p = 0.05 for reference.
 }
 \description{
-Confounder Adjustment (Standalone)
+This is a convenience wrapper around \code{\link{PlotConfounderForest}}.
+It extracts clinical data from the model object if not provided, and passes
+all additional arguments to \code{PlotConfounderForest} to fit a logistic
+regression of the outcome on the model's predicted logit plus clinical
+covariates, then plots the -log10(p-values) as a bar chart.
+}
+\examples{
+\dontrun{
+# Prepare data
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+
+# Attach clinical data (here using other columns as "clinical")
+clin <- data.frame(row.names = rownames(mtcars),
+                   wt = mtcars$wt,
+                   qsec = mtcars$qsec)
+model <- AttachClinicalData(model, clinical_data = clin)
+
+# Run confounder analysis (outcome_var is required)
+ClinicalConfounder(model, outcome_var = "am", save_plot = FALSE)
+}
+}
+\seealso{
+\code{\link{PlotConfounderForest}}, \code{\link{AttachClinicalData}}
 }

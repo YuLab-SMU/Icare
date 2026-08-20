@@ -2,7 +2,7 @@
 % Please edit documentation in R/stat_04_descriptive.R
 \name{violin_plots}
 \alias{violin_plots}
-\title{Violin Plots for Numeric Variables}
+\title{Generate Violin Plots for Numeric Variables}
 \usage{
 violin_plots(
   data,
@@ -17,57 +17,62 @@ violin_plots(
   plot_height = 5,
   base_size = 14,
   stat_method = "wilcox.test",
-  paired_comparison = TRUE
+  paired_comparison = TRUE,
+  group_colors = NULL
 )
 }
 \arguments{
-\item{data}{A data frame containing the data to plot.}
+\item{data}{A data frame containing the variables to plot.}
 
-\item{vars_per_plot}{Integer. The number of variables (columns) to include
-in each individual plot. Default is 1.}
+\item{vars_per_plot}{Number of variables to display per facet page.
+Default is 1.}
 
-\item{save_dir}{String. The directory to save the plots in. Default is `NULL`.
-When `save_plots = TRUE` and this is `NULL`, a default figure directory is used.}
+\item{save_dir}{Directory to save the generated plots. If NULL and
+save_plots is TRUE, a default directory is used.}
 
-\item{palette_name}{String. The name of the color palette to use. Default `"Royal1"`.}
+\item{palette_name}{Name of the color palette to use when `group_colors`
+is not provided. Supports RColorBrewer palettes (e.g., "Set1") or
+wesanderson palettes (e.g., "Zissou1"). Default is "Zissou1".}
 
-\item{group_col}{String. The name of the column in the data used to group
-the samples. Default is `"group"`.}
+\item{group_col}{Name of the column defining the grouping variable.
+If NULL, no grouping is applied. Default is "group".}
 
-\item{max_unique_values}{Integer. The maximum number of unique values
-allowed for categorical variables. Defaults to 5.}
+\item{max_unique_values}{Maximum number of unique values to treat a
+variable as categorical (used internally). Default is 5.}
 
-\item{sub_var}{Character vector. A subset of variable names (columns)
-to include in the plot. If `NULL`, all numeric variables will be included.}
+\item{sub_var}{Character vector of specific numeric variables to plot.
+If NULL, all numeric variables are used.}
 
-\item{save_plots}{Logical. If `TRUE`, the plots will be saved as PDF
-files in the specified `save_dir`. Default is `TRUE`.}
+\item{save_plots}{Logical; if TRUE, saves each plot as a PDF.
+Default is TRUE.}
 
-\item{plot_width}{Numeric. The width of each saved plot (in inches). Default 5.}
+\item{plot_width}{Width of the saved plot (inches). Default is 5.}
 
-\item{plot_height}{Numeric. The height of each saved plot (in inches). Default 5.}
+\item{plot_height}{Height of the saved plot (inches). Default is 5.}
 
-\item{base_size}{Numeric. The base font size for the plot. Default 14.}
+\item{base_size}{Base font size for the plot theme. Default is 14.}
 
-\item{stat_method}{Statistical method for comparisons.}
+\item{stat_method}{Statistical test for pairwise comparisons.
+Default is "wilcox.test".}
 
-\item{paired_comparison}{Logical, whether to add pairwise comparisons.}
+\item{paired_comparison}{Logical; if TRUE, adds pairwise significance
+labels. Default is TRUE.}
+
+\item{group_colors}{An optional named character vector specifying custom
+colors for each group. Names must match the group levels. If provided,
+it overrides `palette_name`. Default is NULL.}
 }
 \value{
-A list of ggplot objects containing the generated violin plots.
-  If `save_plots` is `TRUE`, the plots are also saved as PDF files.
+A list of ggplot objects (one per facet page).
 }
 \description{
-This function generates violin plots for numeric variables in the dataset,
-with boxplots and jittered points for enhanced visualization. The plots
-are grouped by a specified column and saved as PDF files, if desired.
-It handles large numbers of variables by splitting them into multiple
-plots, each containing a set of variables (defined by the `vars_per_plot`
-argument). The function also allows for customization of plot appearance
-and save locations.
+This function creates faceted violin plots for selected numeric variables,
+grouped by a categorical variable. It supports custom group colors via
+`group_colors` or a palette name via `palette_name` (RColorBrewer or wesanderson).
 }
 \examples{
-\dontrun{
-vplots <- violin_plots(stat_obj_test@clean.data, group_col = "SWAB", save_plots = FALSE)
+if (interactive()) {
+  data(iris)
+  violin_plots(iris, group_col = "Species", save_plots = FALSE)
 }
 }

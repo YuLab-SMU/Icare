@@ -27,8 +27,9 @@ remove_high_missing(
 Remove Variables and Samples with High Missing Values
 }
 \examples{
-\dontrun{
-clean_list <- remove_high_missing(stat_obj_test@raw.data, miss_threshold = 25, save_data = FALSE)
-clean_data <- clean_list$cleaned_data
-}
+data(iris)
+iris_na <- iris
+iris_na[1:5, 1] <- NA
+clean <- remove_high_missing(iris_na, miss_threshold = 20, save_data = FALSE)
+print(dim(clean$cleaned_data))
 }

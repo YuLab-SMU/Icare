@@ -5,7 +5,6 @@
 # =============================================================================
 # Supports: Train_Model, caret train, ensemble, fine-tuned models
 
-# 0. Package check -----------------------------------------------------------
 #' @keywords internal
 .check_clinical_pkgs <- function() {
   required <- c("ggplot2", "dplyr", "tidyr", "wesanderson", "ggprism",
@@ -19,7 +18,6 @@
   invisible(TRUE)
 }
 
-# -- Internal prediction helper ---------------------------------------------
 #' @keywords internal
 .predict_probs <- function(model_obj, newdata, model_name = NULL,
                            positive_class = NULL) {
@@ -76,243 +74,862 @@
     stop("model_obj must be a Train_Model or caret train object.")
   }
 }
-# -- 1. Attach clinical data to model object --------------------------------
-#' Attach Clinical Data to Train_Model Object
+
+#' Attach Clinical Data and External Validation Set to Train_Model Object
 #'
-#' Stores the entire clinical data frame inside \code{@process.info$clinical_data}.
-#' Subsequent clinical analysis functions will use this by default.
-#'
-#' @param object        A \code{Train_Model} object.
-#' @param clinical_data A data frame with clinical variables. Rownames must
-#'   match the samples in the model's testing set.
-#' @return The updated \code{Train_Model} object.
+#' @param object            A Train_Model object.
+#' @param clinical_data     A data frame with clinical variables (rownames must match sample IDs).
+#' @param external_data     Optional matrix/data.frame for external validation dataset (expression/feature matrix).
+#' @param external_clinical Optional data frame for external validation dataset clinical metadata.
+#' @return The updated Train_Model object.
 #' @export
-AttachClinicalData <- function(object, clinical_data) {
+AttachClinicalData <- function(object, 
+                               clinical_data     = NULL, 
+                               external_data     = NULL, 
+                               external_clinical = NULL) {
   if (!inherits(object, "Train_Model"))
     stop("object must be a Train_Model.")
-  if (!is.data.frame(clinical_data))
-    stop("clinical_data must be a data frame.")
-  object@process.info$clinical_data <- clinical_data
-  cat("Clinical data attached to the model object.\n")
+  
+  if (!is.null(clinical_data)) {
+    if (!is.data.frame(clinical_data)) stop("clinical_data must be a data frame.")
+    object@process.info$clinical_data <- clinical_data
+    cat("Clinical data attached to model_obj@process.info$clinical_data.\n")
+  }
+  
+  if (!is.null(external_data)) {
+    object@process.info$external_data <- as.data.frame(external_data)
+    cat("External validation data attached to model_obj@process.info$external_data.\n")
+  }
+  
+  if (!is.null(external_clinical)) {
+    if (!is.data.frame(external_clinical)) stop("external_clinical must be a data frame.")
+    object@process.info$external_clinical <- external_clinical
+    cat("External clinical data attached to model_obj@process.info$external_clinical.\n")
+  }
+  
   return(object)
 }
 
-# -- 2. Correlation matrix plot ---------------------------------------------
-#' Prediction-Clinical Correlation Matrix (corrplot Style)
+#' Plot Clinical Correlation with Model Predictions
 #'
-#' Converts categorical variables to numeric, combines them with model
-#' predictions, and draws a Spearman correlation matrix using \code{corrplot}.
-#' Significant correlations are annotated with stars.
+#' Computes and visualizes associations between model predictions
+#' (probabilities) and clinical variables from a given dataset.
 #'
-#' @param model_obj,clinical_data,newdata,model_name See \code{\link{ClinicalAnalysis}}.
-#' @param save_plot,save_dir,palette_name  Output options.
-#' @param ...   Further arguments passed to \code{corrplot::corrplot}.
-#' @return Invisibly returns the correlation matrix.
+#' Unlike a naive approach that coerces ALL clinical variables to numeric
+#' via \code{as.numeric(as.factor(...))} before computing Spearman
+#' correlation, this function distinguishes variable types:
+#'
+#' \itemize{
+#'   \item \strong{Continuous / ordinal variables} (numeric, or factors
+#'         explicitly marked \code{ordered = TRUE}) are included in the
+#'         Spearman correlation matrix, since a monotonic relationship is
+#'         a meaningful concept for them.
+#'   \item \strong{Unordered categorical (nominal) variables} (character or
+#'         unordered factor, e.g. sex, tumor site, treatment arm) are
+#'         analyzed separately using a group-difference test
+#'         (Wilcoxon rank-sum for 2 groups, Kruskal-Wallis for 3+ groups)
+#'         comparing the predicted probability across categories, and
+#'         visualized with boxplots rather than forced into a correlation
+#'         coefficient.
+#' }
+#'
+#' This avoids assigning nominal categories an artificial numeric order,
+#' which would make the resulting correlation coefficient and p-value
+#' uninterpretable.
+#'
+#' @param model_obj A trained model object compatible with \code{predict} method
+#'   (e.g., \code{train}, \code{glm}, \code{randomForest}) that supports
+#'   \code{type = "prob"} for classification.
+#' @param clinical_data A data frame containing clinical variables and a sample
+#'   identifier column that matches the row names of \code{newdata}. All columns
+#'   except the identifier will be used as clinical covariates.
+#' @param newdata A data frame containing the feature data (predictors) used to
+#'   generate predictions. The row names (or a column) must match those in
+#'   \code{clinical_data} for alignment.
+#' @param model_name Optional character string naming the model (used in plot
+#'   subtitle). If \code{NULL}, the model's \code{method} or class is used.
+#' @param dataset_type Character string indicating the dataset origin for plot
+#'   labelling. Must be one of \code{"testing"}, \code{"training"}, or
+#'   \code{"external"}. Default is \code{"testing"}.
+#' @param ordinal_vars Character vector of column names in \code{clinical_data}
+#'   that are ordinal (i.e. have a meaningful order) even though they may be
+#'   stored as character/unordered factor. These will be treated as ordered
+#'   and included in the Spearman correlation panel. Default \code{NULL}.
+#' @param save_plot Logical; if \code{TRUE}, saves the plot(s) as PDF to
+#'   \code{save_dir}. Default is \code{FALSE}.
+#' @param save_dir Character string specifying the directory where the PDF(s)
+#'   should be saved. Required if \code{save_plot = TRUE}.
+#' @param palette_name Character string naming the Wes Anderson palette to use
+#'   for the color gradient / boxplot fills. Default is \code{"Royal1"}. See
+#'   \code{wesanderson::wes_palette()} for available options.
+#' @param ... Additional arguments passed to \code{corrplot::corrplot()} for
+#'   fine-tuning the correlation plot appearance (e.g., \code{tl.cex}).
+#'
+#' @return Invisibly returns a list with two elements:
+#'   \describe{
+#'     \item{\code{spearman}}{A list with \code{matrix} (the Spearman
+#'       correlation matrix among Prediction + continuous/ordinal variables)
+#'       and \code{p.values} (the corresponding p-value matrix). \code{NULL}
+#'       if no continuous/ordinal variables are present.}
+#'     \item{\code{categorical}}{A data frame summarizing, for each nominal
+#'       variable, the test used (Wilcoxon or Kruskal-Wallis), the test
+#'       statistic, and the p-value. \code{NULL} if no nominal variables are
+#'       present.}
+#'   }
+#'
+#' @section Required Packages:
+#' \pkg{corrplot}, \pkg{wesanderson}, \pkg{ggplot2}, and internal helper
+#' functions (\code{.check_clinical_pkgs()}, \code{.align_clinical_and_newdata()},
+#' \code{.predict_probs()}). These dependencies are checked automatically.
+#'
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' if (interactive()) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   set.seed(123)
+#'   idx <- sample(1:nrow(mtcars), 20)
+#'   model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#'   trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+#'   control = list(method = "cv", number = 3), save_plots = FALSE)
+#'   clin <- data.frame(row.names = rownames(mtcars), age = runif(nrow(mtcars), 30, 80))
+#'   PlotClinicalCorrelation(trained, clinical_data = clin,
+#'    newdata = mtcars, dataset_type = "testing", save_plot = FALSE)
+#' }
+#' }
 PlotClinicalCorrelation <- function(model_obj,
                                     clinical_data = NULL,
                                     newdata       = NULL,
                                     model_name    = NULL,
+                                    dataset_type  = c("testing", "training", "external"),
+                                    ordinal_vars  = NULL,
                                     save_plot     = FALSE,
                                     save_dir      = NULL,
                                     palette_name  = "Royal1",
                                     ...) {
   .check_clinical_pkgs()
-  if (is.null(clinical_data))
-    clinical_data <- model_obj@process.info$clinical_data
-  if (is.null(newdata) && inherits(model_obj, "Train_Model"))
-    newdata <- model_obj@filtered.set$testing
-  stopifnot(!is.null(newdata), nrow(newdata) == nrow(clinical_data))
+  dataset_type <- match.arg(dataset_type)
+  
+  if (save_plot && (is.null(save_dir) || !nzchar(save_dir))) {
+    stop("`save_dir` must be provided when `save_plot = TRUE`.")
+  }
+  
+  aligned <- .align_clinical_and_newdata(model_obj, clinical_data, newdata, dataset_type)
+  clinical_data <- aligned$clinical_data
+  newdata       <- aligned$newdata
   
   probs <- .predict_probs(model_obj, newdata, model_name)
   
-  # Convert categorical variables to numeric
   df <- clinical_data
-  cat_vars <- names(df)[!sapply(df, is.numeric)]
-  for (v in cat_vars) {
-    df[[v]] <- as.numeric(as.factor(df[[v]]))
-  }
   
-  df$Prediction <- probs
+  # --- Classify variables ---------------------------------------------
+  is_numeric_col   <- vapply(df, is.numeric, logical(1))
+  is_ordered_col   <- vapply(df, is.ordered, logical(1))
+  is_marked_ordinal <- names(df) %in% ordinal_vars
   
-  cor_res <- corrplot::cor.mtest(df, conf.level = 0.95)
-  M <- cor(df, method = "spearman", use = "complete.obs")
+  keep_for_spearman <- is_numeric_col | is_ordered_col | is_marked_ordinal
+  nominal_vars <- names(df)[!keep_for_spearman]
+  ordinal_numeric_vars <- names(df)[keep_for_spearman]
   
-  cols <- colorRampPalette(
-    c(wesanderson::wes_palette(palette_name, 2, type = "discrete")[1],
-      "white",
-      wesanderson::wes_palette(palette_name, 2, type = "discrete")[2])
-  )(200)
-  
-  draw_corr <- function() {
-    corrplot::corrplot(
-      M,
-      method = "square",
-      type = "lower",
-      tl.col = "black",
-      tl.cex = 0.8,, diag = FALSE,
-      p.mat = cor_res$p,
-      sig.level = c(0.001, 0.01, 0.05),
-      insig = "label_sig",
-      pch.cex = 1,
-      pch.col = "grey20",
-      col = cols,
-      title = "Prediction vs Clinical Variables",
-      mar = c(0, 0, 2, 0),
-      ...
+  if (length(nominal_vars) > 0) {
+    message(
+      "The following variables are treated as unordered categorical and ",
+      "excluded from the Spearman matrix (analyzed via group-difference ",
+      "test instead): ", paste(nominal_vars, collapse = ", ")
     )
   }
   
-  draw_corr()
+  result <- list(spearman = NULL, categorical = NULL)
   
-  if (save_plot) {
-    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-    pdf(file.path(save_dir, "clinical_correlation.pdf"), width = 8, height = 8)
+  # --- Part 1: Spearman correlation for continuous/ordinal variables ---
+  if (length(ordinal_numeric_vars) > 0) {
+    df_cont <- df[, ordinal_numeric_vars, drop = FALSE]
+    # Ordered factors -> integer codes reflecting their defined level order
+    for (v in names(df_cont)) {
+      if (is.ordered(df_cont[[v]])) {
+        df_cont[[v]] <- as.numeric(df_cont[[v]])
+      } else if (!is.numeric(df_cont[[v]])) {
+        # marked ordinal but stored as plain character/factor: warn and coerce
+        # using factor level order as given (user is responsible for order)
+        warning(
+          "Variable '", v, "' was listed in `ordinal_vars` but is not an ",
+          "ordered factor or numeric. Coercing using its current level ",
+          "order via as.factor(); verify this order is correct."
+        )
+        df_cont[[v]] <- as.numeric(as.factor(df_cont[[v]]))
+      }
+    }
+    df_cont$Prediction <- probs
+    
+    cor_res <- corrplot::cor.mtest(df_cont, conf.level = 0.95)
+    M <- cor(df_cont, method = "spearman", use = "pairwise.complete.obs")
+    
+    cols <- colorRampPalette(
+      c(wesanderson::wes_palette(palette_name, 2, type = "discrete")[1],
+        "white",
+        wesanderson::wes_palette(palette_name, 2, type = "discrete")[2])
+    )(200)
+    
+    draw_corr <- function() {
+      corrplot::corrplot(
+        M, method = "square", type = "lower", tl.col = "black", tl.cex = 0.8,
+        diag = FALSE, p.mat = cor_res$p, sig.level = c(0.001, 0.01, 0.05),
+        insig = "label_sig", pch.cex = 1, pch.col = "grey20", col = cols,
+        title = paste0("Prediction vs Continuous/Ordinal Clinical Variables (", dataset_type, ")"),
+        mar = c(0, 0, 2, 0), ...
+      )
+    }
+    
     draw_corr()
-    dev.off()
-    cat("Plot saved to:", file.path(save_dir, "clinical_correlation.pdf"), "\n")
+    
+    if (save_plot) {
+      if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+      pdf(file.path(save_dir, paste0("clinical_correlation_spearman_", dataset_type, ".pdf")),
+          width = 8, height = 8)
+      draw_corr()
+      dev.off()
+    }
+    
+    result$spearman <- list(matrix = M, p.values = cor_res$p)
+  } else {
+    message("No continuous/ordinal clinical variables found; skipping Spearman panel.")
   }
   
-  invisible(M)
+  # --- Part 2: Group-difference test + boxplots for nominal variables --
+  if (length(nominal_vars) > 0) {
+    if (!requireNamespace("ggplot2", quietly = TRUE)) {
+      stop("Package 'ggplot2' is required to plot nominal-variable boxplots.")
+    }
+    
+    pal_vec <- wesanderson::wes_palette(palette_name)
+    
+    cat_results <- lapply(nominal_vars, function(v) {
+      grp <- as.factor(df[[v]])
+      plot_df <- data.frame(Prediction = probs, Group = grp)
+      plot_df <- plot_df[!is.na(plot_df$Group), ]
+      
+      n_groups <- nlevels(droplevels(plot_df$Group))
+      if (n_groups < 2) {
+        return(data.frame(variable = v, test = NA, statistic = NA, p.value = NA))
+      }
+      
+      if (n_groups == 2) {
+        test_name <- "Wilcoxon rank-sum"
+        test_res <- wilcox.test(Prediction ~ Group, data = plot_df)
+      } else {
+        test_name <- "Kruskal-Wallis"
+        test_res <- kruskal.test(Prediction ~ Group, data = plot_df)
+      }
+      
+      p <- ggplot2::ggplot(plot_df, ggplot2::aes(x = Group, y = Prediction, fill = Group)) +
+        ggplot2::geom_boxplot(outlier.shape = NA, alpha = 0.85) +
+        ggplot2::geom_jitter(width = 0.15, alpha = 0.4, size = 1) +
+        ggplot2::scale_fill_manual(values = colorRampPalette(pal_vec)(n_groups)) +
+        ggplot2::labs(
+          title = paste0("Prediction by ", v, " (", dataset_type, ")"),
+          subtitle = paste0(
+            test_name, " p = ",
+            formatC(unname(test_res$p.value), format = "g", digits = 3)
+          ),
+          x = v, y = "Predicted probability"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(legend.position = "none")
+      
+      print(p)
+      
+      if (save_plot) {
+        if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+        ggplot2::ggsave(
+          filename = file.path(save_dir, paste0("clinical_boxplot_", v, "_", dataset_type, ".pdf")),
+          plot = p, width = 6, height = 5
+        )
+      }
+      
+      data.frame(
+        variable  = v,
+        test      = test_name,
+        statistic = unname(test_res$statistic),
+        p.value   = unname(test_res$p.value)
+      )
+    })
+    
+    result$categorical <- do.call(rbind, cat_results)
+  } else {
+    message("No unordered categorical clinical variables found; skipping group-difference panel.")
+  }
+  
+  invisible(result)
 }
 
-# -- 3. Subgroup forest plot ------------------------------------------------
-#' Subgroup Performance Forest Plot
+#' Subgroup Performance Forest Plot (table style, via forestploter)
 #'
-#' Computes AUC with 95\% CI within each subgroup defined by a categorical
-#' clinical variable.
+#' Computes AUC with 95% CI within each subgroup defined by one or more
+#' categorical clinical variables, and renders a single publication-style
+#' forest table (variable | N | forest graphic | estimate (95% CI) | p)
+#' similar to clinical hazard-ratio tables, using the \pkg{forestploter}
+#' package. When \code{subgroup_var} has length > 1, all variables are
+#' stacked into ONE figure, each with its own bold section header row.
 #'
-#' @param model_obj,clinical_data,subgroup_var,newdata,model_name As above.
-#' @param save_plot,save_dir,palette_name  Output options.
-#' @return A ggplot object.
+#' @section Statistical validity of the p-value column:
+#' Comparing a subgroup's AUC to the AUC of the *entire* sample (which
+#' necessarily contains that subgroup) violates the independence assumption
+#' underlying both DeLong's test and the naive paired/unpaired bootstrap
+#' comparison implemented by \code{pROC::roc.test()}: the two ROC curves
+#' are computed on overlapping, non-independent data. The resulting p-value
+#' is not statistically valid and tends to be anti-conservative (spuriously
+#' significant).
+#'
+#' To keep the p-value meaningful, this function instead compares each
+#' subgroup's AUC against the AUC of the complementary set of subjects
+#' (\emph{everyone not in that subgroup}) when \code{compare_method} is
+#' \code{"delong_vs_rest"} or \code{"bootstrap_vs_rest"}. These two sets are
+#' disjoint, so the independence assumption holds and the test answers a
+#' well-posed question: "does the model discriminate differently in this
+#' subgroup than in the rest of the sample?"
+#'
+#' By default (\code{compare_method = "none"}), no p-value is computed and
+#' the column is left blank.
+#'
+#' @param model_obj Fitted model object (\code{Train_Model} or caret \code{train}).
+#' @param clinical_data Data frame with clinical/subgroup variables.
+#' @param subgroup_var Character vector defining subgroup column names.
+#' @param newdata Data frame used for model prediction.
+#' @param model_name Optional model name within \code{Train_Model}.
+#' @param var_labels Optional named character vector to relabel section headers.
+#' @param level_order Optional named list specifying the display order of factor levels.
+#' @param indent Character prefix used to indent subgroup levels. Default four spaces.
+#' @param dataset_type Dataset origin label (\code{"testing"}, \code{"training"}, or \code{"external"}).
+#' @param ref_line Reference vertical line position on graphic (default 0.5).
+#' @param xlim Numeric length-2 vector for x-axis limits of forest column.
+#' @param ticks_at Axis tick positions for forest plot.
+#' @param min_n Minimum subgroup size required for evaluation. Default 5.
+#' @param digits Number of decimal places for AUC/CI display.
+#' @param p_digits Number of decimal places for p-value display.
+#' @param box_col Color for point estimate box in forest graphic.
+#' @param ci_col Color for CI whiskers.
+#' @param overall_row Logical; whether to prepend an "Overall" dataset row. Default \code{TRUE}.
+#' @param overall_label Character label for the overall row.
+#' @param compare_method Statistical test for subgroup comparison (\code{"none"}, \code{"delong_vs_rest"}, or \code{"bootstrap_vs_rest"}).
+#' @param n_boot Number of bootstrap replicates for bootstrap comparison method.
+#' @param theme_args List of visual theme overrides for \code{forestploter::forest_theme()}.
+#' @param arrow_labels Length-2 character vector for axis arrows, or \code{NULL}.
+#' @param save_plot Logical; whether to save plot as a PDF file.
+#' @param save_dir Directory path where plot PDF will be saved.
+#' @param file_name Output file name for saved plot.
+#' @param width Saved plot width in inches.
+#' @param height Saved plot height in inches.
+#'
+#' @return An invisible list containing the \code{forestploter} graphic and summary \code{data.frame}.
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("forestploter", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   set.seed(123)
+#'   idx <- sample(1:nrow(mtcars), 20)
+#'   model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#'   trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+#'   control = list(method = "cv", number = 3), save_plots = FALSE)
+#'   clin <- data.frame(row.names = rownames(mtcars), cyl = mtcars$cyl)
+#'   PlotSubgroupForest(trained, clinical_data = clin, 
+#'   subgroup_var = "cyl", newdata = mtcars, save_plot = FALSE)
+#' }
+#' }
 PlotSubgroupForest <- function(model_obj,
-                               clinical_data = NULL,
+                               clinical_data  = NULL,
                                subgroup_var,
-                               newdata      = NULL,
-                               model_name   = NULL,
-                               save_plot    = FALSE,
-                               save_dir     = NULL,
-                               palette_name = "Darjeeling1") {
-  .check_clinical_pkgs()
-  if (is.null(clinical_data))
-    clinical_data <- model_obj@process.info$clinical_data
-  if (is.null(newdata) && inherits(model_obj, "Train_Model"))
-    newdata <- model_obj@filtered.set$testing
-  probs <- .predict_probs(model_obj, newdata, model_name)
+                               newdata        = NULL,
+                               model_name     = NULL,
+                               var_labels     = NULL,
+                               level_order    = NULL,
+                               indent         = "    ",
+                               ref_line       = 0.5,
+                               dataset_type   = c("testing", "training", "external"),
+                               xlim           = c(0.4, 1.0),
+                               ticks_at       = c(0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+                               min_n          = 5,
+                               digits         = 3,
+                               p_digits       = 3,
+                               box_col        = "#377eb8",
+                               ci_col         = "black",
+                               overall_row    = TRUE,
+                               overall_label  = "Overall",
+                               compare_method = c("none", "delong_vs_rest", "bootstrap_vs_rest"),
+                               n_boot         = 2000,
+                               theme_args     = list(),
+                               arrow_labels   = NULL,
+                               save_plot      = FALSE,
+                               save_dir       = NULL,
+                               file_name      = NULL,
+                               width          = 8,
+                               height         = 6) {
   
-  true <- factor(newdata[[model_obj@group_col]])
+  .check_clinical_pkgs()
+  if (length(subgroup_var) == 0) stop("subgroup_var cannot be empty.")
+  if (!requireNamespace("forestploter", quietly = TRUE)) {
+    stop("Package 'forestploter' is required for this style of plot.\n",
+         "Install it with: install.packages('forestploter')")
+  }
+  
+  dataset_type <- match.arg(dataset_type)
+  aligned <- .align_clinical_and_newdata(model_obj, clinical_data, newdata, dataset_type)
+  clinical_data  <- aligned$clinical_data
+  newdata        <- aligned$newdata
+  compare_method <- match.arg(compare_method)
+  
+  probs    <- .predict_probs(model_obj, newdata, model_name)
+  true     <- factor(newdata[[model_obj@group_col]])
   positive <- levels(true)[2]
   
-  groups <- unique(clinical_data[[subgroup_var]])
-  res_list <- lapply(groups, function(g) {
-    idx <- which(clinical_data[[subgroup_var]] == g)
-    if (length(idx) < 5) return(NULL)
-    roc_obj <- pROC::roc(true[idx], probs[idx], levels = c(levels(true)[1], positive),
-                         direction = "auto", quiet = TRUE)
-    ci <- pROC::ci.auc(roc_obj)
-    data.frame(Subgroup = g, AUC = as.numeric(roc_obj$auc),
-               Lower = ci[1], Upper = ci[3], N = length(idx))
-  })
-  forest_df <- do.call(rbind, res_list)
-  forest_df <- forest_df[order(-forest_df$AUC), ]
-  forest_df$Subgroup <- factor(forest_df$Subgroup, levels = forest_df$Subgroup)
+  # Safeguarded overall ROC computation
+  full_roc <- tryCatch(
+    pROC::roc(true, probs, levels = c(levels(true)[1], positive), direction = "auto", quiet = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(full_roc)) {
+    stop("Failed to calculate overall ROC curve. Check if outcome labels contain both classes.")
+  }
   
-  cols <- wesanderson::wes_palette(palette_name, nrow(forest_df), type = "discrete")
+  # Helper: Safely calculate ROC object for a subset of samples
+  # Prevents crash when sample size < min_n OR outcome contains only one class level
+  .roc_for <- function(idx) {
+    if (length(idx) < min_n) return(NULL)
+    sub_true <- true[idx]
+    
+    # Check if subgroup contains at least two distinct outcome levels
+    if (length(unique(sub_true[!is.na(sub_true)])) < 2) return(NULL)
+    
+    tryCatch(
+      pROC::roc(sub_true, probs[idx],
+                levels = c(levels(true)[1], positive),
+                direction = "auto", quiet = TRUE),
+      error = function(e) NULL
+    )
+  }
   
-  p <- ggplot2::ggplot(forest_df, ggplot2::aes(x = AUC, y = Subgroup, color = Subgroup)) +
-    ggplot2::geom_point(size = 3, shape = 18) +
-    ggplot2::geom_errorbarh(ggplot2::aes(xmin = Lower, xmax = Upper), height = 0.2) +
-    ggplot2::scale_color_manual(values = cols, guide = "none") +
-    ggplot2::labs(title = paste("AUC by", subgroup_var),
-                  x = "AUC (95% CI)", y = NULL) +
-    ggprism::theme_prism(base_size = 13) +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"))
+  # Helper: Calculate comparison p-value against the complementary "rest" set
+  .subgroup_pval <- function(sub_idx) {
+    if (compare_method == "none") return(NA_real_)
+    
+    rest_idx <- setdiff(seq_along(true), sub_idx)
+    if (length(rest_idx) < min_n) return(NA_real_)
+    
+    roc_sub  <- .roc_for(sub_idx)
+    roc_rest <- .roc_for(rest_idx)
+    
+    # If either subgroup or rest set lacks two class levels, return NA
+    if (is.null(roc_sub) || is.null(roc_rest)) return(NA_real_)
+    
+    if (compare_method == "delong_vs_rest") {
+      test <- tryCatch(pROC::roc.test(roc_sub, roc_rest, method = "delong"),
+                       error = function(e) NULL)
+    } else {
+      test <- tryCatch(
+        pROC::roc.test(roc_sub, roc_rest, method = "bootstrap", boot.n = n_boot),
+        error = function(e) NULL
+      )
+    }
+    if (is.null(test)) NA_real_ else test$p.value
+  }
+  
+  # Helper: Generate data frame row for an individual subgroup level
+  .auc_row <- function(label, idx) {
+    if (length(idx) < min_n) return(NULL)
+    roc_obj <- .roc_for(idx)
+    if (is.null(roc_obj)) return(NULL) # Skip single-class subgroups safely
+    
+    ci <- tryCatch(pROC::ci.auc(roc_obj), error = function(e) NULL)
+    if (is.null(ci)) return(NULL)
+    
+    data.frame(Label   = label,
+               N       = length(idx),
+               AUC     = as.numeric(roc_obj$auc),
+               Lower   = ci[1],
+               Upper   = ci[3],
+               p       = .subgroup_pval(idx),
+               Header  = FALSE,
+               stringsAsFactors = FALSE)
+  }
+  
+  # Helper: Generate section header row
+  .header_row <- function(label, n_total) {
+    data.frame(Label = label, N = n_total, AUC = NA_real_, Lower = NA_real_,
+               Upper = NA_real_, p = NA_real_, Header = TRUE,
+               stringsAsFactors = FALSE)
+  }
+  
+  rows <- list()
+  
+  # Prepend overall row if requested
+  if (overall_row) {
+    ci_all <- tryCatch(pROC::ci.auc(full_roc), error = function(e) c(NA, NA, NA))
+    rows[[length(rows) + 1]] <- data.frame(
+      Label = overall_label, N = length(true), AUC = as.numeric(full_roc$auc),
+      Lower = ci_all[1], Upper = ci_all[3], p = NA_real_, Header = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # Loop over defined subgroup variables
+  for (var in subgroup_var) {
+    col <- clinical_data[[var]]
+    if (is.factor(col)) {
+      lvls <- levels(col)
+      lvls <- lvls[lvls %in% as.character(col)]
+    } else {
+      lvls <- sort(unique(as.character(col[!is.na(col)])))
+    }
+    if (!is.null(level_order) && !is.null(level_order[[var]])) {
+      lvls <- level_order[[var]][level_order[[var]] %in% lvls]
+    }
+    
+    header_label <- if (!is.null(var_labels) && !is.na(var_labels[var])) var_labels[var] else var
+    rows[[length(rows) + 1]] <- .header_row(header_label, sum(!is.na(col)))
+    
+    for (lv in lvls) {
+      idx <- which(as.character(col) == lv)
+      r <- .auc_row(paste0(indent, lv), idx)
+      if (!is.null(r)) rows[[length(rows) + 1]] <- r
+    }
+  }
+  
+  forest_df <- do.call(rbind, rows)
+  if (is.null(forest_df) || nrow(forest_df) == 0) {
+    stop("No valid rows to plot - check `subgroup_var`, `min_n`, and class balance across subgroups.")
+  }
+  
+  # Format numeric output strings for forestploter table display
+  fmt <- paste0("%.", digits, "f")
+  forest_df[["AUC (95% CI)"]] <- ifelse(
+    forest_df$Header | is.na(forest_df$AUC), "",
+    sprintf(paste0(fmt, " (", fmt, ", ", fmt, ")"),
+            forest_df$AUC, forest_df$Lower, forest_df$Upper)
+  )
+  forest_df[["p value"]] <- ifelse(
+    forest_df$Header | is.na(forest_df$p), "",
+    formatC(forest_df$p, digits = p_digits, format = "f")
+  )
+  forest_df[[" "]] <- paste(rep(" ", 20), collapse = " ")
+  
+  display_df <- forest_df[, c("Label", "N", " ", "AUC (95% CI)", "p value")]
+  names(display_df)[1] <- " "
+  
+  is_summary <- forest_df$Header
+  
+  # Configure forestploter theme settings
+  base_theme <- list(
+    base_size    = 10,
+    ci_pch       = 15,
+    ci_col       = ci_col,
+    ci_fill      = box_col,
+    ci_lty       = 1,
+    ci_lwd       = 1.5,
+    ci_Theight   = 0.2,
+    refline_lwd  = 1,
+    refline_lty  = "dashed",
+    refline_col  = "grey40",
+    footnote_col = "grey50"
+  )
+  if (!is.null(arrow_labels)) {
+    base_theme$arrow_lab   <- arrow_labels
+    base_theme$arrow_type  <- "open"
+    base_theme$arrow_col   <- "black"
+  }
+  theme_args_final <- utils::modifyList(base_theme, theme_args)
+  tm <- do.call(forestploter::forest_theme, theme_args_final)
+  
+  # Render publication-style forest plot
+  p <- forestploter::forest(
+    display_df,
+    est        = forest_df$AUC,
+    lower      = forest_df$Lower,
+    upper      = forest_df$Upper,
+    ci_column  = 3,
+    is_summary = is_summary,
+    ref_line   = ref_line,
+    xlim       = xlim,
+    ticks_at   = ticks_at,
+    theme      = tm
+  )
   
   print(p)
+  
+  # Optionally save plot to PDF
   if (save_plot) {
+    if (is.null(save_dir)) save_dir <- getwd()
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-    ggplot2::ggsave(file.path(save_dir, paste0("subgroup_", subgroup_var, ".pdf")),
-                    plot = p, width = 7, height = 5, dpi = 300)
+    if (is.null(file_name))
+      file_name <- paste0("subgroup_", paste(subgroup_var, collapse = "_"), ".pdf")
+    grDevices::pdf(file.path(save_dir, file_name), width = width, height = height)
+    plot(p)
+    grDevices::dev.off()
   }
-  return(p)
+  
+  return(invisible(list(plot = p, data = forest_df)))
 }
-
-# -- 4. Confounder adjustment forest plot -----------------------------------
-#' Multivariable Logistic Adjustment Bar Plot (Significance Fill)
+#' Plot a Confounder Adjustment Forest Plot
 #'
-#' Fits \code{outcome ~ prediction + clinical_vars} using the binary outcome
-#' column from \code{newdata} and plots \code{-log10(p-value)} for each
-#' variable. Bar fill represents the significance level (darker = more
-#' significant). A dashed reference line marks \code{p = 0.05}.
+#' Fits a logistic regression of the binary outcome on the model's predicted
+#' logit plus a set of clinical covariates, and plots -log10(p-value) for each
+#' term as a horizontal bar chart. This is used to check whether the model's
+#' prediction remains significantly associated with the outcome after
+#' adjusting for potential confounders (e.g. age, sex, stage).
 #'
-#' @param model_obj,clinical_data,outcome_var,newdata,model_name As above.
-#' @param save_plot,save_dir  Output options.
-#' @return A ggplot object.
+#' For \code{dataset_type = "training"} or \code{"testing"}, the feature data
+#' is taken from \code{model_obj@filtered.set} (falling back to
+#' \code{model_obj@split.data}), and clinical data is taken automatically from
+#' \code{model_obj@process.info$clinical_data} (attached once via
+#' \code{AttachClinicalData()} for the full dataset) by intersecting rownames
+#' with the feature data — no manual \code{clinical_data} argument is needed
+#' in this case.
+#'
+#' For \code{dataset_type = "external"}, feature data is taken from
+#' \code{model_obj@process.info$external_data} and clinical data from
+#' \code{model_obj@process.info$external_clinical}, since external samples
+#' have no rowname lineage to the training data and must be attached
+#' separately via \code{AttachClinicalData(object, external_data = ...,
+#' external_clinical = ...)}.
+#'
+#' @param model_obj A \code{Train_Model} S4 object.
+#' @param dataset_type One of \code{"testing"}, \code{"training"}, or
+#'   \code{"external"}. Determines which feature/clinical data are used.
+#' @param clinical_data Optional \code{data.frame} to override the clinical
+#'   data that would otherwise be pulled automatically from \code{model_obj}.
+#'   Rownames must match the feature data's rownames. Leave \code{NULL} for
+#'   the default (recommended) behavior described above.
+#' @param outcome_var Character. Name of the binary outcome column, expected
+#'   to be present in either the feature data or the clinical data.
+#' @param adjust_vars Optional character vector of clinical column names to
+#'   adjust for. If \code{NULL}, all clinical columns (except
+#'   \code{outcome_var}) are used as covariates.
+#' @param model_name Optional character. Name of a specific trained model in
+#'   \code{model_obj@train.models} to use for prediction, or \code{"ensemble"}
+#'   to use the ensemble predictor. Defaults to the best model.
+#' @param positive_class The outcome level treated as the "positive" class.
+#'   Used both to select the corresponding column of predicted probabilities
+#'   (passed to \code{.predict_probs()}) and to encode \code{outcome_bin}
+#'   (\code{outcome == positive_class}), so the two are guaranteed to refer to
+#'   the same class. Defaults to \code{"1"}. Coerced to character for
+#'   comparison against outcome levels. If the model's predicted-probability
+#'   matrix does not have a column matching \code{positive_class} exactly
+#'   (common when outcome labels are numeric-like, since caret/many
+#'   classifiers apply \code{make.names()} when training, e.g. turning
+#'   \code{"1"} into \code{"X1"}), a \code{make.names()}-adjusted variant is
+#'   tried automatically before falling back to \code{.predict_probs()}'s
+#'   default column choice.
+#' @param save_plot Logical. If \code{TRUE}, saves the plot as a PDF.
+#' @param save_dir Directory to save the plot to when \code{save_plot = TRUE}.
+#'   Defaults to the current working directory.
+#'
+#' @return A \code{ggplot} object (invisibly printed as a side effect).
+#'
 #' @export
-PlotConfounderForest <- function(model_obj,
-                                 clinical_data = NULL,
-                                 outcome_var,
-                                 newdata      = NULL,
-                                 model_name   = NULL,
-                                 save_plot    = FALSE,
-                                 save_dir     = NULL) {
-  .check_clinical_pkgs()
-  if (is.null(clinical_data))
-    clinical_data <- model_obj@process.info$clinical_data
-  if (is.null(newdata) && inherits(model_obj, "Train_Model"))
+PlotConfounderForest <- function (model_obj, dataset_type = c("testing", "training",
+                                                              "external"), clinical_data = NULL, outcome_var, adjust_vars = NULL,
+                                  model_name = NULL, positive_class = "1", save_plot = FALSE, save_dir = NULL)
+{
+  #.check_clinical_pkgs()
+  dataset_type <- match.arg(dataset_type)
+  if (missing(outcome_var) || is.null(outcome_var)) {
+    stop("`outcome_var` is required: please specify the name of the outcome column ",
+         "(e.g. outcome_var = \"group\").")
+  }
+  if (dataset_type == "testing") {
     newdata <- model_obj@filtered.set$testing
-  stopifnot(!is.null(newdata), nrow(newdata) == nrow(clinical_data))
-  
-  probs <- .predict_probs(model_obj, newdata, model_name)
-  
-  outcome_vec <- newdata[[outcome_var]]
-  if (is.null(outcome_vec))
-    stop("Outcome column '", outcome_var, "' not found in newdata.")
-  
-  df <- cbind(clinical_data, prediction = probs)
-  df$outcome <- factor(outcome_vec)
-  df$outcome_bin <- as.numeric(df$outcome == levels(df$outcome)[2])
-  
-  covars <- setdiff(names(clinical_data), outcome_var)
-  frm <- as.formula(paste("outcome_bin ~ prediction +", paste(covars, collapse = " + ")))
+    if (is.null(newdata))
+      newdata <- model_obj@split.data$testing
+  }
+  else if (dataset_type == "training") {
+    newdata <- model_obj@filtered.set$training
+    if (is.null(newdata))
+      newdata <- model_obj@split.data$training
+  }
+  else if (dataset_type == "external") {
+    newdata <- model_obj@process.info$external_data
+  }
+  if (is.null(newdata)) {
+    if (dataset_type == "external") {
+      stop("No external feature data found (process.info$external_data is NULL). ",
+           "Please attach external data first (e.g. via AttachExternalData()).")
+    }
+    else {
+      stop("No feature/outcome data found for dataset_type = '",
+           dataset_type, "'. Please make sure the model has been split ",
+           "(split.data / filtered.set is populated).")
+    }
+  }
+  if (!is.null(clinical_data)) {
+    if (!is.data.frame(clinical_data)) {
+      stop("`clinical_data` must be a data.frame with rownames matching the feature data. ",
+           "Got an object of class '", paste(class(clinical_data), collapse = "/"), "' instead. ",
+           "(Did you mean to pass this value to `dataset_type` instead?)")
+    }
+    message("Using user-provided clinical_data (override). Ensure rownames match the feature data.")
+    clinical <- clinical_data
+  }
+  else {
+    if (dataset_type == "external") {
+      clinical <- model_obj@process.info$external_clinical
+    }
+    else {
+      clinical <- model_obj@process.info$clinical_data
+    }
+    if (is.null(clinical)) {
+      if (dataset_type == "external") {
+        stop("No external clinical data found (process.info$external_clinical is NULL). ",
+             "External clinical data is not derived automatically from the training ",
+             "data, so please provide it via the `clinical_data` argument, or attach it ",
+             "beforehand (e.g. via AttachExternalData(..., clinical_data = ...)).")
+      }
+      else {
+        stop("No internal clinical_data found for dataset_type = '", dataset_type, "'. ",
+             "clinical_data is attached once for the full dataset (training + testing ",
+             "share the same rownames lineage as data.df/clean.df), so please call ",
+             "AttachClinicalData() on this model object before plotting, or pass ",
+             "clinical_data manually for a one-off override.")
+      }
+    }
+  }
+  common <- intersect(rownames(newdata), rownames(clinical))
+  if (length(common) == 0) {
+    if (dataset_type == "external") {
+      stop("Zero overlapping samples between external feature data and external clinical ",
+           "data. Check that rownames of `clinical_data`/external_clinical match the ",
+           "rownames of the external feature data exactly.")
+    }
+    else {
+      stop("Zero overlapping samples between feature data and clinical data. Check rownames.")
+    }
+  }
+  if (length(common) < nrow(newdata)) {
+    warning("Subsetting newdata to ", length(common), " samples (out of ",
+            nrow(newdata), ") that have matching clinical data; the remaining ",
+            nrow(newdata) - length(common), " sample(s) were dropped.")
+  }
+  # Always re-index both by `common` (even when counts already match) so that
+  # rows are guaranteed to be aligned in the same order before cbind() below,
+  # which binds by position, not by rowname.
+  newdata <- newdata[common, , drop = FALSE]
+  clinical <- clinical[common, , drop = FALSE]
+  if (!outcome_var %in% colnames(newdata) && outcome_var %in%
+      colnames(clinical)) {
+    newdata[[outcome_var]] <- clinical[[outcome_var]]
+    message("Outcome column '", outcome_var, "' was copied from clinical_data to newdata.")
+  }
+  if (!outcome_var %in% colnames(newdata)) {
+    stop("Outcome column '", outcome_var, "' not found in newdata or clinical_data.")
+  }
+  outcome_levels <- levels(factor(newdata[[outcome_var]]))
+  positive_class <- as.character(positive_class)
+  if (!positive_class %in% outcome_levels) {
+    stop("`positive_class` = '", positive_class, "' is not among the observed levels of '",
+         outcome_var, "' (", paste(outcome_levels, collapse = ", "), "). ",
+         "Please set `positive_class` to one of these values.")
+  }
+  all_clin_vars <- colnames(clinical)
+  if (is.null(adjust_vars)) {
+    covars <- setdiff(all_clin_vars, outcome_var)
+  }
+  else {
+    if (!is.character(adjust_vars)) {
+      stop("adjust_vars must be a character vector or NULL.")
+    }
+    covars <- setdiff(adjust_vars, outcome_var)
+    missing_vars <- setdiff(covars, all_clin_vars)
+    if (length(missing_vars) > 0) {
+      warning("The following variables in adjust_vars are not found in clinical_data and will be ignored: ",
+              paste(missing_vars, collapse = ", "))
+      covars <- intersect(covars, all_clin_vars)
+    }
+    if (length(covars) == 0) {
+      message("No valid covariates remain after filtering. Model will contain only the prediction logit.")
+    }
+  }
+  # `.predict_probs()` matches `positive_class` against the column names of
+  # the model's predicted-probability matrix. Those column names are often
+  # NOT the raw outcome labels: if the outcome is numeric-like (e.g. "0"/"1"),
+  # caret/most classifiers apply make.names() when training, turning "1" into
+  # "X1". Try the raw label first, then a make.names()-adjusted fallback,
+  # instead of silently trusting `.predict_probs()`'s own "use 2nd column"
+  # default (which is only correct by coincidence of column ordering).
+  .try_predict_probs <- function(pc) {
+    mismatched <- FALSE
+    result <- withCallingHandlers(
+      .predict_probs(model_obj, newdata, model_name, positive_class = pc),
+      warning = function(w) {
+        if (grepl("not found", conditionMessage(w), fixed = TRUE)) {
+          mismatched <<- TRUE
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
+    list(probs = result, mismatched = mismatched)
+  }
+  attempt <- .try_predict_probs(positive_class)
+  if (attempt$mismatched) {
+    alt_class <- make.names(positive_class)
+    if (!identical(alt_class, positive_class)) {
+      attempt <- .try_predict_probs(alt_class)
+    }
+    if (attempt$mismatched) {
+      warning("Could not find a probability column matching positive_class = '", positive_class,
+              "' (also tried '", alt_class, "'). Falling back to the second column as chosen by ",
+              ".predict_probs(); please verify this is really the class you intend, or pass a ",
+              "`positive_class` value that matches the model's actual probability column names.")
+    }
+  }
+  probs <- attempt$probs
+  eps <- 1e-07
+  probs_safe <- pmin(pmax(probs, eps), 1 - eps)
+  logit_probs <- log(probs_safe/(1 - probs_safe))
+  df <- cbind(clinical, prediction_logit = logit_probs)
+  df$outcome <- factor(newdata[[outcome_var]])
+  df$outcome_bin <- as.numeric(as.character(df$outcome) == positive_class)
+  if (length(covars) == 0) {
+    frm <- as.formula("outcome_bin ~ prediction_logit")
+  }
+  else {
+    frm <- as.formula(paste("outcome_bin ~ prediction_logit +",
+                            paste(covars, collapse = " + ")))
+  }
   fit <- glm(frm, data = df, family = binomial)
-  
   tem <- summary(fit)$coefficients
   tem <- as.data.frame(tem)
-  tem$`-log10P` <- -log10(tem$`Pr(>|z|)`)
-  tem <- tem[rownames(tem) != "(Intercept)", ]
+  colnames(tem) <- c("Estimate", "StdError", "zValue", "pVal")
+  tem <- tem[rownames(tem) != "(Intercept)", , drop = FALSE]
+  tem$pVal_safe <- pmax(tem$pVal, 1e-15)
+  tem$`-log10P` <- -log10(tem$pVal_safe)
   tem$Variable <- rownames(tem)
-  
-  # Order by -log10P (ascending, for horizontal bar)
+  tem$Variable[tem$Variable == "prediction_logit"] <- "Model Prediction (Logit)"
   tem$Variable <- factor(tem$Variable, levels = tem$Variable[order(tem$`-log10P`)])
-  
-  p <- ggplot2::ggplot(tem, ggplot2::aes(x = .data[["-log10P"]], y = .data[["Variable"]],
-                                         fill = .data[["-log10P"]])) +
-    ggplot2::geom_col() +
-    ggplot2::scale_fill_gradientn(
-      colours = c("#f9ddda", "#eda8bd", "#ce78b3", "#9955a8", "#573b88"),
-      name = expression(-log[10]("P"))
-    ) +
+  p <- ggplot2::ggplot(tem, ggplot2::aes(x = .data[["-log10P"]],
+                                         y = .data[["Variable"]], fill = .data[["-log10P"]])) +
+    ggplot2::geom_col() + ggplot2::scale_fill_gradientn(colours = c("#f9ddda",
+                                                                    "#eda8bd", "#ce78b3", "#9955a8", "#573b88"), name = expression(-log[10]("P"))) +
     ggplot2::geom_vline(xintercept = -log10(0.05), linetype = "dashed",
-                        color = "black", linewidth = 1) +
-    ggplot2::annotate("text", x = -log10(0.05) + 0.02, y = 1,
-                      label = "p = 0.05", hjust = 0, size = 3.5, color = "black") +
-    ggplot2::labs(title = "Confounder Adjustment (Logistic Regression)",
-                  x = "-log10(P-value)", y = NULL) +
-    ggprism::theme_prism(base_size = 13) +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"))
-  
+                        color = "black", linewidth = 1) + ggplot2::annotate("text",
+                                                                            x = -log10(0.05) + 0.02, y = 1, label = "p = 0.05", hjust = 0,
+                                                                            size = 3.5, color = "black") + ggplot2::labs(title = paste0("Confounder Adjustment (",
+                                                                                                                                        dataset_type, ")"), x = expression(-log[10](p - value)),
+                                                                                                                         y = NULL) + ggprism::theme_prism(base_size = 13) + ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5,
+                                                                                                                                                                                                                              face = "bold"))
   print(p)
   if (save_plot) {
-    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-    ggplot2::ggsave(file.path(save_dir, "confounder_bar.pdf"),
-                    plot = p, width = 7, height = 5, dpi = 300)
+    if (is.null(save_dir))
+      save_dir <- getwd()
+    if (!dir.exists(save_dir))
+      dir.create(save_dir, recursive = TRUE)
+    ggplot2::ggsave(file.path(save_dir, paste0("confounder_bar_",
+                                               dataset_type, ".pdf")), plot = p, width = 7, height = 5,
+                    dpi = 300)
   }
   return(p)
 }
 
-# -- 5. Threshold analysis -------------------------------------------------
 #' Calculate Multi-Threshold Metrics with Custom Targets
 #'
 #' Computes a full table of Accuracy, PPV, NPV across all unique thresholds,
@@ -321,7 +938,28 @@ PlotConfounderForest <- function(model_obj,
 #'   - Thresholds that reach a target Sensitivity, Specificity, PPV, or NPV
 #'   - Threshold that maximises Accuracy (if requested)
 #'
+#' @section A note on where to call this:
+#' This function \strong{searches} for a threshold (Youden index, "reach
+#' target Se/Sp/PPV/NPV", "maximise Accuracy") over whatever data you pass
+#' in. If you call it on the testing (or external) set and then report that
+#' threshold's Accuracy/Sensitivity/etc. as "test-set performance", you are
+#' reporting an optimistic, overfit number: the threshold was chosen
+#' specifically because it did well on that same data. Prefer determining
+#' the threshold on the \strong{training} set (\code{dataset_type =
+#' "training"}), then applying that fixed numeric value to the testing/
+#' external set yourself (e.g. via \code{ApplyThreshold(..., custom_threshold
+#' = your_value)}) for a genuine out-of-sample evaluation.
+#'
+#' To keep this visible, calling this function with \code{dataset_type =
+#' "testing"} or \code{"external"} emits a warning every time. The warning
+#' does not block execution -- e.g. you may legitimately want to inspect the
+#' full metrics table for exploratory purposes -- but any threshold selected
+#' under that warning should not be reported as if it were fixed in advance.
+#'
 #' @param model_obj,newdata,model_name  As elsewhere.
+#' @param dataset_type Character string indicating the dataset origin for plot
+#'   labelling. Must be one of \code{"testing"}, \code{"training"}, or
+#'   \code{"external"}. Default is \code{"testing"}.
 #' @param target_se      Target Sensitivity (e.g., 0.9). Default NULL.
 #' @param target_sp      Target Specificity (e.g., 0.9). Default NULL.
 #' @param target_ppv     Target PPV (e.g., 0.95). Default NULL.
@@ -330,17 +968,58 @@ PlotConfounderForest <- function(model_obj,
 #' @return A list with \code{thresholds}, \code{metrics_df}, \code{probabilities},
 #'   \code{true}, \code{positive}, \code{negative}.
 #' @export
+#' @examples
+#' \dontrun{
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#' set.seed(123)
+#' idx <- sample(1:nrow(mtcars), 20)
+#' model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#' trained <- ModelTrainAnalysis(model, methods = c("glm"), control = list(method = "cv", number = 3),
+#' save_plots = FALSE)
+#' # Calculate thresholds on training set (preferred)
+#' thresh <- CalculateThresholds(trained, newdata = trained@filtered.set$training, 
+#' dataset_type = "training")
+#' print(thresh$thresholds)
+#' # Apply to test set
+#' apply_res <- ApplyThreshold(thresh, which_threshold = "Youden", 
+#' newdata = trained@filtered.set$testing)
+#' print(apply_res$metrics)
+#' # ClinicalThreshold wrapper (plots if interactive)
+#' if (interactive()) {
+#'   ClinicalThreshold(model_obj = trained, newdata = trained@filtered.set$testing, 
+#'   save_plot = FALSE)
+#' }
+#' }
 CalculateThresholds <- function(model_obj,
                                 newdata      = NULL,
                                 model_name   = NULL,
+                                dataset_type = c("testing", "training", "external"),
                                 target_se    = NULL,
                                 target_sp    = NULL,
                                 target_ppv   = NULL,
                                 target_npv   = NULL,
                                 target_acc   = TRUE) {
   .check_clinical_pkgs()
-  if (is.null(newdata) && inherits(model_obj, "Train_Model"))
-    newdata <- model_obj@filtered.set$testing
+  dataset_type <- match.arg(dataset_type)
+  
+  if (dataset_type %in% c("testing", "external")) {
+    warning(
+      "CalculateThresholds() is searching for a threshold (Youden / target ",
+      "Se-Sp-PPV-NPV / max Accuracy) directly on the '", dataset_type, "' ",
+      "set. Metrics reported at that threshold on this same data are ",
+      "optimistically biased (threshold overfitting) and should not be ",
+      "reported as generalizable performance. Prefer determining the ",
+      "threshold on the training set, then applying that fixed value to ",
+      "this set (e.g. via ApplyThreshold(..., custom_threshold = ...)).",
+      call. = FALSE
+    )
+  }
+  
+  if (is.null(newdata) && inherits(model_obj, "Train_Model")) {
+    aligned <- .align_clinical_and_newdata(model_obj, newdata = newdata, dataset_type = dataset_type)
+    newdata <- aligned$newdata
+  }
   stopifnot(!is.null(newdata))
   
   probs <- .predict_probs(model_obj, newdata, model_name)
@@ -420,7 +1099,7 @@ CalculateThresholds <- function(model_obj,
 #' Accuracy, PPV, NPV, and F1, and returns selected thresholds based on
 #' user-defined targets.
 #'
-#' @param probs Numeric vector of predicted probabilities (range 0–1).
+#' @param probs Numeric vector of predicted probabilities (range 0-1).
 #' @param true Factor vector of true binary labels.
 #' @param positive Character string specifying the positive class
 #'   (e.g., \code{"yes"}). Must be one of the levels of \code{true}.
@@ -506,7 +1185,6 @@ CalculateThresholdsFromProbs <- function(probs,
   
   youden <- coords_all[which.max(coords_all$se + coords_all$sp - 1), ]
   
-  # Build metrics table (same as original)
   uniq_thr <- sort(unique(round(probs, 4)), decreasing = TRUE)
   met_list <- lapply(uniq_thr, function(t) {
     pred_class <- factor(ifelse(probs > t, positive, negative),
@@ -564,7 +1242,7 @@ CalculateThresholdsFromProbs <- function(probs,
        positive      = positive,
        negative      = negative)
 }
-# -- 6. Threshold accuracy / PPV / NPV curve --------------------------------
+
 #' Accuracy/PPV/NPV vs Threshold Plot with Custom Threshold Markers
 #'
 #' @param thresh_result Output from \code{CalculateThresholds}.
@@ -579,14 +1257,18 @@ PlotThresholdAccuracy <- function(thresh_result,
                                  names_to = "Metric", values_to = "Value")
   thr <- thresh_result$thresholds
   
-  label_df <- do.call(rbind, lapply(names(thr), function(nm) {
-    tval <- thr[nm]
-    idx <- which.min(abs(df$Threshold - tval))
-    data.frame(Threshold = tval,
-               Metric    = c("Accuracy", "PPV", "NPV"),
-               Value     = c(df$Accuracy[idx], df$PPV[idx], df$NPV[idx]),
-               Label     = nm)
+  # One vertical reference line + one label PER THRESHOLD, instead of one
+  # point/label per (threshold x metric-curve) combination. The old approach
+  # placed 3 overlapping "asterisk + text" labels for every named threshold
+  # (its Accuracy value, its PPV value, its NPV value), which becomes an
+  # unreadable pile-up whenever two thresholds land close together (e.g.
+  # Youden and MaxAcc). Thresholds that round to the same value are merged
+  # into a single "Youden / MaxAcc" label so they don't stack either.
+  thr_df <- data.frame(Threshold = round(as.numeric(thr), 4), Label = names(thr))
+  thr_df <- do.call(rbind, lapply(split(thr_df, thr_df$Threshold), function(g) {
+    data.frame(Threshold = g$Threshold[1], Label = paste(g$Label, collapse = " / "))
   }))
+  thr_df$y_label <- 1.06
   
   cols <- c("Accuracy" = "#800000", "PPV" = "#767676", "NPV" = "#cc8214")
   lty  <- c("Accuracy" = "solid",  "PPV" = "dotted",   "NPV" = "dashed")
@@ -596,12 +1278,15 @@ PlotThresholdAccuracy <- function(thresh_result,
     ggplot2::geom_line(size = 1.1) +
     ggplot2::scale_color_manual(values = cols) +
     ggplot2::scale_linetype_manual(values = lty) +
-    ggplot2::geom_point(data = label_df,
-                        ggplot2::aes(x = Threshold, y = Value),
-                        size = 3, shape = 8, color = "red") +
-    ggrepel::geom_text_repel(data = label_df,
-                             ggplot2::aes(label = paste0(Label, "\n(", round(Value, 2), ")")),
-                             color = "red", size = 3.5) +
+    ggplot2::geom_vline(data = thr_df, ggplot2::aes(xintercept = Threshold),
+                        color = "red", linetype = "dotted", alpha = 0.5, inherit.aes = FALSE) +
+    ggrepel::geom_text_repel(data = thr_df,
+                             ggplot2::aes(x = Threshold, y = y_label,
+                                          label = paste0(Label, "\n(", signif(Threshold, 2), ")")),
+                             inherit.aes = FALSE, color = "red", size = 3.2,
+                             direction = "x", segment.size = 0.3, min.segment.length = 0,
+                             max.overlaps = Inf) +
+    ggplot2::scale_y_continuous(limits = c(0, 1.15), breaks = c(0, 0.25, 0.5, 0.75, 1)) +
     ggplot2::labs(title = "Accuracy / PPV / NPV vs Threshold",
                   x = "Threshold", y = "Value") +
     ggprism::theme_prism(base_size = 13) +
@@ -617,78 +1302,118 @@ PlotThresholdAccuracy <- function(thresh_result,
   return(p)
 }
 
-# -- 7. Decision zone density plot -----------------------------------------
 #' Decision Density with Threshold Zones
 #'
-#' @param thresh_result Output from \code{CalculateThresholds}.
-#' @param lower_threshold Default: \code{Se_Target} if exists, else Youden.
-#' @param upper_threshold Default: \code{Sp_Target} if exists, else Youden.
-#' @param save_plot,save_dir  Output options.
-#' @return A ggplot object.
+#' Visualizes predicted probability density distributions stratified by true outcome,
+#' overlaid with decision threshold lines and risk zone summary statistics (Low/High counts,
+#' PPV, and NPV).
+#'
+#' @param thresh_result Output list from \code{CalculateThresholds}.
+#' @param lower_threshold Numeric threshold defining the lower decision boundary.
+#'   Defaults to \code{Se_Target} if available, otherwise falls back to \code{Youden}.
+#' @param upper_threshold Numeric threshold defining the upper decision boundary.
+#'   Defaults to \code{Sp_Target} if available, otherwise falls back to \code{Youden}.
+#' @param save_plot Logical; whether to save the rendered density plot as a PDF file. Default is \code{FALSE}.
+#' @param save_dir Directory path where the output PDF will be saved.
+#'
+#' @return A \code{ggplot} object showing probability density distributions and decision zones.
 #' @export
 PlotThresholdDensity <- function(thresh_result,
                                  lower_threshold = NULL,
                                  upper_threshold = NULL,
                                  save_plot = FALSE,
                                  save_dir  = NULL) {
-  probs <- thresh_result$probabilities
-  true  <- thresh_result$true
+  # Validate required packages
+  .check_clinical_pkgs()
+  
+  # Extract predictions and true labels
+  probs    <- thresh_result$probabilities
+  true     <- thresh_result$true
   positive <- thresh_result$positive
   negative <- thresh_result$negative
   
-  if (is.null(lower_threshold)) {
+  # Step 1: Safely resolve lower and upper thresholds with fallback options
+  if (is.null(lower_threshold) || is.na(lower_threshold)) {
     lower_threshold <- thresh_result$thresholds["Se_Target"]
-    if (is.na(lower_threshold)) lower_threshold <- thresh_result$thresholds["Youden"]
+    if (is.null(lower_threshold) || is.na(lower_threshold)) {
+      lower_threshold <- thresh_result$thresholds["Youden"]
+    }
   }
-  if (is.null(upper_threshold)) {
+  
+  if (is.null(upper_threshold) || is.na(upper_threshold)) {
     upper_threshold <- thresh_result$thresholds["Sp_Target"]
-    if (is.na(upper_threshold)) upper_threshold <- thresh_result$thresholds["Youden"]
+    if (is.null(upper_threshold) || is.na(upper_threshold)) {
+      upper_threshold <- thresh_result$thresholds["Youden"]
+    }
   }
   
   df <- data.frame(prob = probs, group = true)
+  total_n <- nrow(df)
+  
+  # Step 2: Compute counts across decision zones
   low_count  <- sum(df$prob <= lower_threshold)
   mid_count  <- sum(df$prob > lower_threshold & df$prob <= upper_threshold)
-  high_count <- nrow(df) - low_count - mid_count
-  low_npv    <- round(mean(df$group[df$prob <= lower_threshold] == negative) * 100, 1)
-  high_ppv   <- round(mean(df$group[df$prob > upper_threshold] == positive) * 100, 1)
+  high_count <- total_n - low_count - mid_count
+  
+  # Step 3: Compute NPV and PPV safely to prevent NaN when subset is empty
+  low_npv_str <- if (low_count > 0) {
+    sprintf("%.1f%%", mean(df$group[df$prob <= lower_threshold] == negative) * 100)
+  } else {
+    "N/A"
+  }
+  
+  high_ppv_str <- if (high_count > 0) {
+    sprintf("%.1f%%", mean(df$group[df$prob > upper_threshold] == positive) * 100)
+  } else {
+    "N/A"
+  }
   
   cols <- c("#969696", "#fed9a6")
+  max_density_y <- max(density(df$prob)$y, na.rm = TRUE)
   
+  # Step 4: Render density plot with decision zone annotations
   p <- ggplot2::ggplot(df, ggplot2::aes(x = prob, fill = group)) +
     ggplot2::geom_density(alpha = 0.6, colour = NA) +
     ggplot2::scale_fill_manual(values = cols) +
+    # Highlight Low-risk and High-risk decision zones
     ggplot2::annotate("rect", xmin = -Inf, xmax = lower_threshold,
                       ymin = -Inf, ymax = Inf,
-                      fill = "#ffffb3", alpha = 0.15) +
+                      fill = "#ffffb3", alpha = 0.1) +
     ggplot2::annotate("rect", xmin = upper_threshold, xmax = Inf,
                       ymin = -Inf, ymax = Inf,
-                      fill = "#8dd3c7", alpha = 0.15) +
+                      fill = "#8dd3c7", alpha = 0.1) +
     ggplot2::geom_vline(xintercept = c(lower_threshold, upper_threshold),
                         linetype = "dashed", color = "grey40") +
-    ggplot2::annotate("text", x = lower_threshold/2,
-                      y = max(density(df$prob)$y) * 0.9,
-                      label = paste0("Low: ", low_count, " (", round(low_count/nrow(df)*100,1),
-                                     "%)\nNPV: ", low_npv, "%"), size = 3.5) +
-    ggplot2::annotate("text", x = (upper_threshold + 1)/2,
-                      y = max(density(df$prob)$y) * 0.9,
-                      label = paste0("High: ", high_count, " (", round(high_count/nrow(df)*100,1),
-                                     "%)\nPPV: ", high_ppv, "%"), size = 3.5) +
+    # Add Low-risk zone label
+    ggplot2::annotate("text", x = lower_threshold / 2,
+                      y = max_density_y * 0.9,
+                      label = paste0("Low: ", low_count, " (", round(low_count / total_n * 100, 1),
+                                     "%)\nNPV: ", low_npv_str), size = 3.5) +
+    # Add High-risk zone label
+    ggplot2::annotate("text", x = (upper_threshold + 1) / 2,
+                      y = max_density_y * 0.9,
+                      label = paste0("High: ", high_count, " (", round(high_count / total_n * 100, 1),
+                                     "%)\nPPV: ", high_ppv_str), size = 3.5) +
     ggplot2::labs(title = "Prediction Density with Decision Zones",
                   x = "Predicted Probability", y = "Density") +
     ggprism::theme_prism(base_size = 13) +
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"),
                    legend.position = "top")
   
+  # Display plot
   print(p)
+  
+  # Step 5: Save plot to disk if requested
   if (save_plot) {
+    if (is.null(save_dir)) save_dir <- getwd()
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
     ggplot2::ggsave(file.path(save_dir, "threshold_density.pdf"),
                     plot = p, width = 7, height = 5, dpi = 300)
   }
+  
   return(p)
 }
 
-# -- 8. Waterfall plot ------------------------------------------------------
 #' Waterfall Plot for Threshold Classification
 #'
 #' @param thresh_result Output from \code{CalculateThresholds}.
@@ -720,6 +1445,7 @@ PlotThresholdWaterfall <- function(thresh_result,
                   x = "Samples (sorted)", y = "Difference from threshold") +
     ggprism::theme_prism(base_size = 13) +
     ggplot2::theme(axis.text.x = ggplot2::element_blank(),
+                   axis.ticks.x  = ggplot2::element_blank(),
                    plot.title   = ggplot2::element_text(hjust = 0.5, face = "bold"))
   
   print(p)
@@ -731,7 +1457,6 @@ PlotThresholdWaterfall <- function(thresh_result,
   return(p)
 }
 
-# -- 9. Confusion matrix for a chosen threshold ----------------------------
 #' Confusion Matrix Heatmap (Customizable Colors)
 #'
 #' @param thresh_result Output from \code{CalculateThresholds}.
@@ -782,60 +1507,80 @@ PlotThresholdConfusion <- function(thresh_result,
   return(p)
 }
 
-# -- 10. Multi-threshold ROC comparison -------------------------------------
 #' Compare Threshold-Based Classifiers with Original Score (Final, Fixed)
 #'
-#' @param thresh_result Output from `CalculateThresholds`.
-#' @param compare_model A second `thresh_result` for another model (optional).
-#' @param compare_label Label for the comparison model.
-#' @param save_plot,save_dir  Output options.
-#' @return A ggplot object.
+#' Evaluates and visualizes ROC curves overlaid with specific threshold operating
+#' points (e.g., Youden index, custom targets). Optionally compares performance
+#' against a second classifier model.
+#'
+#' @param thresh_result Output list from \code{CalculateThresholds}.
+#' @param compare_model Optional second threshold result list for model comparison.
+#' @param compare_label Character label for the comparison model. Default is \code{"Clinician"}.
+#' @param save_plot Logical; whether to save the rendered ROC plot as a PDF. Default is \code{FALSE}.
+#' @param save_dir Directory path where the output PDF will be saved.
+#'
+#' @return A \code{ggplot} object representing the ROC curve with marked threshold points.
 #' @export
 PlotThresholdROC <- function(thresh_result,
                              compare_model = NULL,
                              compare_label = "Clinician",
                              save_plot = FALSE,
                              save_dir  = NULL) {
-  probs <- thresh_result$probabilities
-  true  <- thresh_result$true
+  # Validate required packages
+  .check_clinical_pkgs()
+  
+  # Extract prediction probabilities and true binary outcome labels
+  probs    <- thresh_result$probabilities
+  true     <- thresh_result$true
   positive <- thresh_result$positive
   negative <- thresh_result$negative
   
+  # Build primary ROC curve object
   roc_main <- pROC::roc(true, probs, levels = c(negative, positive),
                         direction = "auto", quiet = TRUE)
   auc_main <- round(as.numeric(pROC::auc(roc_main)), 3)
   
   thr_names <- names(thresh_result$thresholds)
-  # Extract coordinates safely
+  
+  # Step 1: Safely extract coordinates (Sensitivity and Specificity) for each threshold
   sens_sp <- lapply(thr_names, function(nm) {
     tval <- thresh_result$thresholds[nm]
     co <- tryCatch({
-      res <- pROC::coords(roc_main, tval, ret = c("se", "sp"), best.method = "closest")
-      se <- if (is.list(res)) as.numeric(res$sensitivity[1]) else as.numeric(res[1])
-      sp <- if (is.list(res)) as.numeric(res$specificity[1]) else as.numeric(res[2])
+      # Explicitly specify x = tval and input = "threshold" to prevent pROC from
+      # mistaking numeric thresholds for point indices, and remove redundant best.method
+      res <- pROC::coords(roc_main, x = tval, input = "threshold",
+                          ret = c("sensitivity", "specificity"))
+      se  <- if (is.data.frame(res) || is.list(res)) as.numeric(res$sensitivity[1]) else as.numeric(res[1])
+      sp  <- if (is.data.frame(res) || is.list(res)) as.numeric(res$specificity[1]) else as.numeric(res[2])
       data.frame(Threshold = nm, Sensitivity = se, Specificity = sp)
     }, error = function(e) NULL)
+    
     if (is.null(co) || any(is.na(co[, c("Sensitivity", "Specificity")]))) return(NULL)
     co
   })
-  thr_df <- do.call(rbind, sens_sp)
-  if (is.null(thr_df) || nrow(thr_df) == 0) stop("No valid threshold coordinates could be extracted.")
-  thr_df$FPR <- 1 - thr_df$Specificity
-  # Rename Sensitivity to TPR for convenience (optional, we'll just use Sensitivity)
-  # We'll use Sensitivity directly in geom_point
   
+  thr_df <- do.call(rbind, sens_sp)
+  if (is.null(thr_df) || nrow(thr_df) == 0) {
+    stop("No valid threshold coordinates could be extracted.")
+  }
+  
+  # Calculate False Positive Rate (FPR = 1 - Specificity)
+  thr_df$FPR <- 1 - thr_df$Specificity
+  
+  # Construct dataframe for main ROC curve
   roc_df <- data.frame(FPR = 1 - roc_main$specificities,
                        TPR = roc_main$sensitivities)
-  n_thr <- nrow(thr_df)
-  cols <- wesanderson::wes_palette("Darjeeling1", max(4, n_thr + 1), type = "discrete")
   
+  n_thr <- nrow(thr_df)
+  cols  <- wesanderson::wes_palette("Darjeeling1", max(4, n_thr + 1), type = "discrete")
+  
+  # Step 2: Render primary ROC curve and mark threshold operating points
   p <- ggplot2::ggplot(roc_df, ggplot2::aes(x = FPR, y = TPR)) +
-    ggplot2::geom_line(color = cols[1], size = 1.2) +
+    ggplot2::geom_line(color = cols[1], linewidth = 1.2) +
     ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey50") +
-    # Explicit mapping for points: x = FPR, y = Sensitivity (= TPR)
     ggplot2::geom_point(data = thr_df, size = 4,
                         mapping = ggplot2::aes(x = FPR, y = Sensitivity),
-                        color = cols[2:(n_thr+1)]) +
+                        color = cols[2:(n_thr + 1)]) +
     ggrepel::geom_text_repel(data = thr_df,
                              mapping = ggplot2::aes(x = FPR, y = Sensitivity, label = Threshold),
                              size = 3.5) +
@@ -846,28 +1591,35 @@ PlotThresholdROC <- function(thresh_result,
     ggprism::theme_prism(base_size = 13) +
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, face = "bold"))
   
+  # Step 3: Overlay comparison model ROC curve if provided
   if (!is.null(compare_model)) {
     roc_comp <- pROC::roc(compare_model$true, compare_model$probabilities,
                           levels = c(negative, positive), direction = "auto", quiet = TRUE)
     auc_comp <- round(as.numeric(pROC::auc(roc_comp)), 3)
-    comp_df <- data.frame(FPR = 1 - roc_comp$specificities,
-                          TPR = roc_comp$sensitivities)
-    p <- p + ggplot2::geom_line(data = comp_df, color = cols[n_thr+2], size = 1.2, linetype = "dashed") +
+    comp_df  <- data.frame(FPR = 1 - roc_comp$specificities,
+                           TPR = roc_comp$sensitivities)
+    
+    p <- p +
+      ggplot2::geom_line(data = comp_df, color = cols[n_thr + 2], linewidth = 1.2, linetype = "dashed") +
       ggplot2::annotate("text", x = 0.75, y = 0.15,
                         label = paste0(compare_label, " AUC = ", auc_comp),
-                        size = 4, color = cols[n_thr+2])
+                        size = 4, color = cols[n_thr + 2])
   }
   
+  # Display plot
   print(p)
+  
+  # Step 4: Save plot to disk if requested
   if (save_plot) {
+    if (is.null(save_dir)) save_dir <- getwd()
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
     ggplot2::ggsave(file.path(save_dir, "threshold_roc.pdf"),
                     plot = p, width = 7, height = 6, dpi = 300)
   }
+  
   return(p)
 }
 
-# -- 11. NRI / IDI analysis -------------------------------------------------
 #' Calculate NRI and IDI between two survival/mortality prediction models
 #'
 #' @description
@@ -1152,10 +1904,65 @@ CompareClassification <- function(thresh_result1,
   
   invisible(list(metrics = metrics_df, cm1 = cm1, cm2 = cm2, plot = p))
 }
-# -- 12. Standalone step functions ------------------------------------------
+
 #' Clinical Correlation Analysis (Standalone)
-#' @inheritParams ClinicalAnalysis
+#'
+#' Convenience wrapper around \code{\link{PlotClinicalCorrelation}}.
+#' Automatically extracts clinical data from the model object if not provided,
+#' and passes all additional arguments to \code{PlotClinicalCorrelation} to
+#' compute and visualize associations between model predictions and clinical
+#' variables.
+#'
+#' @param model_obj A \code{Train_Model} S4 object containing a trained model,
+#'   and optionally clinical data attached via \code{\link{AttachClinicalData}}.
+#' @param clinical_data Optional data frame with clinical variables. If
+#'   \code{NULL} (default), the function attempts to use
+#'   \code{model_obj@process.info$clinical_data}.
+#' @param ... Additional arguments passed to \code{\link{PlotClinicalCorrelation}},
+#'   such as:
+#'   \describe{
+#'     \item{newdata}{Data frame containing the feature data used for prediction.
+#'       Required if not using the default from the model object.}
+#'     \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+#'       \code{"external"}. Default is \code{"testing"}.}
+#'     \item{model_name}{Character. Specific model name from
+#'       \code{model_obj@train.models}, or \code{"ensemble"} to use an ensemble.
+#'       Defaults to the best model.}
+#'     \item{ordinal_vars}{Character vector of column names in \code{clinical_data}
+#'       that should be treated as ordinal (included in Spearman correlation).}
+#'     \item{palette_name}{Character. Wes Anderson palette name for boxplots.
+#'       Default \code{"Royal1"}.}
+#'     \item{save_plot}{Logical. Save plots as PDF? Default \code{FALSE}.}
+#'     \item{save_dir}{Character. Directory to save plots if \code{save_plot = TRUE}.}
+#'   }
+#'
+#' @return Invisibly returns a list with two components:
+#'   \itemize{
+#'     \item \code{spearman}: Spearman correlation matrix and p-values for
+#'       continuous/ordinal variables (or \code{NULL} if none).
+#'     \item \code{categorical}: Data frame of group-difference test results
+#'       (Wilcoxon or Kruskal-Wallis) for nominal variables (or \code{NULL}).
+#'   }
+#'   The correlation heatmap and boxplots are drawn as side effects.
+#'
+#' @seealso \code{\link{PlotClinicalCorrelation}}, \code{\link{AttachClinicalData}}
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Prepare binary classification model
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#'
+#' # Attach clinical data (using other mtcars columns as "clinical")
+#' clin <- data.frame(row.names = rownames(mtcars),
+#'                    wt = mtcars$wt,
+#'                    cyl = factor(mtcars$cyl))
+#' model <- AttachClinicalData(model, clinical_data = clin)
+#'
+#' # Run correlation analysis
+#' ClinicalCorrelation(model, dataset_type = "training", save_plot = FALSE)
+#' }
 ClinicalCorrelation <- function(model_obj, clinical_data = NULL, ...) {
   if (is.null(clinical_data))
     clinical_data <- model_obj@process.info$clinical_data
@@ -1163,8 +1970,63 @@ ClinicalCorrelation <- function(model_obj, clinical_data = NULL, ...) {
 }
 
 #' Subgroup Analysis (Standalone)
-#' @inheritParams ClinicalAnalysis
+#'
+#' Convenience wrapper around \code{\link{PlotSubgroupForest}}.
+#' Iterates over one or more categorical clinical variables and generates
+#' a publication‑style forest plot showing subgroup‑specific AUCs with
+#' 95% confidence intervals. Clinical data is automatically extracted
+#' from the model object if not provided.
+#'
+#' @param model_obj A \code{Train_Model} S4 object containing a trained model,
+#'   and optionally clinical data attached via \code{\link{AttachClinicalData}}.
+#' @param clinical_data Optional data frame with clinical variables. If
+#'   \code{NULL} (default), the function attempts to use
+#'   \code{model_obj@process.info$clinical_data}.
+#' @param subgroup_vars Character vector specifying the categorical column names
+#'   in \code{clinical_data} to be used for subgroup stratification.
+#'   Each unique level of each variable becomes a separate subgroup.
+#'   This argument is \strong{required}.
+#' @param ... Additional arguments passed to \code{\link{PlotSubgroupForest}},
+#'   such as:
+#'   \describe{
+#'     \item{newdata}{Data frame used for model prediction. If \code{NULL},
+#'       the default data from the model object is used.}
+#'     \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+#'       \code{"external"}. Default is \code{"testing"}.}
+#'     \item{model_name}{Character. Specific model or \code{"ensemble"}.
+#'       Defaults to the best model.}
+#'     \item{var_labels}{Named character vector to relabel section headers.}
+#'     \item{level_order}{Named list specifying display order of factor levels.}
+#'     \item{min_n}{Minimum subgroup size required for evaluation. Default \code{5}.}
+#'     \item{xlim}{Numeric length-2 vector for x-axis limits.}
+#'     \item{ref_line}{Reference vertical line (default \code{0.5} for AUC).}
+#'     \item{save_plot}{Logical. Save plot as PDF? Default \code{FALSE}.}
+#'     \item{save_dir}{Character. Directory to save the plot.}
+#'   }
+#'
+#' @return Invisibly returns a list for the last generated forest plot,
+#'   containing the \code{plot} (forestploter graphic), \code{data}
+#'   (summary data frame), and \code{fits} (Cox regression fits, if applicable).
+#'
+#' @seealso \code{\link{PlotSubgroupForest}}, \code{\link{AttachClinicalData}}
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Prepare model
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#'
+#' # Attach clinical data (subgroup variables)
+#' clin <- data.frame(row.names = rownames(mtcars),
+#'                    cyl = factor(mtcars$cyl),
+#'                    vs = factor(mtcars$vs))
+#' model <- AttachClinicalData(model, clinical_data = clin)
+#'
+#' # Subgroup analysis by cyl and vs
+#' ClinicalSubgroup(model, subgroup_vars = c("cyl", "vs"),
+#'                  save_plot = FALSE)
+#' }
 ClinicalSubgroup <- function(model_obj, clinical_data = NULL,
                              subgroup_vars = NULL, ...) {
   if (is.null(clinical_data))
@@ -1173,9 +2035,64 @@ ClinicalSubgroup <- function(model_obj, clinical_data = NULL,
     PlotSubgroupForest(model_obj, clinical_data, v, ...)
 }
 
-#' Confounder Adjustment (Standalone)
-#' @inheritParams ClinicalAnalysis
+#' Confounder Adjustment Analysis (Standalone)
+#'
+#' This is a convenience wrapper around \code{\link{PlotConfounderForest}}.
+#' It extracts clinical data from the model object if not provided, and passes
+#' all additional arguments to \code{PlotConfounderForest} to fit a logistic
+#' regression of the outcome on the model's predicted logit plus clinical
+#' covariates, then plots the -log10(p-values) as a bar chart.
+#'
+#' @param model_obj A \code{Train_Model} S4 object containing a trained model,
+#'   and optionally clinical data attached via \code{\link{AttachClinicalData}}.
+#' @param clinical_data Optional data frame with clinical variables. If
+#'   \code{NULL} (default), the function attempts to use
+#'   \code{model_obj@process.info$clinical_data}.
+#' @param ... Additional arguments passed to \code{\link{PlotConfounderForest}},
+#'   such as:
+#'   \describe{
+#'     \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+#'       \code{"external"}. Determines which feature/clinical data are used.
+#'       Default is \code{"testing"}.}
+#'     \item{outcome_var}{Character. Name of the binary outcome column in the
+#'       data. This argument is \strong{required}; must be supplied either here
+#'       or via \code{...}.}
+#'     \item{adjust_vars}{Character vector of clinical column names to adjust
+#'       for. If \code{NULL} (default), all clinical columns except
+#'       \code{outcome_var} are used.}
+#'     \item{model_name}{Optional character. Specific model from
+#'       \code{model_obj@train.models} to use for prediction, or
+#'       \code{"ensemble"} to use an ensemble. Defaults to the best model.}
+#'     \item{positive_class}{Character. The positive outcome level. Defaults
+#'       to \code{"1"}.}
+#'     \item{save_plot}{Logical. Whether to save the plot as PDF. Default
+#'       \code{FALSE}.}
+#'     \item{save_dir}{Character. Directory to save the plot if
+#'       \code{save_plot = TRUE}.}
+#'   }
+#'
+#' @return A \code{ggplot} object (invisibly printed). The plot shows
+#'   -log10(p-values) for each covariate from the logistic regression model,
+#'   with a dashed line at p = 0.05 for reference.
+#'
+#' @seealso \code{\link{PlotConfounderForest}}, \code{\link{AttachClinicalData}}
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Prepare data
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#'
+#' # Attach clinical data (here using other columns as "clinical")
+#' clin <- data.frame(row.names = rownames(mtcars),
+#'                    wt = mtcars$wt,
+#'                    qsec = mtcars$qsec)
+#' model <- AttachClinicalData(model, clinical_data = clin)
+#'
+#' # Run confounder analysis (outcome_var is required)
+#' ClinicalConfounder(model, outcome_var = "am", save_plot = FALSE)
+#' }
 ClinicalConfounder <- function(model_obj, clinical_data = NULL, ...) {
   if (is.null(clinical_data))
     clinical_data <- model_obj@process.info$clinical_data
@@ -1236,22 +2153,17 @@ ClinicalThreshold <- function(model_obj = NULL,
                               ...) {
   .check_clinical_pkgs()
   
-  # --- Case 2: pre-computed thresholds ---
   if (!is.null(thresh)) {
     if (!is.list(thresh) || is.null(thresh$thresholds))
       stop("'thresh' must be a list returned by CalculateThresholds or CalculateThresholdsFromProbs.")
     cat("Using pre-computed threshold object...\n")
-    # No clinical data needed for plots
   } else {
-    # --- Case 1: compute from model object ---
     if (is.null(model_obj))
       stop("Either 'model_obj' or 'thresh' must be provided.")
     if (is.null(newdata) && inherits(model_obj, "Train_Model"))
       newdata <- model_obj@filtered.set$testing
     thresh <- CalculateThresholds(model_obj, newdata, model_name, ...)
   }
-  
-  # ---- Visualizations (all use the same 'thresh' object) ----
   PlotThresholdAccuracy(thresh, save_plot = save_plot, save_dir = save_dir)
   PlotThresholdDensity(thresh, save_plot = save_plot, save_dir = save_dir)
   for (thr_name in names(thresh$thresholds)) {
@@ -1305,102 +2217,61 @@ CompareModelThresholds <- function(model_obj1,
   
   invisible(list(thresh1 = thresh1, thresh2 = thresh2))
 }
-# -- 13. Master Clinical Analysis Pipeline ----------------------------------
-#' Complete Clinical Analysis Pipeline
-#'
-#' Runs correlation heatmap, subgroup forests, confounder adjustment,
-#' threshold analysis (accuracy curve, density, waterfall, confusion matrix,
-#' ROC comparison), and optionally NRI/IDI.
-#'
-#' @param model_obj      A Train_Model or caret model.
-#' @param clinical_data  Data frame of clinical variables. If NULL, uses
-#'   \code{@process.info$clinical_data} (set by \code{AttachClinicalData}).
-#' @param subgroup_vars  Character vector of categorical variables for subgroup
-#'   analysis. If NULL, skipped.
-#' @param outcome_var    Binary outcome column name.
-#' @param newdata        Data for prediction (default: \code{@filtered.set$testing}).
-#' @param model_name     Which model to use (NULL = best, "ensemble", model
-#'   name, or caret object).
-#' @param compare_model  Optional second \code{thresh_result} for ROC comparison and NRI.
-#' @param compare_label  Label for the comparison model.
-#' @param save_plots     Save all plots?
-#' @param save_dir       Output directory.
-#' @param ...            Additional arguments passed to \code{CalculateThresholds}
-#'   (e.g., \code{target_se}, \code{target_ppv}).
-#' @return Invisible list containing threshold results.
-#' @export
-ClinicalAnalysis <- function(model_obj,
-                             clinical_data  = NULL,
-                             subgroup_vars  = NULL,
-                             outcome_var    = "group",
-                             newdata        = NULL,
-                             model_name     = NULL,
-                             compare_model  = NULL,
-                             compare_label  = "Comparator",
-                             save_plots     = TRUE,
-                             save_dir       = "./ClinicalResults/",
-                             ...) {
-  .check_clinical_pkgs()
-  if (is.null(clinical_data))
-    clinical_data <- model_obj@process.info$clinical_data
-  if (is.null(newdata) && inherits(model_obj, "Train_Model"))
-    newdata <- model_obj@filtered.set$testing
-  if (is.null(save_dir) && save_plots) save_dir <- "./ClinicalResults/"
-  if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+
+#' @keywords internal
+.align_clinical_and_newdata <- function(model_obj, 
+                                        clinical_data = NULL, 
+                                        newdata       = NULL, 
+                                        dataset_type  = c("testing", "training", "external")) {
+  dataset_type <- match.arg(dataset_type)
   
-  cat("--- Clinical Analysis Pipeline ---\n")
-  
-  # 1. Correlation matrix
-  cat("[1/8] Correlation matrix...\n")
-  PlotClinicalCorrelation(model_obj, clinical_data, newdata, model_name,
-                          save_plot = save_plots, save_dir = save_dir)
-  
-  # 2. Subgroup forests
-  if (!is.null(subgroup_vars)) {
-    cat("[2/8] Subgroup analysis...\n")
-    for (v in subgroup_vars) {
-      PlotSubgroupForest(model_obj, clinical_data, v, newdata, model_name,
-                         save_plot = save_plots, save_dir = save_dir)
+  if (is.null(newdata) && inherits(model_obj, "Train_Model")) {
+    if (dataset_type == "testing") {
+      newdata <- model_obj@filtered.set$testing
+      if (is.null(newdata)) newdata <- model_obj@split.data$testing
+    } else if (dataset_type == "training") {
+      newdata <- model_obj@filtered.set$training
+      if (is.null(newdata)) newdata <- model_obj@split.data$training
+    } else if (dataset_type == "external") {
+      newdata <- model_obj@process.info$external_data
+      if (is.null(newdata)) stop("No external_data found in model_obj@process.info$external_data.")
     }
-  } else {
-    cat("[2/8] Subgroup analysis skipped.\n")
+  }
+  if (is.null(newdata)) stop("newdata could not be determined.")
+  
+  if (is.null(clinical_data) && inherits(model_obj, "Train_Model")) {
+    if (dataset_type == "external" && !is.null(model_obj@process.info$external_clinical)) {
+      clinical_data <- model_obj@process.info$external_clinical
+    } else {
+      clinical_data <- model_obj@process.info$clinical_data
+    }
+  }
+  if (is.null(clinical_data)) stop("clinical_data is NULL. Please attach clinical data first.")
+  
+  sample_ids <- rownames(newdata)
+  if (is.null(sample_ids)) stop("newdata must have rownames matching clinical_data.")
+  
+  common_samples <- intersect(sample_ids, rownames(clinical_data))
+  if (length(common_samples) == 0) {
+    stop("No overlapping rownames between newdata and clinical_data.")
   }
   
-  # 3. Confounder adjustment
-  cat("[3/8] Confounder adjustment...\n")
-  PlotConfounderForest(model_obj, clinical_data, outcome_var, newdata, model_name,
-                       save_plot = save_plots, save_dir = save_dir)
-  
-  # 4. Threshold calculation
-  cat("[4/8] Calculating thresholds...\n")
-  thresh <- CalculateThresholds(model_obj, newdata, model_name, ...)
-  print(thresh$thresholds)
-  
-  # 5. Accuracy / PPV / NPV curve
-  cat("[5/8] Threshold accuracy curve...\n")
-  PlotThresholdAccuracy(thresh, save_plot = save_plots, save_dir = save_dir)
-  
-  # 6. Density zones
-  cat("[6/8] Decision density plot...\n")
-  PlotThresholdDensity(thresh, save_plot = save_plots, save_dir = save_dir)
-  
-  # 7. Waterfall + confusion matrices
-  cat("[7/8] Waterfall and confusion plots...\n")
-  for (thr_name in names(thresh$thresholds)) {
-    PlotThresholdWaterfall(thresh, thr_name, save_plot = save_plots, save_dir = save_dir)
-    PlotThresholdConfusion(thresh, thr_name, save_plot = save_plots, save_dir = save_dir)
+  if (length(common_samples) < length(sample_ids)) {
+    warning(sprintf("[%s] Matched %d out of %d samples in newdata with clinical_data.", 
+                    dataset_type, length(common_samples), length(sample_ids)))
   }
   
-  # 8. ROC comparison + NRI
-  cat("[8/8] ROC comparison and NRI...\n")
-  PlotThresholdROC(thresh, compare_model = compare_model, compare_label = compare_label,
-                   save_plot = save_plots, save_dir = save_dir)
-  if (!is.null(compare_model)) {
-    CalculateNRI(thresh, compare_model,
-                 label1 = "Novel Model", label2 = compare_label,
-                 save_plot = save_plots, save_dir = save_dir)
+  matched_newdata  <- newdata[common_samples, , drop = FALSE]
+  matched_clinical <- clinical_data[common_samples, , drop = FALSE]
+  
+  gc <- model_obj@group_col
+  if (!is.null(gc) && !gc %in% colnames(matched_newdata) && gc %in% colnames(matched_clinical)) {
+    matched_newdata[[gc]] <- matched_clinical[[gc]]
   }
   
-  cat("--- Clinical analysis complete. Plots saved to", save_dir, "---\n")
-  invisible(list(thresh = thresh))
+  return(list(
+    newdata       = matched_newdata,
+    clinical_data = matched_clinical,
+    samples       = common_samples
+  ))
 }

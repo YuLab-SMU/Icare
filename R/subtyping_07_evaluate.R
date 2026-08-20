@@ -67,6 +67,7 @@ calinski_harabasz <- function(clustered.data,label_col = "group") {
 #' Davies-Bouldin Index
 #'
 #' @param clustered.data Clustered data.
+#' @param label_col Column for label.
 #' @return Numeric DB index value.
 #' @examples
 #' \dontrun{
@@ -75,11 +76,11 @@ calinski_harabasz <- function(clustered.data,label_col = "group") {
 #'   cat("Davies-Bouldin Index:", db, "\n")
 #' }
 #' @export
-davies_bouldin <- function(clustered.data) {
+davies_bouldin <- function(clustered.data, label_col = "group") {
   cat("Calculating Davies-Bouldin Index...\n")
   
-  X <- clustered.data[, -ncol(clustered.data), drop = FALSE]
-  labels <- clustered.data[, ncol(clustered.data)]
+  X <- clustered.data[, !names(clustered.data) %in% label_col, drop = FALSE]
+  labels <- clustered.data[[label_col]]
   
   
   n_clusters <- length(unique(labels))
@@ -146,6 +147,7 @@ davies_bouldin <- function(clustered.data) {
 #' Silhouette Score
 #'
 #' @param clustered.data Clustered data.
+#' @param label_col Column for label.
 #' @return Numeric average silhouette score.
 #' @examples
 #' \dontrun{
@@ -154,50 +156,25 @@ davies_bouldin <- function(clustered.data) {
 #'   cat("Silhouette Score:", sil, "\n")
 #' }
 #' @export
-silhouette_score <- function(clustered.data) {
+silhouette_score <- function(clustered.data, label_col = "group") {
   cat("Calculating Silhouette Score...\n")
   
-  X <- clustered.data[, -ncol(clustered.data), drop = FALSE]
-  labels <- clustered.data[, ncol(clustered.data)]
+  X <- clustered.data[, !names(clustered.data) %in% label_col, drop = FALSE]
+  labels <- clustered.data[[label_col]]
   
+  n_clusters <- length(unique(labels))
   
-  n_samples <- nrow(X)
-  unique_labels <- unique(labels)
-  n_clusters <- length(unique_labels)
-  
-  if (n_clusters == 1) {
+  if (n_clusters < 2) {
     cat("Warning: All samples belong to a single cluster. Returning 0.\n")
     return(0)
   }
   
-  cat("Calculating distance matrix...\n")
-  dist_matrix <- dist(X)
-  
-  label_to_index <- match(labels, unique_labels)
-  cat("Cluster labels mapped to continuous indices.\n")
-  
-  silhouette_values <- numeric(n_samples)
-  
-  for (i in 1:n_samples) {
-    current_cluster <- label_to_index[i]
-    
-    same_cluster <- which(label_to_index == current_cluster)
-    a_i <- mean(as.matrix(dist_matrix)[i, same_cluster[same_cluster != i]])
-    
-    other_clusters <- setdiff(unique(label_to_index), current_cluster)
-    b_i_values <- sapply(other_clusters, function(k) {
-      mean(as.matrix(dist_matrix)[i, label_to_index == k])
-    })
-    b_i <- min(b_i_values)
-    
-    silhouette_values[i] <- (b_i - a_i) / max(a_i, b_i)
-  }
-  
-  overall_silhouette <- mean(silhouette_values)
+  int_labels <- as.integer(factor(labels))
+  sil <- cluster::silhouette(int_labels, dist(X))
+  overall_silhouette <- mean(sil[, 3], na.rm = TRUE)
   
   cat("\nSilhouette Score Calculation Complete:\n")
   cat("Silhouette Score:", overall_silhouette, "\n")
-  
   
   return(overall_silhouette)
 }
@@ -216,6 +193,27 @@ silhouette_score <- function(clustered.data) {
 #'   print(obj@evaluation_results)
 #' }
 #' @export
+#' @examples
+#' \dontrun{
+#' set.seed(1)
+#' demo_df <- data.frame(
+#'   group = rep(c(0, 1), each = 30),
+#'   feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'   feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'   feat3 = rnorm(60, 10, 2),
+#'   feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+#' )
+#' rownames(demo_df) <- paste0("S", 1:60)
+#' stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                              group_col = "group", na.action = "allow")
+#' sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#' sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+#' sub_obj <- Sub_kmeans_with_optimal_k(sub_obj, k.max = 4, save_plots = FALSE, seed = 1)
+#'
+#' sub_obj@clustered.data$group <- sub_obj@info.data$cluster_kmeans
+#' eval_res <- Sub_evaluation_results(sub_obj, seed = 1)
+#' eval_res@evaluation_results
+#' }
 Sub_evaluation_results <- function(object ,
                                    seed = 123) {
   
@@ -247,9 +245,10 @@ Sub_evaluation_results <- function(object ,
     warning("Only one cluster detected. All evaluation metrics will be set to 0.")
   }
   
-  dbi_score <- davies_bouldin(clustered.data)
-  chi_score <- calinski_harabasz(clustered.data)
-  sil_score <- silhouette_score(clustered.data)
+  label_col <- colnames(clustered.data)[ncol(clustered.data)]
+  dbi_score <- davies_bouldin(clustered.data, label_col = label_col)
+  chi_score <- calinski_harabasz(clustered.data, label_col = label_col)
+  sil_score <- silhouette_score(clustered.data, label_col = label_col)
   
   evaluation_results <- list(
     Calinski_Harabasz = chi_score,

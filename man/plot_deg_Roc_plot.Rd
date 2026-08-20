@@ -11,7 +11,7 @@ plot_deg_Roc_plot(
   control = "health",
   case = "lung cancer",
   top_n = 5,
-  palette_name = "Royal1",
+  palette_name = "Paired",
   name_identity = "deg",
   save_plots = TRUE,
   save_dir = NULL,
@@ -38,7 +38,9 @@ Default is `'group'`.}
 
 \item{top_n}{The number of top features to consider based on log fold change. Default is 5.}
 
-\item{palette_name}{The name of the palette to be used for the ROC curves.}
+\item{palette_name}{The name of the RColorBrewer palette to be used for the ROC curves.
+Default is `"Paired"`. Only the top 9 curves (by AUC) receive these colors;
+additional curves are shown in light gray.}
 
 \item{name_identity}{The name or identifier used for the features in the `deg_test` data frame. Default is `'deg'`.}
 
@@ -70,11 +72,10 @@ for each feature. The plot can be saved to a specified directory.
 }
 \examples{
 \dontrun{
-data(stat_obj_test)
-stat_obj <- stat_var_feature(stat_obj_test)
-last_sig <- ExtractLastTestSig(stat_obj)
-print(last_sig)
-plot_deg_Roc_plot(deg_test = last_sig, mat_test = stat_obj@clean.data,
-group_col = 'SWAB',save_dir = "./")
+if (requireNamespace("pROC", quietly = TRUE)) {
+  data(iris)
+  res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+  plot_deg_Roc_plot(res, iris[, 1:5], group_col = "Species", save_plots = FALSE)
+}
 }
 }

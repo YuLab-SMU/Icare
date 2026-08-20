@@ -101,4 +101,13 @@ best <- select_elbow(elim, elbow_method = "difference")
 print(best$best_features)
 }
 
+\dontrun{
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  elim <- run_feature_elimination(model, models = c("rf"), number = 3, min_features = 2)
+  best <- select_elbow(elim, elbow_method = "difference")
+  print(best$optimal_counts)
+}
+}
 }

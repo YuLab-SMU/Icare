@@ -50,3 +50,13 @@ List with \code{result} (safs object), \code{opt_vars}, \code{plot}.
 \description{
 Simulated Annealing Feature Selection for Train_Model objects
 }
+\examples{
+\dontrun{
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  sa_res <- FeatureSelectSA(model, iters = 3, method = "cv", number = 2)
+  print(sa_res$opt_vars)
+}
+}
+}

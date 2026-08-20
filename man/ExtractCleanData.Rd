@@ -19,7 +19,7 @@ or `NULL` if extraction fails.
 This function extracts the `clean.data` slot from an object of class `Stat`.
 }
 \examples{
-\dontrun{
-data <- ExtractCleanData(stat_obj_test)
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+clean <- ExtractCleanData(stat)
+head(clean)
 }

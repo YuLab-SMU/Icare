@@ -10,9 +10,11 @@ batch_Wilcoxon(
   logfc_mat = NULL,
   logfc_type = "log2ratio",
   p_threshold = 0.05,
+  logfc_threshold = 0.1,
   save_dir = NULL,
   save_data = FALSE,
-  csv_filename = "last_test_sig.csv"
+  csv_filename = "last_test_sig.csv",
+  use_adjusted_p = FALSE
 )
 }
 \arguments{
@@ -26,11 +28,16 @@ batch_Wilcoxon(
 
 \item{p_threshold}{Numeric; only features with p < p_threshold are retained. Defaults to 0.05.}
 
+\item{logfc_threshold}{Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.}
+
 \item{save_dir}{Directory to save results.}
 
 \item{save_data}{Logical; whether to write CSV output.}
 
 \item{csv_filename}{Output filename.}
+
+\item{use_adjusted_p}{Logical. If TRUE, uses adjusted p-values (p.adjust) 
+for determining significance; if FALSE (default), uses raw p-values.}
 }
 \value{
 Data frame with W, p, mean_x/y, median_x/y, sd_x/y, p.adjust, logFC, change.
@@ -42,7 +49,8 @@ logFC is computed from `logfc_mat`, which is the appropriate data for ratio
 calculation.
 }
 \examples{
-\dontrun{
-deg_res <- batch_Wilcoxon(stat_obj_test@clean.data, group_col = "SWAB", p_threshold = 0.05)
-}
+data(iris)
+iris_sub <- iris[iris$Species != "virginica", ]
+res <- batch_Wilcoxon(iris_sub, group_col = "Species", p_threshold = 0.05)
+head(res)
 }
