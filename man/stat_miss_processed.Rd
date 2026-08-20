@@ -42,8 +42,7 @@ stat_miss_processed(
 Process Missing Values for Stat Object or Data Frame
 }
 \examples{
-\dontrun{
-#Impute missing values for the Stat object and update clean.data and process.info.
-stat_obj_test <- stat_miss_processed(stat_obj_test, impute_method = "median_mode")
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+stat <- stat_miss_processed(stat, impute_method = "median_mode", return_imputation_info = FALSE)
+head(stat@clean.data)
 }

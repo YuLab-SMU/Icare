@@ -9,7 +9,8 @@ Sub_tsne_analyse(
   perplexity = 30,
   dims = 2,
   iterations = 1000,
-  use_scaled_data = TRUE
+  use_scaled_data = TRUE,
+  seed = 123
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ Sub_tsne_analyse(
 \item{iterations}{Iterations.}
 
 \item{use_scaled_data}{Logical.}
+
+\item{seed}{Numeric.}
 }
 \description{
 Sub t-SNE Analyse

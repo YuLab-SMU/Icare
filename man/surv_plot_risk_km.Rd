@@ -2,100 +2,74 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_plot_risk_km}
 \alias{surv_plot_risk_km}
-\title{Plot Risk Stratification Kaplan-Meier Curve (Training or Validation)}
+\title{Plot Risk Stratification Kaplan-Meier Curve}
 \usage{
 surv_plot_risk_km(
   learner,
   object,
-  cutoff_method = c("median", "tertile", "quartile", "p_optimize"),
+  cutoff_method = c("median", "tertile", "quartile", "p_optimize", "maxstat", "custom"),
   custom_cutoffs = NULL,
-  n_boot = 10,
-  fraction = 0.1,
+  n_boot = 100,
+  fraction = 0.7,
+  minprop = 0.3,
   conf_int = FALSE,
   risk_table = FALSE,
   palette_name = "AsteroidCity1",
   show_cutoff = TRUE,
-  title = NULL
+  title = NULL,
+  group_col = NULL
 )
 }
 \arguments{
-\item{learner}{A trained \code{mlr3} learner that outputs \code{crank} predictions.}
+\item{learner}{A trained mlr3 learner (must support \code{"crank"} predictions
+if \code{group_col} is \code{NULL}).}
 
-\item{object}{A \code{TaskSurv} or \code{PrognosiX} object (can be training or validation task).}
+\item{object}{A \code{PrognosiX} or \code{TaskSurv} object.}
 
-\item{cutoff_method}{A character string specifying the method for determining
-risk group cutoffs. Must be one of \code{"median"}, \code{"tertile"},
-\code{"quartile"}, \code{"p_optimize"}, or \code{"custom"}.}
+\item{cutoff_method}{Method for determining cutoffs:
+\itemize{
+  \item \code{"median"}: split at median (binary).
+  \item \code{"tertile"}: tertiles (3 groups).
+  \item \code{"quartile"}: quartiles (4 groups).
+  \item \code{"p_optimize"}: bootstrap resampling to find cutoff that
+    minimises log‑rank p‑value (repeatedly, then take median).
+    \strong{Warning:} This is exploratory; the resulting p‑value is
+    over‐optimistic and must be validated in an independent set.
+  \item \code{"maxstat"}: use \code{maxstat::maxstat.test()} to find
+    the cutoff that maximises the log‑rank statistic (Hothorn & Lausen, 2003).
+    Supports \code{n_boot} resampling to obtain a stable cutoff.
+    \strong{Warning:} Same overfitting caveat as \code{p_optimize}.
+  \item \code{"custom"}: user‐supplied cutoffs.
+}}
 
-\item{custom_cutoffs}{A numeric vector of custom cutoffs (required when
-\code{cutoff_method = "custom"}). Length 1 -> binary split, length 2 -> three
-groups, length 3 -> four groups, etc.}
+\item{custom_cutoffs}{Numeric vector for custom method.}
 
-\item{n_boot}{An integer specifying the number of bootstrap samples for
-\code{p_optimize} method. Default is \code{10}.}
+\item{n_boot}{Number of bootstrap samples for \code{"p_optimize"} and
+\code{"maxstat"}. Default 100.}
 
-\item{fraction}{A numeric value specifying the subsample fraction for
-\code{p_optimize}. Default is \code{0.1}.}
+\item{fraction}{Subsample fraction for \code{"p_optimize"} (default 0.7).}
 
-\item{conf_int}{A logical value. Should confidence intervals be shown?
-Default is \code{FALSE}.}
+\item{minprop}{Minimum proportion of observations per group for
+\code{"maxstat"} (default 0.3).}
 
-\item{risk_table}{A logical value. Should a risk table be shown below the plot?
-Default is \code{FALSE}.}
+\item{conf_int}{Logical; draw confidence bands.}
 
-\item{palette_name}{A character string specifying the Wes Anderson palette name.
-Default is \code{"AsteroidCity1"}.}
+\item{risk_table}{Logical; show risk table below plot.}
 
-\item{show_cutoff}{A logical value. Should cutoffs be displayed in the plot subtitle?
-Default is \code{TRUE}.}
+\item{palette_name}{Wes Anderson palette name.}
 
-\item{title}{An optional custom plot title. If \code{NULL}, auto-generated.}
+\item{show_cutoff}{Logical; show cutoff values in subtitle.}
+
+\item{title}{Custom plot title.}
+
+\item{group_col}{Optional character; name of a clinical variable in
+\code{info.data} to use instead of risk scores.}
 }
 \value{
-A \code{\link[survminer]{ggsurvplot}} object with the Kaplan-Meier plot.
-  The cutoffs used and group distribution are stored as attributes.
+A \code{ggsurvplot} object (with cutoffs stored as attribute).
 }
 \description{
-Generates Kaplan-Meier survival curves stratified by risk groups defined by
-a model's predicted risk scores (crank values). Supports multiple cutoff
-determination methods including median, tertile, quartile, and p-value optimization.
-}
-\details{
-The cutoff methods work as follows:
-\itemize{
-  \item \code{"median"}: Splits at the median risk score (binary groups).
-  \item \code{"tertile"}: Splits at the 1/3 and 2/3 quantiles (3 groups).
-  \item \code{"quartile"}: Splits at the 1/4, 1/2, and 3/4 quantiles (4 groups).
-  \item \code{"p_optimize"}: Finds the cutoff that maximizes log-rank test
-    significance across bootstrap samples (binary groups).
-  \item \code{"custom"}: Uses user-provided cutoffs for arbitrary group numbers.
-}
-}
-\examples{
-\dontrun{
-library(mlr3proba)
-library(survival)
-
-data("veteran", package = "survival")
-task <- surv_create_surv_task(veteran, "time", "status")
-learner <- lrn("surv.coxph")$train(task)
-
-# Median split
-p <- surv_plot_risk_km(learner, task, cutoff_method = "median")
-print(p)
-
-# Tertile split (3 groups)
-p_tertile <- surv_plot_risk_km(learner, task, cutoff_method = "tertile")
-
-# Custom cutoffs
-p_custom <- surv_plot_risk_km(
-  learner, task,
-  cutoff_method = "custom",
-  custom_cutoffs = c(-1, 0, 1)
-)
-}
-
-}
-\seealso{
-\code{\link{get_cf}} for extracting cutoffs from the plot object
+Generates Kaplan-Meier curves stratified by risk groups based on a model's
+predicted risk scores or a clinical variable. Supports multiple cutoff
+determination methods.
 }

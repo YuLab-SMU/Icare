@@ -27,9 +27,9 @@ from a `Train_Model` S4 object. Validates input and returns an S3 object of clas
 }
 \examples{
 \dontrun{
-data(train_obj_test)
+data(model_obj_test)
 # Assuming 'train_obj_test' is a valid Train_Model object
-extracted <- ExtractModel(train_obj_test)
+extracted <- ExtractModel(model_obj_test)
 print(extracted$best_model)
 }
 }

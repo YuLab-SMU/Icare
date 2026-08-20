@@ -2,7 +2,7 @@
 % Please edit documentation in R/stat_04_descriptive.R
 \name{plot_numeric_descriptive}
 \alias{plot_numeric_descriptive}
-\title{Numeric Descriptive Plots (Violin or Ridge Density)}
+\title{Descriptive Numeric Variable Plots (Violin or Ridge)}
 \usage{
 plot_numeric_descriptive(
   object,
@@ -16,62 +16,50 @@ plot_numeric_descriptive(
   plot_width = 5,
   plot_height = 5,
   base_size = 14,
-  sub_var = NULL
+  sub_var = NULL,
+  group_colors = NULL
 )
 }
 \arguments{
-\item{object}{An object of class `Stat` or a data frame containing numeric data.
-If the object is of class `Stat`, the clean data is extracted from the `Stat` object.}
+\item{object}{A `Stat` object or a data frame.}
 
-\item{vars_per_plot}{Integer. The number of variables (columns) to include in each
-individual plot. Default is 1.}
+\item{vars_per_plot}{Number of variables to display per plot (for faceting). Default is 1.}
 
-\item{save_dir}{String. The directory where the plots will be saved. Default is `NULL`.
-When `save_plots = TRUE` and this is `NULL`, a default figure directory is used.}
+\item{save_dir}{Directory to save plots. If NULL and save_plots is TRUE, default directory is used.}
 
-\item{palette_name}{String. The name of the color palette to use. Default is `"Zissou1"`.}
+\item{palette_name}{Name of the palette to use if `group_colors` is not provided.
+Supports RColorBrewer (e.g., "Set1") or wesanderson (e.g., "Zissou1"). Default is "Zissou1".}
 
-\item{group_col}{String. The name of the column in the data to group the samples by.
-Default is `"group"`. If not provided, no grouping is performed.}
+\item{group_col}{Column name defining the grouping variable. If NULL, attempts to extract from Stat object.}
 
-\item{max_unique_values}{Integer. The maximum number of unique values allowed for
-categorical variables. Default is 5. Used for filtering variables when diagnosing
-their types.}
+\item{max_unique_values}{Maximum unique values to treat a variable as categorical. Default is 5.}
 
-\item{plot_type}{String. The type of plot to generate. Options are `"violin"` or
-`"ridge"`. Default is `"violin"`.}
+\item{plot_type}{Type of plot: "violin" or "ridge". Default is "violin".}
 
-\item{save_plots}{Logical. If `TRUE`, the plots will be saved as PDF files. Default is `TRUE`.}
+\item{save_plots}{Logical; if TRUE, saves plots to disk. Default is TRUE.}
 
-\item{plot_width}{Numeric. The width of each saved plot (in inches). Default is 5.}
+\item{plot_width}{Width of saved plots (inches). Default is 5.}
 
-\item{plot_height}{Numeric. The height of each saved plot (in inches). Default is 5.}
+\item{plot_height}{Height of saved plots (inches). Default is 5.}
 
-\item{base_size}{Numeric. The base font size for the plot. Default is 14.}
+\item{base_size}{Base font size for plots. Default is 14.}
 
-\item{sub_var}{Character vector. A subset of variable names (columns) to include in
-the plot. If `NULL`, all numeric variables are included.}
+\item{sub_var}{Character vector of specific numeric variables to plot. If NULL, all numeric variables are used.}
+
+\item{group_colors}{An optional named character vector specifying custom colors for each group.
+Names must match group levels. If provided, overrides `palette_name`.}
 }
 \value{
-The input object (either a `Stat` object or a data frame) with the
-  updated plots added to the appropriate slot. If the input is a `Stat` object,
-  the `compute.descriptive` slot is updated with the generated plots.
+The updated object (if `object` is a Stat) with plots stored in `compute.descriptive` slot.
 }
 \description{
-This function generates either violin plots or ridge density plots for numeric variables
-in the given dataset (either a `Stat` object or a data frame). The function allows
-customizing the number of variables per plot, palette style, and grouping columns, and
-saves the plots if required. It provides a flexible approach to visualizing the distribution
-of numeric data and comparing different groups.
+This function generates descriptive plots for numeric variables in a dataset,
+either violin plots or ridge density plots, grouped by a categorical variable.
+It supports custom color specification for groups.
 }
 \examples{
-\dontrun{
-plot_numeric_descriptive(object = stat_obj_test,
-                          vars_per_plot = 1,
-                          save_dir = NULL,
-                          palette_name = "Zissou1",
-                          group_col = "group",
-                          plot_type = "violin",
-                          save_plots = TRUE)
+if (interactive()) {
+  stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+  plot_numeric_descriptive(stat, save_plots = FALSE,group_col = "cyl")
 }
 }

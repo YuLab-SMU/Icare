@@ -13,7 +13,8 @@ ExtractScaleData(object)
 Extract Scaled Data
 }
 \examples{
-\dontrun{
-data <- ExtractScaleData(stat_obj_test)
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_normalize_process(stat, method = "z_score")
+scaled <- ExtractScaleData(stat)
+head(scaled)
 }

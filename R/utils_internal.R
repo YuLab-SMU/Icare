@@ -4,6 +4,31 @@
 # These are helper functions used across modules
 # All start with dot (.) to indicate they are internal
 # ============================================================================
+#' All Available caret Models Metadata
+#'
+#' A data frame containing metadata for all classification and regression models
+#' available in the caret package, including model labels, required libraries,
+#' task type, tuning parameters, and tags.
+#'
+#' @format A data frame with columns:
+#' \describe{
+#'   \item{model}{Character, caret model method name (e.g., "rf", "glmnet").}
+#'   \item{label}{Character, human-readable model label.}
+#'   \item{library}{Character, comma-separated required packages.}
+#'   \item{type}{Character, either "Classification" or "Regression".}
+#'   \item{parameters}{Character, comma-separated tuning parameter names.}
+#'   \item{tags}{Character, comma-separated tags for model characteristics.}
+#' }
+#'
+#' @source Generated from the caret package model registry.
+#'
+#' @examples
+#' \dontrun{
+#' data("allmodel")
+#' head(allmodel)
+#' }
+"allmodel"
+
 #' @keywords internal
 .check_class <- function(object, allowed) {
   if (!inherits(object, allowed))
@@ -252,113 +277,11 @@ remove_constant_columns <- function(data,
 "stat_obj_test"
 
 
-#' Example PrognosiX Object for Testing
-#'
-#' A \code{PrognosiX} S4 object converted from \code{stat_obj_test}.
-#' Used for demonstration and testing of survival/prognostic analysis functions.
-#'
-#' @details
-#' This object was created by converting \code{stat_obj_test} using
-#' \code{CreatePrognosiXObject()}, with \code{"time"} and \code{"status"}
-#' columns extracted from the clinical metadata.
-#'
-#' The object contains:
-#' \itemize{
-#'   \item \code{@survival.data}: Combined data with time and status
-#'   \item \code{@clean.data}: Numeric feature matrix
-#'   \item \code{@info.data}: Metadata with time and status columns
-#'   \item \code{@time_col}: "time"
-#'   \item \code{@status_col}: "status"
-#' }
-#'
-#' @format A \code{PrognosiX} S4 object with slots:
-#' \describe{
-#'   \item{clean.data}{Numeric feature matrix}
-#'   \item{info.data}{Metadata with time and status}
-#'   \item{survival.data}{Combined survival data}
-#'   \item{time_col}{Character, time column name}
-#'   \item{status_col}{Character, status column name}
-#'   \item{...}{Additional slots for survival analysis results}
-#' }
-#'
-#' @source Derived from \code{stat_obj_test}, which originates from
-#'   \url{https://zenodo.org/records/7554815}
-#' @keywords datasets
-"pro_obj_test"
-
-
-#' Example Subtyping Object for Testing
-#'
-#' A \code{Subtyping} S4 object converted from \code{stat_obj_test}.
-#' Used for demonstration and testing of clustering/subtyping functions.
-#'
-#' @details
-#' This object was created by converting \code{stat_obj_test} using
-#' \code{CreateSubtypingObject()} and contains clustering results
-#' from methods such as K-means, LPA, and NMF.
-#'
-#' The object contains:
-#' \itemize{
-#'   \item \code{@clean.data}: Numeric feature matrix
-#'   \item \code{@info.data}: Metadata including clustering labels
-#'   \item \code{@clustered.data}: Data with assigned cluster labels
-#'   \item \code{@visualization.results}: t-SNE and UMAP embeddings
-#' }
-#'
-#' @format A \code{Subtyping} S4 object with slots:
-#' \describe{
-#'   \item{clean.data}{Numeric feature matrix}
-#'   \item{info.data}{Metadata data frame}
-#'   \item{clustered.data}{Data frame with cluster assignments}
-#'   \item{visualization.results}{List of dimensionality reduction results}
-#'   \item{...}{Additional slots for clustering results}
-#' }
-#'
-#' @source Derived from \code{stat_obj_test}, which originates from
-#'   \url{https://zenodo.org/records/7554815}
-#' @keywords datasets
-"subtype_obj_test"
-
-
-#' Example Train_Model Object for Testing
-#'
-#' A \code{Train_Model} S4 object converted from \code{stat_obj_test}.
-#' Used for demonstration and testing of machine learning model training
-#' and evaluation functions.
-#'
-#' @details
-#' This object was created by converting \code{stat_obj_test} using
-#' \code{CreateModelObject()} or \code{ModelTrainAnalysis()}, and contains
-#' trained models for binary classification.
-#'
-#' The object contains:
-#' \itemize{
-#'   \item \code{@train.models}: List of trained models (glm, rf, gbm, etc.)
-#'   \item \code{@split.data}: Train/test split data
-#'   \item \code{@group_col}: "BloodCulture"
-#'   \item \code{@split.scale.data}: Scaled train/test data
-#' }
-#'
-#' @format A \code{Train_Model} S4 object with slots:
-#' \describe{
-#'   \item{train.models}{List of trained caret models}
-#'   \item{split.data}{List of train/test data splits}
-#'   \item{split.scale.data}{Scaled train/test data splits}
-#'   \item{group_col}{Character, grouping column name}
-#'   \item{...}{Additional slots for model evaluation results}
-#' }
-#'
-#' @source Derived from \code{stat_obj_test}, which originates from
-#'   \url{https://zenodo.org/records/7554815}
-#' @keywords datasets
-"train_obj_test"
-
-
 #' Global variables used in non-standard evaluation
 #' @keywords internal
 #' @noRd
 utils::globalVariables(c(
-  ".",
+  ".","label", "Prediction", "y_label", "auc_lower", "auc_upper", "allmodel",
   "::<-",
   "AUC",
   "AUC_mean",
@@ -512,7 +435,9 @@ utils::globalVariables(c(
   "x",
   "y",
   "y_position",
-  "yhat"
+  "yhat","cluster", "n_high_risk_lower", "n_high_risk_upper",
+  "n_high_risk", "n_events_lower", "n_events_upper",
+  "n_events_high", "r"
 ))
 
 #' Match factor levels of two data frames
@@ -524,4 +449,192 @@ match_factor_levels <- function(data, ref) {
     }
   }
   data
+}
+
+
+
+.onAttach <- function(libname, pkgname) {
+  required_version <- "1.7.7.1"
+  installed_version <- tryCatch(
+    as.character(utils::packageVersion("xgboost")),
+    error = function(e) NA
+  )
+  
+  if (is.na(installed_version) || installed_version != required_version) {
+    packageStartupMessage(
+      "This package requires xgboost == ", required_version,
+      " (", if (is.na(installed_version)) "not found" else paste0("currently installed: ", installed_version), ").\n\n",
+      "Please install the required version by running:\n\n",
+      '  url <- "https://cran.r-project.org/src/contrib/Archive/xgboost/xgboost_',
+      required_version, '.tar.gz"\n',
+      '  dest <- file.path(tempdir(), "xgboost_', required_version, '.tar.gz")\n',
+      "  download.file(url, destfile = dest, mode = \"wb\")\n",
+      "  install.packages(dest, repos = NULL, type = \"source\")\n\n",
+      "After installation, please restart R before loading this package."
+    )
+  }
+}
+
+
+#' Get model lists for benchmarking (with multi-index support)
+#'
+#' @param preset Character or character vector. Predefined sets:
+#'   - Basic/Core/Extended/Advanced/All (mixed types)
+#'   - all_linear, all_tree, all_ensemble, all_nn, all_svm,
+#'     all_da, all_bayes, all_rule, all_proto, all_regularized,
+#'     all_feature, all_robust, all_ordinal, all_special
+#'   You can also pass a vector of model names directly.
+#' @param include_tags,exclude_tags As before, for custom filtering.
+#' @param return_df Logical; return data.frame instead of character vector.
+#' @return Character vector or data.frame.
+#' @export
+get_models <- function(preset = NULL,
+                       include_tags = NULL,
+                       exclude_tags = NULL,
+                       return_df = FALSE) {
+  
+  if (!exists("allmodel")) stop("Data 'allmodel' not found.")
+  df <- allmodel
+  
+  # If preset is provided, handle both old and new preset names
+  if (!is.null(preset)) {
+    # Define all presets (old + new)
+    presets_list <- list(
+      # Old ones (mixed)
+      basic = c("glm", "lda", "knn", "nb", "rpart"),
+      core = c("glm", "lda", "knn", "nb", "rpart", "glmnet", "rf", "svmRadial", "C5.0"),
+      extended = c("glm", "lda", "knn", "nb", "rpart", "glmnet", "rf", "xgbTree", "svmRadial",
+                   "C5.0", "C5.0Rules", "JRip", "PART", "nnet", "treebag", "earth", "qda", "ridge", "pls"),
+      advanced = c("glm", "lda", "knn", "nb", "rpart", "glmnet", "rf", "xgbTree", "svmRadial",
+                   "C5.0", "C5.0Rules", "JRip", "PART", "nnet", "treebag", "earth", "qda", "ridge", "pls",
+                   "avNNet", "bagEarth", "gbm", "fda", "sparseLDA", "pcaNNet", "rda", "sda", "rpart2", "cforest"),
+      all = unique(df$model),
+      
+      # New tag-based presets (mapped to include_tags)
+      all_linear = list(include = c("Linear Classifier", "Linear Regression", "Generalized Linear Model", "Logistic Regression")),
+      all_tree = list(include = c("Tree-Based Model", "Random Forest", "Gradient Boosting Machines", "CART")),
+      all_ensemble = list(include = c("Ensemble Model", "Bagging", "Boosting", "Random Forest")),
+      all_nn = list(include = "Neural Network"),
+      all_svm = list(include = c("Support Vector Machines", "Kernel Method")),
+      all_da = list(include = c("Discriminant Analysis", "Linear Discriminant Analysis", "Quadratic Discriminant Analysis")),
+      all_bayes = list(include = c("Bayesian Model", "Gaussian Process")),
+      all_rule = list(include = "Rule-Based Model"),
+      all_proto = list(include = c("Prototype Models", "Nearest Neighbors")),
+      all_regularized = list(include = c("L1 Regularization", "L2 Regularization", "Ridge", "Lasso")),
+      all_feature = list(include = c("Implicit Feature Selection", "Feature Extraction", "Feature Selection Wrapper")),
+      all_robust = list(include = c("Robust Model", "Quantile Regression", "Robust Methods")),
+      all_ordinal = list(include = c("Ordinal Outcomes", "Two Class Only", "Cost Sensitive Learning")),
+      all_special = list(include = c("String Kernel", "Text Mining", "Self-Organising Maps"))
+    )
+    
+    if (length(preset) == 1 && preset %in% names(presets_list)) {
+      p <- presets_list[[preset]]
+      if (is.character(p)) {
+        # Old preset: direct model names
+        df <- df[df$model %in% p, ]
+      } else if (is.list(p) && "include" %in% names(p)) {
+        # New preset: based on tags
+        include_tags <- c(include_tags, p$include)
+        # We'll apply include_tags filtering later
+      }
+    } else {
+      # Treat preset as a character vector of model names
+      df <- df[df$model %in% preset, ]
+    }
+  }
+  
+  # Apply tag filters (if any)
+  if (!is.null(include_tags)) {
+    keep <- sapply(df$tags, function(tag_str) {
+      tags_vec <- strsplit(tag_str, ",\\s*")[[1]]
+      all(include_tags %in% tags_vec)
+    })
+    df <- df[keep, ]
+  }
+  if (!is.null(exclude_tags)) {
+    drop <- sapply(df$tags, function(tag_str) {
+      tags_vec <- strsplit(tag_str, ",\\s*")[[1]]
+      any(exclude_tags %in% tags_vec)
+    })
+    df <- df[!drop, ]
+  }
+  
+  if (nrow(df) == 0) {
+    warning("No models match the specified criteria.")
+    return(if (return_df) df else character(0))
+  }
+  if (return_df) return(df) else return(unique(df$model))
+}
+
+#' List all available presets (both old and new)
+#'
+#' @return Prints a table with preset names, type, and description.
+#' @export
+list_presets <- function() {
+  old_presets <- c("basic", "core", "extended", "advanced", "all")
+  new_presets <- c("all_linear", "all_tree", "all_ensemble", "all_nn", "all_svm",
+                   "all_da", "all_bayes", "all_rule", "all_proto", "all_regularized",
+                   "all_feature", "all_robust", "all_ordinal", "all_special")
+  descriptions <- c(
+    "basic" = "5 baseline models (glm, lda, knn, nb, rpart)",
+    "core" = "10 key models covering major paradigms",
+    "extended" = "19 models, adding rules, MARS, QDA, etc.",
+    "advanced" = "29 models with more ensembles and regularized variants",
+    "all" = "All classification models in the dataset",
+    "all_linear" = "All models with Linear Classifier/Regression tags",
+    "all_tree" = "All tree-based models (CART, RF, GBM, etc.)",
+    "all_ensemble" = "All ensemble models (bagging, boosting, RF)",
+    "all_nn" = "All neural network models",
+    "all_svm" = "All support vector machines and kernel methods",
+    "all_da" = "All discriminant analysis models",
+    "all_bayes" = "All Bayesian models",
+    "all_rule" = "All rule-based models",
+    "all_proto" = "All prototype/distance-based models",
+    "all_regularized" = "All models with L1/L2 regularization",
+    "all_feature" = "All models with feature selection/extraction",
+    "all_robust" = "All robust/quantile regression models",
+    "all_ordinal" = "All models handling ordinal outcomes or cost-sensitive learning",
+    "all_special" = "Special models (text kernels, SOM, etc.)"
+  )
+  cat("Available presets:\n\n")
+  cat("Old (mixed) presets:\n")
+  for (p in old_presets) {
+    cat(sprintf("  %-12s: %s\n", p, descriptions[p]))
+  }
+  cat("\nNew (tag-based) presets:\n")
+  for (p in new_presets) {
+    cat(sprintf("  %-12s: %s\n", p, descriptions[p]))
+  }
+  invisible(list(old = old_presets, new = new_presets))
+}
+
+
+#' Create a subdirectory under the global output root
+#'
+#' This function creates a subdirectory (or nested subdirectories) under the
+#' global output root set by \code{\link{set_output_root}}. If the root has not
+#' been set, it defaults to a temporary directory for the current R session.
+#'
+#' @param ... Character strings specifying subdirectory path components.
+#' @return The full path to the created directory (invisibly).
+#'
+#' @examples
+#' \dontrun{
+#' set_output_root("./my_results")
+#' sub_dir("figures", "final")
+#' sub_dir("data", "processed")
+#' }
+#'
+#' @seealso \code{\link{set_output_root}}, \code{\link{get_output_root}}
+#' @export
+sub_dir <- function(...) {
+  base <- get_output_root()
+  if (is.null(base)) {
+    # Fallback to a session‑specific temporary directory
+    base <- file.path(tempdir(), "icare_output")
+    dir.create(base, showWarnings = FALSE, recursive = TRUE)
+  }
+  d <- file.path(base, ...)
+  dir.create(d, showWarnings = FALSE, recursive = TRUE)
+  invisible(d)
 }

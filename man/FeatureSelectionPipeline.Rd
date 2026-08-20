@@ -52,20 +52,41 @@ An invisible list with:
   }
 }
 \description{
+Integrates four robust feature selection paradigms from the \pkg{caret} package 
+to identify optimal predictive biomarker subsets. This pipeline supports automated 
+cross-validation, parallel execution, and visual benchmarking via UpSet plots
+
+The module includes the following core strategies:
+\itemize{
+  \item \strong{RFE (Recursive Feature Elimination):} Backward selection wrapper that 
+    iteratively removes weaker features. By default, it uses \code{caret::rfFuncs}, 
+    leveraging Random Forest as the underlying evaluation engine
+  \item \strong{GA (Genetic Algorithm):} Evolutionary global optimization wrapper. 
+    By default, it utilizes \code{caret::caretGA} (a general wrapper typically 
+    backed by decision trees like \pkg{rpart} unless explicitly overridden with 
+    \code{rfGA}).
+  \item \strong{SA (Simulated Annealing):} Probabilistic metaheuristic optimization wrapper. 
+    By default, it utilizes \code{caret::caretSA} (general wrapper, typically 
+    backed by \pkg{rpart} unless overridden with \code{rfSA})
+  \item \strong{SBF (Selection By Filter):} Univariate filter-based feature selection. 
+    By default, it uses \code{caret::rfSBF}, applying a Random Forest filter across 
+    resampling folds
+}
+}
+\details{
 Runs up to four caret-based selection methods on the same `Train_Model`
 object, returns the union or intersection of selected features, and
 generates a comparative Upset plot.
 }
 \examples{
 \dontrun{
-fs <- FeatureSelectionPipeline(
-  object   = model_obj,
-  methods  = c("rfe", "ga"),
-  combine  = "union",
-  rfe_args = list(method = "cv", number = 5),
-  ga_args  = list(iters = 10, popSize = 20)
-)
-model_obj <- SelectFeatures(model_obj, 
-                             features = c(fs$selected_features, model_obj@group_col))
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  fs <- FeatureSelectionPipeline(model, methods = c("rfe", "sbf"), combine = "union",
+                                 rfe_args = list(sizes = c(2,4), method = "cv", number = 2),
+                                 upset_plot = FALSE)
+  print(fs$selected_features)
+}
 }
 }

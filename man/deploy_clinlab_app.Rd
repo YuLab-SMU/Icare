@@ -4,7 +4,7 @@
 \alias{deploy_clinlab_app}
 \title{Clinlabomics Terminal: Light-Tech Edition}
 \usage{
-deploy_clinlab_app(deployment, title = "Clinical Omics Terminal")
+deploy_clinlab_app(deployment, title = "Clinlabomics Terminal")
 }
 \arguments{
 \item{deployment}{A ModelDeployment object.}

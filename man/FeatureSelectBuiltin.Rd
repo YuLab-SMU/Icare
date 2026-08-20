@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_02_FeatureSelect.R
 \name{FeatureSelectBuiltin}
 \alias{FeatureSelectBuiltin}
-\title{Built-in Feature Selection Using Model Importance}
+\title{Feature selection using built-in variable importance from multiple models}
 \usage{
 FeatureSelectBuiltin(
   object,
@@ -11,78 +11,75 @@ FeatureSelectBuiltin(
   number = 5,
   top_n = 15,
   combine = "union",
-  seed = 825
+  seed = 825,
+  metric = NULL,
+  tuneLength = NULL,
+  class_importance = NULL,
+  ...
 )
 }
 \arguments{
-\item{object}{An object containing the training data. Must be compatible with
-the internal extractor \code{.extract_xy()} (e.g., a fitted model object or
-a data container with predictors \code{x} and response \code{y}).}
+\item{object}{A data object containing features and a binary response.
+Must be compatible with internal extractor `.extract_xy()`.}
 
-\item{models}{Character vector of caret model names that support built-in
-variable importance (e.g., \code{"rf"}, \code{"gbm"}). Only those with
-available importance will be used. Default: \code{c("rf", "gbm")}.}
+\item{models}{Character vector of model names supported by \pkg{caret} that
+have a built-in `varImp` method. Default: `c("rf", "gbm")`.}
 
-\item{method}{Resampling method passed to \code{\link[caret]{trainControl}}.
-Default: \code{"repeatedcv"}.}
+\item{method}{Resampling method for `trainControl`, e.g., `"repeatedcv"`.}
 
-\item{number}{Number of folds or resampling iterations. Default: \code{5}.}
+\item{number}{Number of folds or resampling iterations.}
 
-\item{top_n}{Integer specifying the number of top important features to
-retain from each model. Default: \code{15}.}
+\item{top_n}{Integer, number of top features to retain per model.}
 
-\item{combine}{Character string; either \code{"union"} (take the union of all
-selected features) or \code{"intersect"} (take the intersection). Default:
-\code{"union"}.}
+\item{combine}{Character, either `"union"` (default) or `"intersection"`,
+defining how per‑model feature sets are combined.}
 
-\item{seed}{Random seed for reproducibility. Default: \code{825}.}
+\item{seed}{Random seed for reproducibility.}
+
+\item{metric}{Character string specifying the performance metric to optimize.
+Default `NULL` auto‑selects: `"ROC"` for binary classification, otherwise `"Accuracy"`.
+User‑supplied values override the automatic choice.}
+
+\item{tuneLength}{Integer, passed to `caret::train()`; if `NULL`, model
+defaults are used.}
+
+\item{class_importance}{Specifies which class's importance to use for multi-class models.
+- `NULL` (default): use the first column (original behavior).
+- Character string: name of the class (must match a column name in `varImp` output).
+- Integer: column index (1-based).
+- `"max"`: use the maximum importance across all classes.
+- `"min"`: use the minimum importance across all classes.
+- `"all"`: use row means across all classes (discouraged if you care about specific classes).
+For binary classification, this parameter is ignored (only one column exists).}
+
+\item{...}{Additional arguments passed to `caret::train()` (e.g., `ntree`, `n.trees`).}
 }
 \value{
-An invisible list with the following components:
-\describe{
-  \item{importance_table}{A data frame with one row per feature. The first
-    column \code{Feature} gives the feature name (row names are identical).
-    For each model used, there is a column with the model name, containing
-    \code{"Yes"} if the feature was among the top \code{top_n} features for
-    that model, or \code{"-"} otherwise. A final column \code{Selected} marks
-    the final selected features with \code{"[OK]"}.}
-  \item{selected_features}{A character vector of the feature names selected
-    in the final set (union or intersection).}
-  \item{per_model}{A named list, where each element corresponds to a model
-    and contains a character vector of the top \code{top_n} feature names
-    selected by that model.}
-}
+An invisible list with components:
+  \item{importance_table}{A data frame showing which features were selected
+    by each model and the final `Selected` status.}
+  \item{selected_features}{Character vector of the final chosen features.}
+  \item{per_model}{A named list of feature vectors per model.}
 }
 \description{
-Trains one or more classification models (e.g., Random Forest, GBM) with
-cross-validation and extracts built-in variable importance scores. Features
-are ranked by importance, and a final set is selected as the union or
-intersection of the top \code{top_n} features from each model.
+Trains one or more classification models and extracts their built-in variable
+importance measures. The top features from each model are combined via union
+or intersection to produce a final selected feature set.
 }
 \details{
-The function first checks which requested models actually provide built-in
-importance (via \code{caret::varImp}). Models without support are skipped
-with a message. For each supported model, it is trained using the specified
-resampling scheme, and variable importance is extracted. The top
-\code{top_n} features are retained. Finally, either the union or
-intersection of these per-model selections is returned.
-}
-\note{
-This function requires the \pkg{caret} package and the respective modelling
-packages (e.g., \pkg{randomForest}, \pkg{gbm}) to be installed.
+Models lacking a built-in `varImp` are automatically skipped with a note.
+For `xgbTree`, verbose C++ messages are suppressed to keep console clean.
+The function requires the \pkg{caret} and respective modelling packages.
+When `metric = "ROC"`, the summary function `twoClassSummary` is used,
+which requires class probabilities (`classProbs = TRUE`).
 }
 \examples{
 \dontrun{
-# Assuming 'my_model' is a pre-processed data container with x and y
-result <- FeatureSelectBuiltin(my_model,
-                               models = c("rf", "gbm"),
-                               top_n = 10,
-                               combine = "intersect")
-print(result$importance_table)
-selected <- result$selected_features
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  imp <- FeatureSelectBuiltin(model, models = c("rf", "glm"), method = "cv", number = 2, top_n = 3)
+  print(imp$selected_features)
 }
-
 }
-\seealso{
-\code{\link[caret]{varImp}}, \code{\link[caret]{train}}
 }

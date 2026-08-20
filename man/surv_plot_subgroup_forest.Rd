@@ -2,15 +2,32 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_plot_subgroup_forest}
 \alias{surv_plot_subgroup_forest}
-\title{Generate Subgroup Forest Plot}
+\title{Subgroup Forest Plot for Survival Models (with info.data Support)}
 \usage{
 surv_plot_subgroup_forest(
   learner,
   object,
   subgroup_vars,
   prog = NULL,
-  base_size = 14,
-  palette_name = "Darjeeling1"
+  var_labels = NULL,
+  level_order = NULL,
+  ref_line = 1,
+  xlim = NULL,
+  ticks_at = NULL,
+  ticks_digits = 2,
+  x_trans = "log",
+  digits = 2,
+  p_digits = 3,
+  box_col = "#377eb8",
+  ci_col = "black",
+  theme_args = list(),
+  arrow_labels = NULL,
+  footnote = NULL,
+  save_plot = FALSE,
+  save_dir = NULL,
+  file_name = NULL,
+  width = 8,
+  height = 6
 )
 }
 \arguments{
@@ -18,54 +35,65 @@ surv_plot_subgroup_forest(
 
 \item{object}{A \code{TaskSurv} or \code{PrognosiX} object.}
 
-\item{subgroup_vars}{A character vector of categorical column names to analyze.}
+\item{subgroup_vars}{Character vector of categorical column names.}
 
-\item{prog}{Optional. A \code{PrognosiX} S4 object. If \code{NULL}, the function
-attempts to detect it from parent environments.}
+\item{prog}{Optional \code{PrognosiX} object; if provided, used for data extraction.}
 
-\item{base_size}{A numeric value specifying the base font size for ggplot2.
-Default is \code{14}.}
+\item{var_labels}{Optional named vector to relabel section headers.}
 
-\item{palette_name}{A character string specifying the Wes Anderson palette name.
-Default is \code{"Darjeeling1"}.}
+\item{level_order}{Optional named list of level order per variable.}
+
+\item{ref_line}{Numeric. Reference vertical line (default 1).}
+
+\item{xlim}{Numeric length‑2. If \code{NULL}, automatically computed.}
+
+\item{ticks_at}{Numeric vector. If \code{NULL}, automatically computed.}
+
+\item{ticks_digits}{Integer. Decimal digits for x-axis tick labels.}
+
+\item{x_trans}{Passed to \code{forestploter::forest()}; \code{"log"} (default).}
+
+\item{digits}{Integer for HR/CI decimals.}
+
+\item{p_digits}{Integer for p‑value decimals.}
+
+\item{box_col}{Color for the point‑estimate box.}
+
+\item{ci_col}{Color for CI whiskers.}
+
+\item{theme_args}{Named list passed to \code{forestploter::forest_theme()}.}
+
+\item{arrow_labels}{Character length‑2 or NULL.}
+
+\item{footnote}{Optional footnote string.}
+
+\item{save_plot}{Logical; save plot to PDF.}
+
+\item{save_dir}{Character; output directory.}
+
+\item{file_name}{Character; output filename.}
+
+\item{width}{Numeric; plot width (inches).}
+
+\item{height}{Numeric; plot height (inches).}
 }
 \value{
-A list with two components:
-  \describe{
-    \item{plot}{A \code{ggplot} object showing the forest plot.}
-    \item{data}{A data frame containing the hazard ratio estimates for each subgroup.}
-  }
+Invisibly, a list with components \code{plot}, \code{data}, and \code{fits}.
 }
 \description{
-Creates a forest plot showing hazard ratios for risk score in different
-subgroups defined by categorical variables. This helps assess whether the
-model's prognostic effect is consistent across patient subgroups.
-}
-\details{
-The function performs the following steps:
-\enumerate{
-  \item Extracts the task and data from the input object.
-  \item For each subgroup variable, fits a Cox model with risk score as predictor.
-  \item Computes hazard ratios and 95\% confidence intervals.
-  \item Creates a forest plot with subgroups ordered by HR magnitude.
-}
+Creates a publication‑quality forest plot showing hazard ratios for a risk
+score within subgroups defined by categorical variables. The function now
+retrieves subgroup variables from both \code{survival.data} and \code{info.data}
+of the \code{PrognosiX} object, so clinical metadata are fully accessible.
 }
 \examples{
 \dontrun{
-library(mlr3proba)
-library(survival)
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+lrn <- surv_get_learner("surv.coxph", task)
+lrn$train(task)
 
-data("veteran", package = "survival")
-veteran$celltype <- as.factor(veteran$celltype)
-task <- surv_create_surv_task(veteran, "time", "status")
-learner <- lrn("surv.coxph")$train(task)
-
-# Forest plot for celltype subgroups
-result <- surv_plot_subgroup_forest(
-  learner = learner,
-  object = task,
-  subgroup_vars = "celltype"
-)
-print(result$plot)
+forest <- surv_plot_subgroup_forest(lrn, task, subgroup_vars = c("celltype", "trt"))
+forest
 }
 }

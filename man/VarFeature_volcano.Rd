@@ -45,9 +45,9 @@ This function generates a volcano plot based on the log-fold change and adjusted
 a 'Stat' object or a data frame. It then saves the volcano plot as an image in the specified directory.
 }
 \examples{
-\dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-VarFeature_volcano(object = stat_obj, logFC_col = "logFC", p_adjust_col = "p.adjust")
-VarFeature_volcano(object = stat_obj, title = "Custom Volcano Plot", palette_name = "Zissou1")
+if (interactive()) {
+  stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+  stat <- stat_var_feature(stat, p_threshold = 0.05)
+  VarFeature_volcano(stat, save_dir = NULL)
 }
 }

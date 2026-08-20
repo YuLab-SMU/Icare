@@ -61,6 +61,15 @@
 #' @return A list with elements: \code{result} (rfe object), 
 #'   \code{opt_vars} (optimal features), \code{plot} (ggplot).
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   rfe_res <- FeatureSelectRFE(model, sizes = c(2,4,6), method = "cv", number = 2)
+#'   print(rfe_res$opt_vars)
+#' }
+#' }
 FeatureSelectRFE <- function(object,
                              sizes    = NULL,
                              rfe_func = caret::rfFuncs,
@@ -141,6 +150,15 @@ FeatureSelectRFE <- function(object,
 #' @param seed      Random seed.
 #' @return List with \code{result} (gafs object), \code{opt_vars}, \code{plot}.
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   ga_res <- FeatureSelectGA(model, iters = 3, popSize = 5, method = "cv", number = 2)
+#'   print(ga_res$opt_vars)
+#' }
+#' }
 FeatureSelectGA <- function(object,
                             iters    = 10,
                             popSize  = 20,
@@ -219,6 +237,15 @@ FeatureSelectGA <- function(object,
 #' @param seed      Random seed.
 #' @return List with \code{result} (safs object), \code{opt_vars}, \code{plot}.
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   sa_res <- FeatureSelectSA(model, iters = 3, method = "cv", number = 2)
+#'   print(sa_res$opt_vars)
+#' }
+#' }
 FeatureSelectSA <- function(object,
                             iters    = 25,
                             sa_func  = caret::caretSA,
@@ -293,6 +320,18 @@ FeatureSelectSA <- function(object,
 #' @param seed      Random seed.
 #' @return List with \code{result} (sbf object), \code{opt_vars}, \code{plot}.
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   str(mtcars)
+#'   mtcars$vs=as.numeric(mtcars$vs)
+#'   mtcars$cyl=as.numeric(mtcars$cyl)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   sbf_res <- FeatureSelectSBF(model, method = "cv", number = 5)
+#'   print(sbf_res$opt_vars)
+#' }
+#' }
 FeatureSelectSBF <- function(object,
                              sbf_func = caret::rfSBF,
                              method   = "repeatedcv",
@@ -332,14 +371,24 @@ FeatureSelectSBF <- function(object,
   opt_vars <- sbf_res$optVariables
   cat(sprintf("SBF selected: %d features\n", length(opt_vars)))
   
-  p <- plot(sbf_res) + ggplot2::theme_bw() +
-    ggplot2::labs(title = "SBF - Univariate Filter Feature Selection")
-  print(p)
+  p <- NULL
+  tryCatch({
+    p <- plot(sbf_res) + ggplot2::theme_bw() +
+      ggplot2::labs(title = "SBF - Univariate Filter Feature Selection")
+    print(p)
+  }, error = function(e) {
+    message("SBF plot could not be generated: ", e$message)
+    p <- NULL
+  })
   
   if (save_plot) {
     .safe_dir(save_dir)
-    ggplot2::ggsave(file.path(save_dir, "sbf_filter.pdf"), p,
-                    width = 7, height = 5, device = "pdf")
+    if (!is.null(p)) {
+      ggplot2::ggsave(file.path(save_dir, "sbf_filter.pdf"), p,
+                      width = 7, height = 5, device = "pdf")
+    } else {
+      message("SBF plot not saved due to plotting error.")
+    }
   }
   
   invisible(list(result = sbf_res, opt_vars = opt_vars, plot = p))
@@ -454,7 +503,27 @@ ExplainModelPerformance <- function(explainer,
 #' Runs up to four caret-based selection methods on the same `Train_Model`
 #' object, returns the union or intersection of selected features, and
 #' generates a comparative Upset plot.
-#'
+#' @description
+#' Integrates four robust feature selection paradigms from the \pkg{caret} package 
+#' to identify optimal predictive biomarker subsets. This pipeline supports automated 
+#' cross-validation, parallel execution, and visual benchmarking via UpSet plots
+#' 
+#' The module includes the following core strategies:
+#' \itemize{
+#'   \item \strong{RFE (Recursive Feature Elimination):} Backward selection wrapper that 
+#'     iteratively removes weaker features. By default, it uses \code{caret::rfFuncs}, 
+#'     leveraging Random Forest as the underlying evaluation engine
+#'   \item \strong{GA (Genetic Algorithm):} Evolutionary global optimization wrapper. 
+#'     By default, it utilizes \code{caret::caretGA} (a general wrapper typically 
+#'     backed by decision trees like \pkg{rpart} unless explicitly overridden with 
+#'     \code{rfGA}).
+#'   \item \strong{SA (Simulated Annealing):} Probabilistic metaheuristic optimization wrapper. 
+#'     By default, it utilizes \code{caret::caretSA} (general wrapper, typically 
+#'     backed by \pkg{rpart} unless overridden with \code{rfSA})
+#'   \item \strong{SBF (Selection By Filter):} Univariate filter-based feature selection. 
+#'     By default, it uses \code{caret::rfSBF}, applying a Random Forest filter across 
+#'     resampling folds
+#' }
 #' @param object   A Train_Model or Stat S4 object.
 #' @param methods  Character vector: "rfe","ga","sa","sbf" (default all four).
 #'                Can also pass a named list of pre-run selection results.
@@ -479,15 +548,14 @@ ExplainModelPerformance <- function(explainer,
 #'
 #' @examples
 #' \dontrun{
-#' fs <- FeatureSelectionPipeline(
-#'   object   = model_obj,
-#'   methods  = c("rfe", "ga"),
-#'   combine  = "union",
-#'   rfe_args = list(method = "cv", number = 5),
-#'   ga_args  = list(iters = 10, popSize = 20)
-#' )
-#' model_obj <- SelectFeatures(model_obj, 
-#'                              features = c(fs$selected_features, model_obj@group_col))
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   fs <- FeatureSelectionPipeline(model, methods = c("rfe", "sbf"), combine = "union",
+#'                                  rfe_args = list(sizes = c(2,4), method = "cv", number = 2),
+#'                                  upset_plot = FALSE)
+#'   print(fs$selected_features)
+#' }
 #' }
 FeatureSelectionPipeline <- function(object,
                                      methods     = c("rfe", "ga", "sa", "sbf"),
@@ -581,84 +649,112 @@ FeatureSelectionPipeline <- function(object,
 
 
 # -- 7. Quick train-and-select: built-in importance from multiple models ------
-#' Built-in Feature Selection Using Model Importance
+#' Feature selection using built-in variable importance from multiple models
 #'
-#' Trains one or more classification models (e.g., Random Forest, GBM) with
-#' cross-validation and extracts built-in variable importance scores. Features
-#' are ranked by importance, and a final set is selected as the union or
-#' intersection of the top \code{top_n} features from each model.
+#' Trains one or more classification models and extracts their built-in variable
+#' importance measures. The top features from each model are combined via union
+#' or intersection to produce a final selected feature set.
 #'
-#' @param object An object containing the training data. Must be compatible with
-#'   the internal extractor \code{.extract_xy()} (e.g., a fitted model object or
-#'   a data container with predictors \code{x} and response \code{y}).
-#' @param models Character vector of caret model names that support built-in
-#'   variable importance (e.g., \code{"rf"}, \code{"gbm"}). Only those with
-#'   available importance will be used. Default: \code{c("rf", "gbm")}.
-#' @param method Resampling method passed to \code{\link[caret]{trainControl}}.
-#'   Default: \code{"repeatedcv"}.
-#' @param number Number of folds or resampling iterations. Default: \code{5}.
-#' @param top_n Integer specifying the number of top important features to
-#'   retain from each model. Default: \code{15}.
-#' @param combine Character string; either \code{"union"} (take the union of all
-#'   selected features) or \code{"intersect"} (take the intersection). Default:
-#'   \code{"union"}.
-#' @param seed Random seed for reproducibility. Default: \code{825}.
+#' @param object A data object containing features and a binary response.
+#'   Must be compatible with internal extractor `.extract_xy()`.
+#' @param models Character vector of model names supported by \pkg{caret} that
+#'   have a built-in `varImp` method. Default: `c("rf", "gbm")`.
+#' @param method Resampling method for `trainControl`, e.g., `"repeatedcv"`.
+#' @param number Number of folds or resampling iterations.
+#' @param top_n Integer, number of top features to retain per model.
+#' @param combine Character, either `"union"` (default) or `"intersection"`,
+#'   defining how per‑model feature sets are combined.
+#' @param seed Random seed for reproducibility.
+#' @param metric Character string specifying the performance metric to optimize.
+#'   Default `NULL` auto‑selects: `"ROC"` for binary classification, otherwise `"Accuracy"`.
+#'   User‑supplied values override the automatic choice.
+#' @param tuneLength Integer, passed to `caret::train()`; if `NULL`, model
+#'   defaults are used.
+#' @param class_importance Specifies which class's importance to use for multi-class models.
+#'   - `NULL` (default): use the first column (original behavior).
+#'   - Character string: name of the class (must match a column name in `varImp` output).
+#'   - Integer: column index (1-based).
+#'   - `"max"`: use the maximum importance across all classes.
+#'   - `"min"`: use the minimum importance across all classes.
+#'   - `"all"`: use row means across all classes (discouraged if you care about specific classes).
+#'   For binary classification, this parameter is ignored (only one column exists).
+#' @param ... Additional arguments passed to `caret::train()` (e.g., `ntree`, `n.trees`).
 #'
-#' @return An invisible list with the following components:
-#' \describe{
-#'   \item{importance_table}{A data frame with one row per feature. The first
-#'     column \code{Feature} gives the feature name (row names are identical).
-#'     For each model used, there is a column with the model name, containing
-#'     \code{"Yes"} if the feature was among the top \code{top_n} features for
-#'     that model, or \code{"-"} otherwise. A final column \code{Selected} marks
-#'     the final selected features with \code{"[OK]"}.}
-#'   \item{selected_features}{A character vector of the feature names selected
-#'     in the final set (union or intersection).}
-#'   \item{per_model}{A named list, where each element corresponds to a model
-#'     and contains a character vector of the top \code{top_n} feature names
-#'     selected by that model.}
-#' }
+#' @return An invisible list with components:
+#'   \item{importance_table}{A data frame showing which features were selected
+#'     by each model and the final `Selected` status.}
+#'   \item{selected_features}{Character vector of the final chosen features.}
+#'   \item{per_model}{A named list of feature vectors per model.}
 #'
 #' @details
-#' The function first checks which requested models actually provide built-in
-#' importance (via \code{caret::varImp}). Models without support are skipped
-#' with a message. For each supported model, it is trained using the specified
-#' resampling scheme, and variable importance is extracted. The top
-#' \code{top_n} features are retained. Finally, either the union or
-#' intersection of these per-model selections is returned.
-#'
-#' @note
-#' This function requires the \pkg{caret} package and the respective modelling
-#' packages (e.g., \pkg{randomForest}, \pkg{gbm}) to be installed.
-#'
-#' @seealso \code{\link[caret]{varImp}}, \code{\link[caret]{train}}
-#'
-#' @examples
-#' \dontrun{
-#' # Assuming 'my_model' is a pre-processed data container with x and y
-#' result <- FeatureSelectBuiltin(my_model,
-#'                                models = c("rf", "gbm"),
-#'                                top_n = 10,
-#'                                combine = "intersect")
-#' print(result$importance_table)
-#' selected <- result$selected_features
-#' }
+#' Models lacking a built-in `varImp` are automatically skipped with a note.
+#' For `xgbTree`, verbose C++ messages are suppressed to keep console clean.
+#' The function requires the \pkg{caret} and respective modelling packages.
+#' When `metric = "ROC"`, the summary function `twoClassSummary` is used,
+#' which requires class probabilities (`classProbs = TRUE`).
 #'
 #' @export
-FeatureSelectBuiltin <- function(object,
-                                 models  = c("rf", "gbm"),
-                                 method  = "repeatedcv",
-                                 number  = 5,
-                                 top_n   = 15,
-                                 combine = "union",
-                                 seed    = 825) {
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   imp <- FeatureSelectBuiltin(model, models = c("rf", "glm"), method = "cv", number = 2, top_n = 3)
+#'   print(imp$selected_features)
+#' }
+#' }
+FeatureSelectBuiltin <- function(object, models = c("rf", "gbm"), method = "repeatedcv",
+                                 number = 5, top_n = 15, combine = "union", seed = 825,
+                                 metric = NULL, tuneLength = NULL, class_importance = NULL,
+                                 ...) {
   .check_fs_packages()
-  set.seed(seed)
- # object<-model_obj
-  xy <- .extract_xy(object)
-  levels(xy$y) <- make.names(levels(xy$y))
-  df <- cbind(xy$x, group = xy$y)
   
+  # Ensure gbm is fully attached to avoid missing S3 methods inside caret
+  if ("gbm" %in% models) {
+    if (!requireNamespace("gbm", quietly = TRUE)) {
+      stop("Package 'gbm' is required when 'gbm' is included in `models`. ",
+           "Please install it with install.packages('gbm').", call. = FALSE)
+    }
+  }
+  
+  set.seed(seed)
+  xy <- .extract_xy(object)
+  
+  # ---- Ensure response is factor and fix levels ----
+  y_factor <- as.factor(xy$y)
+  levels(y_factor) <- make.names(levels(y_factor))
+  is_binary <- length(levels(y_factor)) == 2
+  
+  # ---- Fix column name conflict for response ----
+  resp_name <- ".group"  # safer name
+  if (resp_name %in% colnames(xy$x)) {
+    # If .group already exists, use a unique name
+    resp_name <- make.names(c(colnames(xy$x), "response"))[length(colnames(xy$x)) + 1]
+    warning("Column name '.group' already exists; using '", resp_name, "' as response column.")
+  }
+  df <- cbind(xy$x, resp = y_factor)
+  colnames(df)[ncol(df)] <- resp_name
+  form <- as.formula(paste(resp_name, "~ ."))
+  
+  # ---- Determine metric ----
+  if (is.null(metric)) {
+    final_metric <- if (is_binary) "ROC" else "Accuracy"
+  } else {
+    final_metric <- metric
+    if (final_metric == "ROC" && !is_binary) {
+      warning("'ROC' metric requested but response is not binary; falling back to 'Accuracy'.")
+      final_metric <- "Accuracy"
+    }
+  }
+  
+  # ---- Build trainControl once (independent of model) ----
+  trControl_args <- list(method = method, number = number, classProbs = TRUE)
+  if (final_metric == "ROC" && is_binary) {
+    trControl_args$summaryFunction <- caret::twoClassSummary
+  }
+  trControl <- do.call(caret::trainControl, trControl_args)
+  
+  # ---- Check built-in varImp availability ----
   support_df <- check_varImp_availability(models)
   unsupported <- support_df$Model[!support_df$Has_BuiltIn]
   if (length(unsupported) > 0) {
@@ -668,47 +764,126 @@ FeatureSelectBuiltin <- function(object,
   
   imp_list <- list()
   for (m in models) {
-    if (m %in% unsupported) next
-    
+    if (m %in% unsupported) 
+      next
     model_info <- caret::getModelInfo(m, regex = FALSE)[[1]]
     needed_pkgs <- unique(c(model_info$library))
-    missing_pkg <- needed_pkgs[!sapply(needed_pkgs, requireNamespace, quietly = TRUE)]
+    missing_pkg <- needed_pkgs[!sapply(needed_pkgs, requireNamespace, 
+                                       quietly = TRUE)]
     if (length(missing_pkg) > 0) {
-      warning("Skipping model '", m, "' because package(s) missing: ",
+      warning("Skipping model '", m, "' because package(s) missing: ", 
               paste(missing_pkg, collapse = ", "))
       next
     }
-    
     cat(sprintf("Training %s for importance...\n", m))
+    
+    # ---- Assemble train() arguments ----
+    train_args <- list(
+      form = form,
+      data = df,
+      method = m,
+      trControl = trControl,
+      metric = final_metric
+    )
+    if (!is.null(tuneLength)) train_args$tuneLength <- tuneLength
+    if (m == "glm" || m == "glmStepAIC") train_args$family <- "binomial"
+    extra_args <- list(...)
+    if (length(extra_args) > 0) train_args <- utils::modifyList(train_args, extra_args)
+    
     fit <- tryCatch({
-      caret::train(group ~ ., data = df, method = m,
-                   trControl = caret::trainControl(
-                     method = method, number = number,
-                     classProbs = TRUE),
-                   metric = "Accuracy")
+      if (m == "xgbTree") {
+        result <- NULL
+        invisible(capture.output(result <- do.call(caret::train, train_args)))
+        result
+      } else {
+        do.call(caret::train, train_args)
+      }
     }, error = function(e) {
       warning("Training failed for model '", m, "': ", e$message)
       return(NULL)
     })
     
-    if (is.null(fit)) next
+    if (is.null(fit)) 
+      next
     
     imp <- tryCatch({
       caret::varImp(fit, scale = TRUE)$importance
     }, error = function(e) {
-      warning("Could not extract importance for model '", m, "': ", e$message)
+      warning("Could not extract importance for model '", 
+              m, "': ", e$message)
       return(NULL)
     })
     
-    if (is.null(imp)) next
+    if (is.null(imp)) 
+      next
     
-    feats <- head(rownames(imp)[order(-imp[, 1])], top_n)
+    # ---- Ensure imp is a data.frame for consistent handling ----
+    if (!is.data.frame(imp)) {
+      imp <- as.data.frame(imp)
+    }
+    
+    # ---- Extract importance scores based on class_importance ----
+    if (ncol(imp) == 1) {
+      imp_scores <- imp[, 1]
+      names(imp_scores) <- rownames(imp)
+    } else {
+      # Multi-class: determine which column(s) to use
+      if (is.null(class_importance)) {
+        # Default: first column
+        imp_scores <- imp[, 1]
+        names(imp_scores) <- rownames(imp)
+      } else if (is.character(class_importance) && length(class_importance) == 1) {
+        if (class_importance %in% c("max", "min", "all")) {
+          if (class_importance == "max") {
+            imp_scores <- apply(imp, 1, max, na.rm = TRUE)
+          } else if (class_importance == "min") {
+            imp_scores <- apply(imp, 1, min, na.rm = TRUE)
+          } else { # "all"
+            imp_scores <- rowMeans(imp, na.rm = TRUE)
+          }
+          names(imp_scores) <- rownames(imp)
+        } else {
+          # User specified a class name
+          if (class_importance %in% colnames(imp)) {
+            imp_scores <- imp[, class_importance]
+            names(imp_scores) <- rownames(imp)
+          } else {
+            warning("Class name '", class_importance, "' not found in importance columns for model '", m, 
+                    "'. Available: ", paste(colnames(imp), collapse = ", "), 
+                    ". Using first column as fallback.")
+            imp_scores <- imp[, 1]
+            names(imp_scores) <- rownames(imp)
+          }
+        }
+      } else if (is.numeric(class_importance) && length(class_importance) == 1) {
+        idx <- as.integer(class_importance)
+        if (idx >= 1 && idx <= ncol(imp)) {
+          imp_scores <- imp[, idx]
+          names(imp_scores) <- rownames(imp)
+        } else {
+          warning("Column index ", idx, " out of range for model '", m, 
+                  "' (1-", ncol(imp), "). Using first column as fallback.")
+          imp_scores <- imp[, 1]
+          names(imp_scores) <- rownames(imp)
+        }
+      } else {
+        warning("Invalid 'class_importance' specification for model '", m, 
+                "'; using first column as fallback.")
+        imp_scores <- imp[, 1]
+        names(imp_scores) <- rownames(imp)
+      }
+    }
+    
+    # Sort and take top_n
+    feats <- head(names(sort(imp_scores, decreasing = TRUE)), top_n)
     imp_list[[m]] <- feats
   }
   
-  if (length(imp_list) == 0) stop("No models could be trained or provided importance.")
+  if (length(imp_list) == 0) 
+    stop("No models could be trained or provided importance.")
   
-  selected <- if (combine == "union") unique(unlist(imp_list))
+  selected <- if (combine == "union") 
+    unique(unlist(imp_list))
   else Reduce(intersect, imp_list)
   
   all_feats <- unique(unlist(imp_list))
@@ -717,10 +892,12 @@ FeatureSelectBuiltin <- function(object,
     comb_imp[[m]] <- ifelse(all_feats %in% imp_list[[m]], "Yes", "-")
   }
   comb_imp$Selected <- ifelse(all_feats %in% selected, "[OK]", "")
-  comb_imp <- comb_imp[order(-rowSums(comb_imp[, names(imp_list)] == "Yes")), ]
+  
+  # drop = FALSE prevents single-model errors in rowSums()
+  comb_imp <- comb_imp[order(-rowSums(comb_imp[, names(imp_list), drop = FALSE] == "Yes")), ]
   
   cat(sprintf("Built-in (%s): %d features\n", combine, length(selected)))
-  invisible(list(importance_table = comb_imp, selected_features = selected,
+  invisible(list(importance_table = comb_imp, selected_features = selected, 
                  per_model = imp_list))
 }
 
@@ -729,13 +906,36 @@ FeatureSelectBuiltin <- function(object,
 
 #' Apply Selected Features to a Train_Model Object
 #'
-#' Subsets the Train_Model to keep only the chosen features, updating all
-#' relevant slots. Downstream slots (split, models) are reset.
+#' Subsets the Train_Model to keep only the chosen features. If a train/test
+#' split already exists on \code{object} (i.e. \code{object@split.data}
+#' already has non-empty \code{training}/\code{testing} elements), that same
+#' row-level split is preserved -- only its columns are subset to the
+#' selected features -- rather than being wiped out. This matters because
+#' feature selection is expected to be run \emph{on the training portion
+#' only} (e.g. via a separate \code{Train_Model} object built from
+#' \code{object@split.data$training}); silently discarding an
+#' already-established split here would force the caller to re-draw a new
+#' random split afterwards, which is easy to forget and previously caused
+#' downstream steps (e.g. \code{preProcess()} on
+#' \code{object@split.data$training}) to fail with "0 rows"/NULL errors.
+#'
+#' \code{split.scale.data} is subset the same way if present. Trained
+#' models and results are always cleared, since they were fit on the old
+#' feature set and are no longer valid.
 #'
 #' @param object   A Train_Model object.
 #' @param features Character vector of feature names to keep.
 #' @return An updated Train_Model object.
 #' @export
+#' @examples
+#' \dontrun{
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#' # Select first 3 numeric features as example
+#' features <- colnames(mtcars)[1:3]
+#' model <- ApplyFeatureSelection(model, features)
+#' print(dim(model@clean.df))
+#' }
 ApplyFeatureSelection <- function(object, features) {
   if (!inherits(object, "Train_Model"))
     stop("Object must be Train_Model.")
@@ -747,15 +947,46 @@ ApplyFeatureSelection <- function(object, features) {
   object@clean.df <- object@clean.df[, keep, drop = FALSE]
   object@data.df  <- object@data.df[, intersect(keep, colnames(object@data.df)), drop = FALSE]
   
-  # Reset downstream slots
-  object@split.data       <- list()
-  object@split.scale.data <- list()
-  object@train.models     <- list()
-  object@all.results      <- list()
+  # -- Preserve an existing split (row-level) by subsetting its columns,
+  # instead of discarding it. This is the safe default: it never changes
+  # *which* rows are training vs. testing (no new randomness / no risk of
+  # accidentally re-mixing rows across the split), it only drops columns
+  # that were not selected.
+  .subset_split <- function(split_list, keep_cols) {
+    if (length(split_list) == 0) return(list())
+    lapply(split_list, function(df) {
+      if (is.null(df) || !is.data.frame(df)) return(df)
+      cols <- intersect(keep_cols, colnames(df))
+      df[, cols, drop = FALSE]
+    })
+  }
+  
+  had_split <- length(object@split.data) > 0 &&
+    all(c("training", "testing") %in% names(object@split.data)) &&
+    !is.null(object@split.data$training) && !is.null(object@split.data$testing)
+  
+  if (had_split) {
+    object@split.data <- .subset_split(object@split.data, keep)
+    if (length(object@split.scale.data) > 0) {
+      object@split.scale.data <- .subset_split(object@split.scale.data, keep)
+    }
+    cat("Existing train/test split preserved (rows unchanged); columns subset to selected features.\n")
+  } else {
+    # Nothing to preserve -- keep prior behaviour of resetting to empty lists
+    # so a fresh split is drawn downstream.
+    object@split.data       <- list()
+    object@split.scale.data <- list()
+  }
+  
+  # Trained models/results were fit on the previous feature set and are no
+  # longer valid -- these are always cleared regardless of the split.
+  object@train.models      <- list()
+  object@all.results       <- list()
   object@best.model.result <- list()
   
   cat(sprintf("Applied feature selection: %d features kept.\n", length(keep) - 1))
-  cat("Downstream slots (split, models, results) have been reset.\n")
+  cat("Downstream slots (models, results) have been reset", 
+      if (!had_split) "; split.data/split.scale.data reset as well (no prior split found).\n" else ".\n")
   return(object)
 }
 
@@ -766,31 +997,18 @@ ApplyFeatureSelection <- function(object, features) {
 #' @return A data frame with model name and whether varImp is supported.
 #' @export
 check_varImp_availability <- function(model_names) {
-  result <- data.frame(
-    Model      = model_names,
-    Has_BuiltIn = sapply(model_names, function(m) {
-      info <- caret::getModelInfo(m, regex = FALSE)[[1]]
-      if (is.null(info)) return(FALSE)
-      # Check if model has a built-in varImp method
-      !is.null(info$varImp) || m %in% c(
-        "ada", "AdaBag", "AdaBoost.M1", "adaboost", "bagEarth", "bagEarthGCV", 
-        "bagFDA", "bagFDAGCV", "bartMachine", "blasso", "BstLm", "bstSm", 
-        "C5.0", "C5.0Cost", "C5.0Rules", "C5.0Tree", "cforest", "chaid", 
-        "ctree", "ctree2", "cubist", "deepboost", "earth", "enet", 
-        "evtree", "extraTrees", "fda", "gamboost", "gbm_h2o", "gbm", 
-        "gcvEarth", "glmnet_h2o", "glmnet", "glmStepAIC", "J48", "JRip", 
-        "lars", "lars2", "lasso", "LMT", "LogitBoost", "M5", "M5Rules", 
-        "msaenet", "nodeHarvest", "OneR", "ordinalNet", "ordinalRF", 
-        "ORFlog", "ORFpls", "ORFridge", "ORFsvm", "pam", "parRF", "PART", 
-        "penalized", "PenalizedLDA", "qrf", "ranger", "Rborist", "relaxo", 
-        "rf", "rFerns", "rfRules", "rotationForest", "rotationForestCp", 
-        "rpart", "rpart1SE", "rpart2", "rpartCost", "rpartScore", 
-        "rqlasso", "rqnc", "RRF", "RRFglobal", "sdwd", "smda", 
-        "sparseLDA", "spikeslab", "wsrf", "xgbDART", "xgbLinear", "xgbTree"
-      )
-    }),
-    row.names = NULL
-  )
+  if (!requireNamespace("caret", quietly = TRUE)) stop("caret required.")
+  result <- data.frame(Model = model_names, Has_BuiltIn = NA)
+  for (i in seq_along(model_names)) {
+    if (model_names[i] == "rpart") {
+      result$Has_BuiltIn[i] <- FALSE
+      next
+    }
+    info <- caret::getModelInfo(model_names[i], regex = FALSE)[[1]]
+    has_imp <- !is.null(info$varImp)
+    known <- c("rf", "C5.0", "glmnet")
+    result$Has_BuiltIn[i] <- has_imp || (model_names[i] %in% known)
+  }
   return(result)
 }
 

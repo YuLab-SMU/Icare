@@ -2,12 +2,12 @@
 % Please edit documentation in R/model_04_model_benchmark.R
 \name{PreprocessingBenchmark}
 \alias{PreprocessingBenchmark}
-\title{Benchmark Binary Classification Models with Preprocessing Pipelines}
+\title{Preprocessing Benchmark for Binary Classification}
 \usage{
 PreprocessingBenchmark(
   data,
   group_col = NULL,
-  algorithms = c("rf", "ranger", "gbm", "glmnet", "svmRadial", "knn", "nnet"),
+  algorithms = c("glm", "lda", "knn", "nb", "rpart", "rf", "svmRadial"),
   impute_methods = c("none", "median", "knn", "bag"),
   norm_methods = list("none", c("center", "scale"), c("center", "scale", "YeoJohnson")),
   outer_folds = 5,
@@ -15,69 +15,39 @@ PreprocessingBenchmark(
   inner_repeats = 2,
   tuneLength = 3,
   seed = 123,
-  verbose = TRUE
+  verbose = TRUE,
+  metrics = c("AUC", "Accuracy", "Sensitivity", "Specificity", "F1", "Kappa")
 )
 }
 \arguments{
-\item{data}{A data frame, or an S4 object with slots \code{clean.df} and
-\code{group_col} (e.g. \code{Train_Model} or \code{Stat}).}
+\item{data}{A data.frame, Train_Model, or Stat object containing the data.}
 
-\item{group_col}{Character string specifying binary outcome column.
-Ignored if \code{data} is an S4 object that already stores the group column.}
+\item{group_col}{Character string indicating the column name of the response variable (binary).}
 
-\item{algorithms}{Character vector of caret model names.}
+\item{algorithms}{Character vector of caret model names to evaluate.}
 
-\item{impute_methods}{Character vector of imputation methods.
-Supported: \code{"none"}, \code{"median"}, \code{"knn"}, \code{"bag"}.}
+\item{impute_methods}{Character vector of imputation methods: "none", "median", "knn", "bag".}
 
-\item{norm_methods}{List of normalization methods.}
+\item{norm_methods}{List of normalization methods passed to caret::preProcess.}
 
-\item{outer_folds}{Number of outer CV folds.}
+\item{outer_folds}{Number of outer cross-validation folds. Default: 5.}
 
-\item{inner_cv_number}{Number of folds for inner CV.}
+\item{inner_cv_number}{Number of folds for inner repeated CV. Default: 5.}
 
-\item{inner_repeats}{Number of repeats for inner CV.}
+\item{inner_repeats}{Number of repetitions for inner CV. Default: 2.}
 
-\item{tuneLength}{Number of tuning parameter combinations.}
+\item{tuneLength}{Length of tuning parameter grid. Default: 3.}
 
-\item{seed}{Random seed.}
+\item{seed}{Random seed for reproducibility. Default: 123.}
 
-\item{verbose}{Logical; if \code{TRUE} prints a concise progress message
-for each algorithm.}
+\item{verbose}{Logical; if TRUE, print progress messages. Default: TRUE.}
+
+\item{metrics}{Character vector of performance metrics to compute.}
 }
 \value{
-A data frame of class \code{"PreprocessingBenchmark"}.
-  Columns include \code{Algorithm}, \code{Imputation}, \code{Normalization},
-  \code{Mean_AUC}, \code{SD_AUC}, \code{CI_lower}, \code{CI_upper},
-  \code{n_success}, and \code{failure_rate}.
-  An attribute \code{error_log} is attached with any failures encountered.
+A data frame with class "PreprocessingBenchmark".
 }
 \description{
-Nested cross-validation benchmarking framework for preprocessing
-methodology studies in binary classification.
-}
-\details{
-The framework avoids near-zero variance filtering and correlation filtering
-to preserve orthogonality in preprocessing comparisons. All preprocessing
-operations are learned on the training folds and applied to the corresponding
-test folds.
-}
-\examples{
-\dontrun{
-library(mlbench)
-data(Sonar)
-result <- PreprocessingBenchmark(
-  data = Sonar,
-  group_col = "Class",
-  algorithms = c("rf", "gbm", "xgbTree", "glmnet"),
-  impute_methods = c("none", "median"),
-  norm_methods = list("none", c("center","scale"))
-)
-print(result)
-attr(result, "error_log")
-}
-}
-\references{
-Kuhn M. (2008). Building Predictive Models in R Using the
-caret Package. \emph{Journal of Statistical Software}, 28(5), 1-26.
+Evaluates the impact of different preprocessing strategies (imputation and
+normalization) on the performance of multiple classification algorithms.
 }

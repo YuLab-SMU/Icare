@@ -9,7 +9,9 @@ Sub_umap_analyse(
   dims = 2,
   n_neighbors = 15,
   min_dist = 0.1,
-  metric = "euclidean"
+  metric = "euclidean",
+  use_scaled_data = TRUE,
+  seed = 123
 )
 }
 \arguments{
@@ -22,6 +24,10 @@ Sub_umap_analyse(
 \item{min_dist}{Min dist.}
 
 \item{metric}{Metric.}
+
+\item{use_scaled_data}{Logical.}
+
+\item{seed}{Numeric.}
 }
 \description{
 Sub UMAP Analyse

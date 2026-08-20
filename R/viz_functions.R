@@ -67,34 +67,67 @@
 ##   1  STAT  -- distribution - correlation - PCA - DEG
 ## =============================================================================
 
-#' Grouped box-violin plot with statistical comparisons
+#' Grouped Distribution Plot with Violin and Boxplot
 #'
-#' @param object   A \code{Stat} object, or a plain data frame.
-#' @param features Character vector of feature names to plot. When \code{NULL}
-#'   all numeric columns are used (max 12).
-#' @param group_col Grouping column. Ignored when \code{object} is a
-#'   \code{Stat} and the slot is already set.
-#' @param test      Statistical test passed to \code{ggpubr::stat_compare_means}:
-#'   \code{"wilcox.test"} (default) or \code{"t.test"}.
-#' @param palette_name Wesanderson / RColorBrewer palette.
-#' @param ncol      Number of facet columns.
-#' @param base_size Base font size.
-#' @param save_plot Logical. Save the plot? Default \code{FALSE}.
-#' @param save_dir  Output directory. When \code{NULL} and \code{save_plot=TRUE}
-#'   the default Stat figure directory is used.
-#' @param width,height  Plot dimensions (inches).
-#' @param format    \code{"pdf"}, \code{"png"}, or \code{"svg"}.
-#' @returns A \code{ggplot} object.
+#' This function generates a faceted grouped distribution plot for selected numeric features.
+#' It visualizes the distribution of each feature across groups using violin plots overlaid
+#' with boxplots, and optionally adds statistical significance labels (p-values).
+#'
+#' The function converts the grouping column to character internally to ensure that
+#' custom color names (provided via `group_colors`) can match the group levels correctly.
+#'
+#' @param object A `Stat` object (from the package) or a data frame containing the data.
+#'   If a `Stat` object is provided, the function will extract the clean data and
+#'   the default group column from the object.
+#' @param features A character vector of feature (column) names to plot. If `NULL`
+#'   (default), the first 12 numeric columns (excluding the group column) are used.
+#' @param group_col A character string specifying the column name that defines the
+#'   grouping variable. If `NULL` (default) and `object` is a `Stat` object, it will
+#'   be automatically taken from `object@group_col`. Otherwise, it must be provided.
+#' @param test A character string specifying the statistical test to use for pairwise
+#'   comparisons. Passed to \code{ggpubr::stat_compare_means()}. Default is `"wilcox.test"`.
+#' @param palette_name A character string indicating the color palette to use when
+#'   `group_colors` is `NULL`. Supports RColorBrewer palettes (e.g., "Set1") or
+#'   wesanderson palettes (e.g., "Zissou1"). Default is `"Royal1"`.
+#' @param group_colors An optional named character vector specifying custom colors
+#'   for each group. The names must exactly match the group levels (case-sensitive).
+#'   If provided, this overrides `palette_name`. Default is `NULL`.
+#' @param ncol Number of columns in the faceted plot. Default is 3.
+#' @param base_size Base font size for the plot theme. Default is 13.
+#' @param save_plot Logical; if `TRUE`, the plot is saved to disk. Default is `FALSE`.
+#' @param save_dir Directory path where the plot will be saved. If `NULL` and
+#'   `save_plot` is `TRUE`, a default directory is used.
+#' @param width Width of the saved plot (in inches). Default is 10.
+#' @param height Height of the saved plot (in inches). Default is 6.
+#' @param format Output format for the saved plot (`"pdf"` or `"png"`). Default is `"pdf"`.
+#'
+#' @return A `ggplot` object. The plot is also saved if `save_plot = TRUE`.
 #' @export
+#'
 #' @examples
 #' \dontrun{
-#' PlotGroupedDistribution(stat_obj_test,save_plot = FALSE,ncol = 4)
+#' # Using a Stat object with custom colors
+#' p <- PlotGroupedDistribution(
+#'   object = stat_obj,
+#'   features = c("GeneA", "GeneB"),
+#'   group_colors = c("0" = "#404040", "1" = "#ca0020")
+#' )
+#' print(p)
+#'
+#' # Using a data frame
+#' df <- data.frame(
+#'   Group = rep(c("A", "B"), each = 20),
+#'   Feature1 = rnorm(40),
+#'   Feature2 = rnorm(40, mean = 2)
+#' )
+#' p2 <- PlotGroupedDistribution(df, group_col = "Group")
 #' }
 PlotGroupedDistribution <- function(object,
                                     features     = NULL,
-                                    group_col    = "group",
+                                    group_col    = NULL,
                                     test         = "wilcox.test",
                                     palette_name = "Royal1",
+                                    group_colors = NULL,
                                     ncol         = 3,
                                     base_size    = 13,
                                     save_plot    = FALSE,
@@ -103,46 +136,107 @@ PlotGroupedDistribution <- function(object,
                                     height       = 6,
                                     format       = "pdf") {
   cat("Generating grouped distribution plot...\n")
-  if (is.null(save_dir) && save_plot) save_dir <- .get_viz_output_dir("Stat")
-  
-  if (inherits(object, "Stat")) {
-    df        <- object@clean.data
-    group_col <- object@group_col
-  } else {
-    df <- as.data.frame(object)
+  if (is.null(save_dir) && save_plot) {
+    save_dir <- .get_viz_output_dir("Stat")
   }
   
+  # ---- Extract data and group column ----
+  if (inherits(object, "Stat")) {
+    df <- object@clean.data
+    if (is.null(group_col)) group_col <- object@group_col
+  } else {
+    df <- as.data.frame(object)
+    if (is.null(group_col)) {
+      stop("'group_col' must be provided when 'object' is not a Stat object.")
+    }
+  }
+  if (!group_col %in% colnames(df)) {
+    stop("Group column '", group_col, "' not found in data.")
+  }
+  
+  # ---- Convert group column to character for reliable matching ----
+  df[[group_col]] <- as.character(df[[group_col]])
+  
+  # ---- Select numeric features ----
   num_cols <- names(df)[sapply(df, is.numeric)]
   num_cols <- setdiff(num_cols, group_col)
   if (is.null(features)) features <- head(num_cols, 12)
-  features  <- intersect(features, num_cols)
-  if (length(features) == 0) stop("No valid numeric features found.")
+  features <- intersect(features, num_cols)
+  if (length(features) == 0) {
+    stop("No valid numeric features found.")
+  }
   
-  cols <- .get_palette(palette_name, length(unique(df[[group_col]])))
+  # ---- Determine group levels and colors ----
+  groups <- unique(df[[group_col]])
+  n_groups <- length(groups)
   
-  long_df <- tidyr::pivot_longer(df[, c(group_col, features), drop = FALSE],
-                                 cols = -dplyr::all_of(group_col),
-                                 names_to  = "Feature",
-                                 values_to = "Value")
+  if (!is.null(group_colors)) {
+    # Check if named vector and match groups
+    if (!is.null(names(group_colors))) {
+      matched <- intersect(names(group_colors), groups)
+      if (length(matched) == n_groups) {
+        cols <- group_colors[groups]   # reorder to match group order
+      } else {
+        warning("Names in 'group_colors' do not match all group levels. Falling back to palette.")
+        cols <- .get_palette(palette_name, n_groups)
+      }
+    } else {
+      # Unnamed: assume order matches group levels
+      if (length(group_colors) == n_groups) {
+        cols <- group_colors
+        names(cols) <- groups
+        message("Using 'group_colors' in the order of group levels: ",
+                paste(groups, collapse = ", "))
+      } else {
+        warning("Length of 'group_colors' does not match number of groups. Falling back to palette.")
+        cols <- .get_palette(palette_name, n_groups)
+      }
+    }
+  } else {
+    cols <- .get_palette(palette_name, n_groups)
+  }
+  names(cols) <- groups   # ensure names
+  
+  # ---- Reshape data to long format ----
+  long_df <- tidyr::pivot_longer(
+    df[, c(group_col, features), drop = FALSE],
+    cols = -dplyr::all_of(group_col),
+    names_to = "Feature",
+    values_to = "Value"
+  )
   long_df[[group_col]] <- as.factor(long_df[[group_col]])
   
-  p <- ggplot2::ggplot(long_df,
-                       ggplot2::aes(x = .data[[group_col]],
-                                    y = Value,
-                                    fill = .data[[group_col]])) +
+  # ---- Build the plot ----
+  p <- ggplot2::ggplot(
+    long_df,
+    ggplot2::aes(
+      x = .data[[group_col]],
+      y = Value,
+      fill = .data[[group_col]]
+    )
+  ) +
     ggplot2::geom_violin(alpha = 0.5, colour = NA) +
-    ggplot2::geom_boxplot(width = 0.2, outlier.shape = 21,
-                          outlier.size = 1.2, colour = "grey30") +
-    ggpubr::stat_compare_means(method = test,
-                               label  = "p.signif",
-                               comparisons = utils::combn(
-                                 levels(long_df[[group_col]]), 2, simplify = FALSE)) +
+    ggplot2::geom_boxplot(
+      width = 0.2,
+      outlier.shape = 21,
+      outlier.size = 1.2,
+      colour = "grey30"
+    ) +
+    ggpubr::stat_compare_means(
+      method = test,
+      label = "p.signif",
+      comparisons = utils::combn(levels(long_df[[group_col]]), 2, simplify = FALSE)
+    ) +
     ggplot2::facet_wrap(~ Feature, scales = "free_y", ncol = ncol) +
     ggplot2::scale_fill_manual(values = cols) +
     ggplot2::labs(x = group_col, y = "Value", fill = group_col) +
-    .pub_theme(base_size)
+    .pub_theme(base_size)   # internal theme function
   
-  if (save_plot) .save_plot(p, save_dir, "grouped_distribution", width, height, format)
+  # ---- Save plot if requested ----
+  if (save_plot) {
+    .save_plot(p, save_dir, "grouped_distribution", width, height, format)   # internal helper
+  }
+  
   return(p)
 }
 
@@ -507,32 +601,46 @@ PlotCorrelationHeatmap <- function(object,
   cat("[OK] Correlation heatmap completed successfully.\n")
   invisible(corr_mat)
 }
-#' PCA scatter plot coloured by metadata (zero-variance safe, colour-named, enhanced)
+#' PCA Plot with Custom Group Colors
 #'
-#' @param object     A \code{Stat} object or numeric data frame.
-#' @param color_by   Column in \code{info.data} (or the data frame) used for
-#'   point colour. Defaults to \code{group_col}.
-#' @param shape_by   Optional second metadata column for point shape.
-#' @param pcs        Integer vector length 2 selecting PCs. Default \code{c(1,2)}.
-#' @param ellipse    Draw group ellipses (95 \% CI). Default \code{TRUE}.
-#' @param label_points Logical. Label sample names. Default \code{FALSE}.
-#' @param palette_name Palette.
-#' @param base_size  Base font size.
-#' @param save_plot  Logical. Save the plot? Default \code{FALSE}.
-#' @param save_dir   Output directory. When \code{NULL} and \code{save_plot=TRUE}
-#'   the default Stat figure directory is used.
-#' @param width,height Inches.
-#' @param format     File format.
-#' @returns A \code{ggplot} object.
+#' This function performs Principal Component Analysis (PCA) on numeric columns
+#' of a dataset and generates a scatter plot of the first two principal components.
+#' Points can be colored and shaped by categorical variables. Custom colors
+#' for the grouping variable can be specified via `group_colors`.
+#'
+#' @param object A `Stat` object (from the package) or a data frame.
+#' @param color_by Name of the column in `info.data` (or the data frame) used
+#'   to color the points. If NULL and `object` is a `Stat` object, the
+#'   `group_col` slot is used.
+#' @param shape_by Optional column name for shaping points. Default is NULL.
+#' @param pcs Integer vector of length 2 indicating which principal components
+#'   to plot. Default is c(1, 2).
+#' @param ellipse Logical; if TRUE, draws a 95% confidence ellipse for each group.
+#'   Default is TRUE.
+#' @param label_points Logical; if TRUE, labels each point with its row name.
+#'   Default is FALSE.
+#' @param palette_name Name of the palette to use when `group_colors` is not
+#'   provided. Supports RColorBrewer (e.g., "Set1") or wesanderson (e.g.,
+#'   "Darjeeling1"). Default is "Darjeeling1".
+#' @param base_size Base font size for the plot theme. Default is 13.
+#' @param save_plot Logical; if TRUE, saves the plot to disk. Default is FALSE.
+#' @param save_dir Directory to save the plot. If NULL and save_plot is TRUE,
+#'   a default directory is used.
+#' @param width Width of the saved plot (inches). Default is 7.
+#' @param height Height of the saved plot (inches). Default is 6.
+#' @param format Output format ("pdf" or "png"). Default is "pdf".
+#' @param group_colors An optional named character vector specifying custom
+#'   colors for the groups. Names must match the levels of the `color_by`
+#'   variable. If provided, it overrides `palette_name`. Default is NULL.
+#'
+#' @return A `ggplot` object. The plot is also saved if `save_plot = TRUE`.
 #' @export
+#'
 #' @examples
 #' \dontrun{
-#' #must have info.data
-#' stat_obj_test@info.data=stat_obj_test@clean.data
-#' PlotPCA(stat_obj_test,save_plot = FALSE)
-#' PlotPCA(stat_obj_test, shape_by='SWAB',save_plot = FALSE)
+#' p <- PlotPCA(stat_obj, color_by = "group",
+#'              group_colors = c("0" = "#404040", "1" = "#ca0020"))
 #' }
-
 PlotPCA <- function(object,
                     color_by      = NULL,
                     shape_by      = NULL,
@@ -545,20 +653,24 @@ PlotPCA <- function(object,
                     save_dir      = NULL,
                     width         = 7,
                     height        = 6,
-                    format        = "pdf") {
+                    format        = "pdf",
+                    group_colors  = NULL) {   # new parameter
+  
   cat("Generating PCA plot...\n")
   if (is.null(save_dir) && save_plot) save_dir <- .get_viz_output_dir("Stat")
   
+  # ---- Extract data ----
   if (inherits(object, "Stat")) {
     mat      <- object@clean.data[, sapply(object@clean.data, is.numeric)]
     info     <- object@info.data
-    color_by <- if (is.null(color_by)) object@group_col else color_by
+    if (is.null(color_by)) color_by <- object@group_col
   } else {
     mat  <- as.data.frame(object)[, sapply(as.data.frame(object), is.numeric)]
     info <- data.frame(row.names = rownames(mat))
   }
   
-  keep_cols <- apply(mat, 2, var, na.rm = TRUE) > 0
+  # ---- Remove zero-variance columns ----
+  keep_cols <- apply(mat, 2, stats::var, na.rm = TRUE) > 0
   if (any(!keep_cols)) {
     removed <- colnames(mat)[!keep_cols]
     message("Removed ", length(removed), " zero-variance column(s): ",
@@ -567,28 +679,60 @@ PlotPCA <- function(object,
   }
   if (ncol(mat) < 2) stop("After removing constant columns, fewer than 2 variables remain.")
   
+  # ---- PCA ----
   pca_res  <- stats::prcomp(mat, scale. = TRUE, center = TRUE)
   var_exp  <- round(summary(pca_res)$importance[2, ] * 100, 1)
   scores   <- as.data.frame(pca_res$x[, pcs])
   colnames(scores) <- paste0("PC", pcs)
   
+  # ---- Prepare color column ----
   if (nrow(info) == nrow(scores) && color_by %in% colnames(info)) {
     scores[[color_by]] <- as.factor(info[rownames(scores), color_by])
   } else {
     scores[[color_by]] <- factor("all")
   }
   
+  # ---- Shape column ----
   if (!is.null(shape_by) && shape_by %in% colnames(info)) {
     scores[[shape_by]] <- as.factor(info[rownames(scores), shape_by])
   }
   
-  n_grp <- length(levels(scores[[color_by]]))
-  cols  <- .get_palette(palette_name, n_grp)
-  names(cols) <- levels(scores[[color_by]])
+  # ---- Determine colors ----
+  group_levels <- levels(scores[[color_by]])
+  n_grp <- length(group_levels)
   
+  if (!is.null(group_colors)) {
+    # Check if group_colors is named and matches all groups
+    if (!is.null(names(group_colors))) {
+      matched <- intersect(names(group_colors), group_levels)
+      if (length(matched) == n_grp) {
+        cols <- group_colors[group_levels]   # reorder to match group order
+      } else {
+        warning("Names in 'group_colors' do not match all group levels. Falling back to palette.")
+        cols <- .get_palette(palette_name, n_grp)
+      }
+    } else {
+      # Unnamed: assume order matches group levels
+      if (length(group_colors) == n_grp) {
+        cols <- group_colors
+        names(cols) <- group_levels
+        message("Using 'group_colors' in the order of group levels: ",
+                paste(group_levels, collapse = ", "))
+      } else {
+        warning("Length of 'group_colors' does not match number of groups. Falling back to palette.")
+        cols <- .get_palette(palette_name, n_grp)
+      }
+    }
+  } else {
+    cols <- .get_palette(palette_name, n_grp)
+  }
+  names(cols) <- group_levels
+  
+  # ---- Axis labels ----
   xlab <- paste0("PC", pcs[1], " (", var_exp[pcs[1]], "%)")
   ylab <- paste0("PC", pcs[2], " (", var_exp[pcs[2]], "%)")
   
+  # ---- Aesthetics ----
   if (!is.null(shape_by) && shape_by %in% colnames(scores)) {
     aes_map <- ggplot2::aes(.data[[paste0("PC", pcs[1])]],
                             .data[[paste0("PC", pcs[2])]],
@@ -600,6 +744,7 @@ PlotPCA <- function(object,
                             colour = .data[[color_by]])
   }
   
+  # ---- Build plot ----
   p <- ggplot2::ggplot(scores, aes_map) +
     ggplot2::geom_point(size = 2.5, alpha = 0.85) +
     ggplot2::scale_colour_manual(values = cols) +
@@ -612,6 +757,7 @@ PlotPCA <- function(object,
   if (save_plot) .save_plot(p, save_dir, "PCA", width, height, format)
   return(p)
 }
+
 #' Feature selection plot: AUC vs. -log10(p-value) (enhanced)
 #'
 #' Calculates per-feature ROC AUC and plots it against -log10(p-value).
@@ -626,6 +772,7 @@ PlotPCA <- function(object,
 #' @param removed_fill  Fill colour for removed features.
 #' @param arrow        Logical. Draw arrows from labels to points.
 #' @param base_size    Base font size.
+#' @param text_repel_size    Annotation text font size.
 #' @param save_plot    Logical. Save the plot? Default \code{FALSE}.
 #' @param save_dir     Output directory. When \code{NULL} and \code{save_plot=TRUE}
 #'   the default Stat figure directory is used.
@@ -649,6 +796,7 @@ PlotAUCPval <- function(deg_df, mat_test,
                         removed_fill   = "#7f8fa6",
                         arrow          = TRUE,
                         base_size      = 13,
+                        text_repel_size=3,
                         save_plot      = FALSE,
                         save_dir       = NULL,
                         width          = 7,
@@ -713,7 +861,7 @@ PlotAUCPval <- function(deg_df, mat_test,
     ggrepel::geom_text_repel(
       data = selected_df,
       ggplot2::aes(label = feature),
-      size = 3.5, colour = "black", fontface = "bold.italic",
+      size = text_repel_size, colour = "black", fontface = "bold.italic",
       min.segment.length = 0,
       arrow = if (arrow) ggplot2::arrow(length = ggplot2::unit(0.01, "npc")) else NULL,
       show.legend = FALSE, max.overlaps = 200,
@@ -759,7 +907,7 @@ PlotDegBoxplot <- function(deg_results,
                            expr_data,
                            group_col   = "group",
                            top_n       = 5,
-                           palette_fill = c("#edf8b1", "#2c7fb8"),
+                           palette_fill = c("#999999", "#ef8a62"),
                            base_size   = 12,
                            save_plot   = FALSE,
                            save_dir    = NULL,
@@ -814,7 +962,7 @@ PlotDegBoxplot <- function(deg_results,
     ggplot2::labs(title = paste0("Top ", top_n, " DEGs"),
                   x = NULL, y = expression(log[10]~(Expression + 1)), fill = group_col) +
     .pub_theme(base_size) +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1,vjust = 1))
   print(p)
   if (save_plot) .save_plot(p, save_dir, "deg_boxplot", width, height, format)
   return(p)
@@ -944,7 +1092,7 @@ PlotFeatureHeatmap <- function(object,
                                show_rownames     = FALSE,
                                show_colnames     = FALSE,
                                palette_name      = "RdYlBu",
-                               color_palette     =  c("lightgray", "steelblue","#7B1FA2", "black", "gold"),
+                               color_palette     =  c("lightgray", "#7B1FA2", "black", "gold"),
                                color_range       = NULL,
                                na_col            = "grey90",
                                ann_colors        = NULL,
@@ -1255,7 +1403,7 @@ PlotFeatureHeatmap <- function(object,
 #' @examples
 #' \dontrun{
 #' model_obj <- ModelTrainAnalysis(
-#' object       = train_obj_test,
+#' object       = model_obj_test,
 #' methods      = c("glm", "rf", "gbm"),
 #' control      = list(method = "repeatedcv", number = 5, repeats = 1),
 #' save_plots   = TRUE,
@@ -1419,14 +1567,14 @@ PlotMultiROC <- function(object,
 #' @examples
 #' \dontrun{
 #' model_obj <- ModelTrainAnalysis(
-#' object       = train_obj_test,
+#' object       = model_obj_test,
 #' methods      = c("glm", "rf", "gbm"),
 #' control      = list(method = "repeatedcv", number = 5, repeats = 1),
 #' save_plots   = TRUE,
 #' save_dir     = ".",
 #' seed         = 123
 #' )
-#' PlotConfusionMatrix(model_obj, model_name = names(train_obj@train.models)[1], save_plot = FALSE)
+#' PlotConfusionMatrix(model_obj, model_name = names(model_obj@train.models)[1], save_plot = FALSE)
 #' }
 PlotConfusionMatrix <- function(object,
                                 model_name = NULL,
@@ -1832,57 +1980,99 @@ PlotFeatureImportance <- function(object,
 }
 
 
-#' Calibration curve
 #' Calibration Curve and Prediction Distribution Plot
 #'
-#' Strictly follows the diagnostic logic of 'diagnose_calibration' for calculations,
-#' with English labels and Prism-style formatting.
+#' Evaluates the calibration of a binary classifier by comparing predicted
+#' probabilities with observed outcomes. Produces a calibration curve
+#' (observed proportion vs. mean predicted probability) and a histogram
+#' of predicted probabilities. The smooth curve can be customized
+#' (linear, LOESS, or none) and binning automatically adapts to sample
+#' size and probability distribution.
 #'
-#' @param object A Train_Model object.
-#' @param model_name Name of the model. Defaults to the first one available.
-#' @param test_data Optional test dataframe. If NULL, uses object@split.data$test.
-#' @param n_bins Number of bins for grouping (default: 10).
-#' @param hist_colors Vector of two colors for histogram bars. Default: c("#ffffb3", "#bebada").
-#' @param curve_colors Vector of two colors (1: point, 2: loess line).
-#' @param base_size Base font size for ggprism theme (default: 14).
-#' @param combine_plots Logical. If TRUE, returns a patchwork object.
-#' @param save_plot Logical. Whether to save the plot.
-#' @param se Logical.Whether to display standard error on the plot.
-#' @param save_dir Directory to save the plot.
-#' @param width,height Plot dimensions in inches.
-#' @param format File format ("pdf" or "png").
-#' @param show_stats_on_plot Logical. Whether to display metrics on the plot.
+#' @param object A \code{Train_Model} object containing trained models.
+#' @param model_name Character. Name of the model to evaluate. If \code{NULL},
+#'   uses the first model in \code{object@train.models}.
+#' @param test_data Data frame. Test data used for evaluation. If \code{NULL},
+#'   uses \code{object@split.data$test}.
+#' @param n_bins Integer or \code{NULL}. Number of bins for calibration curve.
+#'   If \code{NULL}, automatically chosen based on sample size (range 4–10).
+#' @param bin_method Character. One of \code{"auto"}, \code{"equal_width"},
+#'   or \code{"quantile"}. If \code{"auto"}, switches to quantile binning
+#'   when predicted probabilities are highly concentrated (spread < 0.15 or
+#'   unique values < 10), otherwise uses equal-width bins.
+#' @param hist_colors Character vector of length 2 for histogram fill colors.
+#'   Default \code{c("#f0f0f0", "#1b9e77")}.
+#' @param curve_colors Character vector of length 2: point color and smooth
+#'   line color. Default \code{c("#1b9e77", "#c51b8a")}.
+#' @param base_size Numeric. Base font size for \code{ggprism::theme_prism()}.
+#'   Default 14.
+#' @param combine_plots Logical. If \code{TRUE}, returns a patchwork composite
+#'   of histogram + calibration curve. Default \code{TRUE}.
+#' @param save_plot Logical. Save the plot to a PDF file. Default \code{FALSE}.
+#' @param save_dir Character. Directory to save the plot. Required if
+#'   \code{save_plot = TRUE}.
+#' @param se Logical. Display standard error ribbon for the smooth curve.
+#'   Default \code{FALSE}.
+#' @param width Numeric. Width of saved plot in inches. Default 10.
+#' @param height Numeric. Height of saved plot in inches. Default 5.
+#' @param format Character. File format for saved plot ("pdf", "png", etc.).
+#'   Default "pdf".
+#' @param show_stats_on_plot Logical. Annotate the calibration curve with
+#'   Brier score, calibration intercept, slope, and Eavg. Default \code{TRUE}.
+#' @param smooth_method Character. Method for the smooth curve:
+#'   \code{"lm"} (linear), \code{"loess"} (local polynomial), or \code{"none"}.
+#'   Default \code{"lm"}.
 #'
-#' @export
+#' @return If \code{combine_plots = TRUE}, invisibly returns a \code{patchwork}
+#'   object. Otherwise, returns a list with \code{histogram} and
+#'   \code{calibration} ggplot objects.
+#'
 #' @examples
 #' \dontrun{
-#' model_obj <- ModelTrainAnalysis(
-#' object       = train_obj_test,
-#' methods      = c("glm", "rf", "gbm"),
-#' control      = list(method = "repeatedcv", number = 5, repeats = 1),
-#' save_plots   = TRUE,
-#' save_dir     = ".",
-#' seed         = 123
-#' )
-#' PlotCalibration(model_obj, save_plot = FALSE)
+#' library(caret)
+#' data("mtcars")
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#' set.seed(123)
+#' idx <- sample(1:nrow(mtcars), 20)
+#' model@split.data <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#' trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+#'                               control = list(method = "cv", number = 3),
+#'                               save_plots = FALSE)
+#' PlotCalibration(trained, model_name = "glm", test_data = mtcars[-idx, ],
+#'                 n_bins = 8, smooth_method = "lm", save_plot = FALSE)
 #' }
+#'
+#' @importFrom ggplot2 ggplot aes geom_histogram geom_abline geom_point
+#'   geom_smooth geom_text scale_fill_manual scale_size_continuous
+#'   coord_equal xlim ylim labs theme element_blank element_text
+#' @importFrom ggprism theme_prism
+#' @importFrom dplyr group_by summarise n
+#' @importFrom patchwork wrap_plots plot_layout
+#' @importFrom stats predict coef sd quantile
+#' @export
 PlotCalibration <- function(object,
-                            model_name         = NULL,
-                            test_data          = NULL,
-                            n_bins             = 10,
-                            hist_colors        = c("#f0f0f0", "#1b9e77"),
-                            curve_colors       = c("#1b9e77", "#c51b8a"),
-                            base_size          = 14,
-                            combine_plots      = TRUE,
-                            save_plot          = FALSE,
-                            save_dir           = NULL,
+                            model_name = NULL,
+                            test_data = NULL,
+                            n_bins = NULL,
+                            bin_method = c("auto", "equal_width", "quantile"),
+                            hist_colors = c("#f0f0f0", "#1b9e77"),
+                            curve_colors = c("#1b9e77", "#c51b8a"),
+                            base_size = 14,
+                            combine_plots = TRUE,
+                            save_plot = FALSE,
+                            save_dir = NULL,
                             se = FALSE,
-                            width              = 10,
-                            height             = 5,
-                            format             = "pdf",
-                            show_stats_on_plot = TRUE) {
+                            width = 10,
+                            height = 5,
+                            format = "pdf",
+                            show_stats_on_plot = TRUE,
+                            smooth_method = c("lm", "loess", "none")) {
   
-  # ---------- 1. Parameter Extraction ----------
+  smooth_method <- match.arg(smooth_method)
+  bin_method <- match.arg(bin_method)
+  
+  # ---- 1. Parameter Extraction ----
   if (!inherits(object, "Train_Model"))
     stop("'object' must be a Train_Model.")
   
@@ -1897,7 +2087,7 @@ PlotCalibration <- function(object,
   if (!group_col %in% colnames(test_data))
     stop("group_col '", group_col, "' not found in test_data.")
   
-  # ---------- 2. Truth Label Extraction & Encoding ----------
+  # ---- 2. Truth Label Extraction & Encoding ----
   truth_factor <- test_data[[group_col]]
   if (!is.factor(truth_factor))
     truth_factor <- as.factor(truth_factor)
@@ -1909,13 +2099,12 @@ PlotCalibration <- function(object,
   if (length(levels_true) != 2)
     warning("Grouping variable is not binary; calibration curve may not be applicable.")
   
-  # Diagnostic standard: Assume second level is the positive class
   pos_level <- levels_true[2]
   truth_numeric <- as.integer(truth_factor) - 1L  # 0/1 encoding
   cat("\nPositive Level (Assumed levels[2]):", pos_level, "\n")
   cat("Positive Samples:", sum(truth_numeric == 1), "/", length(truth_numeric), "\n")
   
-  # ---------- 3. Predicted Probability Extraction ----------
+  # ---- 3. Predicted Probability Extraction ----
   pred_prob <- tryCatch({
     prob_mat <- stats::predict(model, newdata = test_data, type = "prob")
     if (is.matrix(prob_mat) || is.data.frame(prob_mat)) {
@@ -1934,18 +2123,16 @@ PlotCalibration <- function(object,
     stop("Prediction failed: ", e$message)
   })
   
-  # ---------- 4. Basic Statistics ----------
+  # ---- 4. Basic Statistics ----
   cat("\n===== Predicted Probability Distribution =====\n")
   print(summary(pred_prob))
   cat("Standard Deviation:", sd(pred_prob), "\n")
   
-  # Brier score
   brier <- mean((truth_numeric - pred_prob)^2)
   cat("\nBrier Score (Lower is better, range 0-0.25):", round(brier, 4), "\n")
   
   # Calibration Slope & Intercept (Logit Calibration)
   cal_df <- data.frame(truth = truth_numeric, prob = pred_prob)
-  # Clip probabilities to avoid infinite logits
   cal_df$prob_clip <- pmax(pmin(cal_df$prob, 1 - 1e-6), 1e-6)
   cal_glm <- suppressWarnings(
     glm(truth ~ log(prob_clip/(1 - prob_clip)), family = binomial(), data = cal_df)
@@ -1960,8 +2147,41 @@ PlotCalibration <- function(object,
   if (abs(intercept) > 0.5) cat("Warning: Large intercept suggests global probability shift.\n")
   if (abs(slope - 1) > 0.2) cat("Warning: Slope deviation suggests poor calibration at extremes.\n")
   
-  # ---------- 5. Binning Calibration & Eavg ----------
-  cal_df$bin <- cut(pred_prob, breaks = seq(0, 1, length.out = n_bins + 1), include.lowest = TRUE)
+  # ---- 5. Intelligent Binning ----
+  if (is.null(n_bins)) {
+    n <- length(pred_prob)
+    base_bins <- min(10, max(4, floor(n / 15)))
+    
+    if (bin_method == "auto") {
+      n_unique <- length(unique(round(pred_prob, 2)))
+      spread <- diff(quantile(pred_prob, probs = c(0.1, 0.9), na.rm = TRUE))
+      
+      if (spread < 0.15 || n_unique < 10) {
+        bin_method <- "quantile"
+        n_bins <- min(6, max(3, base_bins - 1))
+        cat(sprintf("Auto-switched to quantile binning (spread=%.2f, n_unique=%d), n_bins=%d\n",
+                    spread, n_unique, n_bins))
+      } else {
+        bin_method <- "equal_width"
+        n_bins <- base_bins
+        cat(sprintf("Auto-selected equal-width binning, n_bins=%d\n", n_bins))
+      }
+    } else {
+      n_bins <- base_bins
+    }
+  }
+  
+  # Create bins
+  if (bin_method == "quantile") {
+    breaks <- unique(quantile(pred_prob, probs = seq(0, 1, length.out = n_bins + 1), na.rm = TRUE))
+    if (min(breaks) > 0) breaks <- c(0, breaks)
+    if (max(breaks) < 1) breaks <- c(breaks, 1)
+    breaks <- unique(breaks)
+  } else {
+    breaks <- seq(0, 1, length.out = n_bins + 1)
+  }
+  cal_df$bin <- cut(pred_prob, breaks = breaks, include.lowest = TRUE)
+  
   cal_sum <- cal_df %>%
     dplyr::group_by(bin) %>%
     dplyr::summarise(
@@ -1977,33 +2197,39 @@ PlotCalibration <- function(object,
   e_avg <- mean(abs(cal_sum$obs_rate - cal_sum$mean_pred), na.rm = TRUE)
   cat("\nMean Absolute Calibration Error (Eavg):", round(e_avg, 4), "\n")
   
-  # ---------- 6. Visualization (Prism Theme & English) ----------
-  # Plot 1: Histogram Distribution
-  hist_df <- data.frame(prob = pred_prob, 
+  # ---- 6. Visualization ----
+  hist_df <- data.frame(prob = pred_prob,
                         truth = factor(truth_numeric, levels = c(0,1), labels = levels_true))
   
   p1 <- ggplot2::ggplot(hist_df, ggplot2::aes(x = prob, fill = truth)) +
-    ggplot2::geom_histogram(alpha = 0.6, bins = 30, position = "stack", color = "black", linewidth = 0.2) +
+    ggplot2::geom_histogram(alpha = 0.6, bins = 30, position = "stack",
+                            color = "black", linewidth = 0.2) +
     ggplot2::scale_fill_manual(values = hist_colors, name = "True Class") +
     ggplot2::labs(title = paste0("Probability Distribution: ", model_name),
                   x = "Predicted Probability", y = "Count") +
     ggprism::theme_prism(base_size = base_size) +
     ggplot2::theme(legend.position = "bottom")
   
-  # Plot 2: Calibration Curve
   p2 <- ggplot2::ggplot(cal_sum, ggplot2::aes(x = mean_pred, y = obs_rate)) +
-    ggplot2::geom_abline(slope = 1, intercept = 0, alpha = 0.6,linetype = "dashed", color ='#d9d9d9', linewidth = 0.8) +
-    ggplot2::geom_point(ggplot2::aes(size = n), color = curve_colors[1], alpha = 0.8) +
-    ggplot2::geom_smooth(method = "loess", se = se, color = curve_colors[2], linewidth = 1.5, linetype = "dotted") +
+    ggplot2::geom_abline(slope = 1, intercept = 0, alpha = 0.6,
+                         linetype = "dashed", color = "#d9d9d9", linewidth = 0.8) +
+    ggplot2::geom_point(ggplot2::aes(size = n), color = curve_colors[1], alpha = 0.8)
+  
+  if (smooth_method != "none") {
+    p2 <- p2 + ggplot2::geom_smooth(method = smooth_method, se = se,
+                                    color = curve_colors[2], linewidth = 1.5,
+                                    linetype = "dotted")
+  }
+  
+  p2 <- p2 +
     ggplot2::scale_size_continuous(range = c(3, 8), name = "n") +
     ggplot2::coord_equal() +
     ggplot2::xlim(0, 1) + ggplot2::ylim(0, 1) +
     ggplot2::labs(title = paste0("Calibration Curve: ", model_name),
-                  subtitle = paste0("Bins = ", n_bins),
+                  subtitle = paste0("Bins = ", n_bins, " (", bin_method, ")"),
                   x = "Mean Predicted Probability", y = "Observed Proportion") +
     ggprism::theme_prism(base_size = base_size)
   
-  # Add statistics to plot if requested
   if (show_stats_on_plot) {
     stats_text <- paste0(
       "Brier: ", round(brier, 4), "\n",
@@ -2011,14 +2237,15 @@ PlotCalibration <- function(object,
       "Slope: ", round(slope, 3), "\n",
       "Eavg: ", round(e_avg, 4)
     )
-    p2 <- p2 + ggplot2::annotate("text", x = 0.05, y = 0.95, label = stats_text, 
-                                 hjust = 0, vjust = 1, size = base_size * 0.3, 
+    p2 <- p2 + ggplot2::annotate("text", x = 0.05, y = 0.95, label = stats_text,
+                                 hjust = 0, vjust = 1, size = base_size * 0.3,
                                  family = "mono", fontface = "bold")
   }
   
-  # ---------- 7. Output Management ----------
+  # ---- 7. Output Management ----
   if (combine_plots) {
-    if (!requireNamespace("patchwork", quietly = TRUE)) stop("Please install 'patchwork' package.")
+    if (!requireNamespace("patchwork", quietly = TRUE))
+      stop("Please install 'patchwork' package.")
     combined <- p1 + p2 + patchwork::plot_layout(widths = c(1, 1))
     
     if (save_plot) {
@@ -2288,7 +2515,36 @@ PlotClusterHeatmap <- function(
   }
   
   # [3] Group Ordering -----------------------------------------------------
+  if (!group_by %in% colnames(meta_df)) {
+    # Previously, a missing group_by column silently produced a ZERO-LENGTH
+    # vector here (as.character(NULL) == character(0), not a column of NAs),
+    # which then propagated through group-level computation, row ordering,
+    # and z-score scaling, only surfacing 5-6 steps later as an unrelated
+    # error deep inside plotting code (scales::hue_pal(): "Must request at
+    # least one colour from a hue palette."), with no indication that the
+    # real cause was a missing/misspelled column. Fail clearly here instead.
+    cluster_like <- grep("^cluster_", colnames(meta_df), value = TRUE)
+    stop(
+      "group_by = \"", group_by, "\" is not a column of this object's ",
+      "info.data (it has ", ncol(meta_df), " columns). ",
+      if (length(cluster_like) > 0) {
+        paste0("Available clustering column(s): ", paste(cluster_like, collapse = ", "), ". ")
+      } else {
+        paste0("No columns starting with \"cluster_\" were found -- make sure you've ",
+               "run a clustering step (e.g. Sub_nmf_assign_subtypes(), ",
+               "Sub_kmeans_with_optimal_k(), Sub_lpa_with_optimal_k()) before calling ",
+               "PlotClusterHeatmap(). ")
+      },
+      "Pass the correct column via `group_by =`.",
+      call. = FALSE
+    )
+  }
   raw_group <- as.character(meta_df[[group_by]])
+  if (all(is.na(raw_group))) {
+    stop("group_by = \"", group_by, "\" exists but is entirely NA/missing -- ",
+         "no samples have been assigned to a cluster under this column yet.",
+         call. = FALSE)
+  }
   lvls <- if (!is.null(custom_levels)) custom_levels else gtools::mixedsort(unique(raw_group))
   
   # [4] Feature Filtering & Slicing ----------------------------------------
@@ -2620,29 +2876,28 @@ PlotMultiAlluvial <- function(
 ##   4  PROGNOSIS  -- KM - forest - time-ROC - RCS - nomogram - calibration - DCA - risk
 ## =============================================================================
 
-#' Kaplan-Meier survival curve
+#' Kaplan-Meier Survival Curve with Clinical Group Support
 #'
-#' Draws KM curves for up to 4 groups with risk table, median survival lines,
-#' log-rank p-value, and optional pairwise p-value annotations.
+#' Draws a KM curve stratified by a grouping variable. If a \code{PrognosiX}
+#' object is provided, the grouping variable can be from either \code{survival.data}
+#' or \code{info.data}.
 #'
-#' @param object       A \code{PrognosiX} object or a survival data frame with
-#'   \code{time} and \code{status} columns.
-#' @param group_col    Column to stratify on. When \code{NULL} the entire
-#'   cohort is shown as one curve.
-#' @param time_unit    Label for the x-axis: \code{"days"}, \code{"months"},
-#'   \code{"years"}.
-#' @param conf_int     Draw confidence bands. Default \code{FALSE}.
-#' @param pairwise_p   Add pairwise p-value table. Default \code{FALSE}.
-#' @param palette_name Palette.
-#' @param base_size    Base font size.
-#' @param save_plot    Logical.
-#' @param save_dir     Output directory.
-#' @param width,height Inches.
-#' @param format       File format.
-#' @returns A \code{ggsurvplot} object (list).
+#' @param object A \code{PrognosiX} object or a data frame with \code{time} and
+#'   \code{status} columns.
+#' @param group_col Character; name of the grouping column. If \code{NULL},
+#'   a single overall curve is drawn.
+#' @param time_unit Label for x‑axis (e.g., "days", "months").
+#' @param conf_int Logical; show confidence bands.
+#' @param pairwise_p Logical; add pairwise log‑rank p‑values.
+#' @param palette_name Color palette name.
+#' @param base_size Base font size.
+#' @param save_plot Logical; save to PDF.
+#' @param save_dir Output directory.
+#' @param width,height Plot dimensions.
+#' @param format File format.
+#' @return A \code{ggsurvplot} object.
 #' @export
 PlotKaplanMeier <- function(object,
-
                             group_col    = NULL,
                             time_unit    = "months",
                             conf_int     = FALSE,
@@ -2650,26 +2905,44 @@ PlotKaplanMeier <- function(object,
                             palette_name = "Darjeeling1",
                             base_size    = 13,
                             save_plot    = FALSE,
-                            save_dir = NULL,  # default: auto-detect from config
+                            save_dir = NULL,
                             width        = 7,
                             height       = 8,
                             format       = "pdf") {
-  if (is.null(save_dir)) save_dir <- .get_viz_output_dir("PrognosiX")
-
+  
+  if (is.null(save_dir) && save_plot) save_dir <- .get_viz_output_dir("PrognosiX")
+  
+  # ---- Extract data ----
   if (inherits(object, "PrognosiX")) {
-    surv_df <- object@survival.data
+    surv_df <- as.data.frame(object@survival.data)
+    info_df <- as.data.frame(object@info.data)
+    # If group_col is provided, merge it from info.data
+    if (!is.null(group_col) && group_col %in% colnames(info_df)) {
+      common <- intersect(rownames(surv_df), rownames(info_df))
+      if (length(common) == 0) stop("No matching rows between survival.data and info.data.")
+      surv_df <- surv_df[common, , drop = FALSE]
+      info_df <- info_df[common, , drop = FALSE]
+      surv_df[[group_col]] <- info_df[[group_col]]
+    }
   } else {
     surv_df <- as.data.frame(object)
+    if (!all(c("time", "status") %in% colnames(surv_df)))
+      stop("Data frame must contain 'time' and 'status' columns.")
   }
-
-  form_str <- if (is.null(group_col)) "Surv(time, status) ~ 1"
-              else paste0("Surv(time, status) ~ ", group_col)
-  fit  <- survival::survfit(as.formula(form_str), data = surv_df)
-
-  n_grp <- if (is.null(group_col)) 1L
-            else length(unique(surv_df[[group_col]]))
-  cols  <- .get_palette(palette_name, n_grp)
-
+  
+  # ---- Build formula ----
+  if (is.null(group_col)) {
+    form_str <- "Surv(time, status) ~ 1"
+  } else {
+    if (!group_col %in% colnames(surv_df)) stop("Group column not found.")
+    form_str <- paste0("Surv(time, status) ~ ", group_col)
+  }
+  fit <- survival::survfit(as.formula(form_str), data = surv_df)
+  
+  n_grp <- if (is.null(group_col)) 1L else length(unique(surv_df[[group_col]]))
+  cols <- .get_palette(palette_name, n_grp)
+  
+  # ---- Plot ----
   km <- survminer::ggsurvplot(
     fit,
     data             = surv_df,
@@ -2685,26 +2958,18 @@ PlotKaplanMeier <- function(object,
     legend.title     = if (!is.null(group_col)) group_col else "",
     ggtheme          = .pub_theme(base_size),
     tables.theme     = ggplot2::theme_minimal(base_size = base_size - 2) +
-                       ggplot2::theme(axis.text.y = ggplot2::element_text(face = "bold"))
+      ggplot2::theme(axis.text.y = ggplot2::element_text(face = "bold"))
   )
-
+  
   if (pairwise_p && !is.null(group_col)) {
     pw <- survminer::pairwise_survdiff(as.formula(form_str), data = surv_df)
-    km$plot <- km$plot +
-      ggplot2::labs(caption = paste(
-        "Pairwise log-rank p:\n",
-        paste(capture.output(print(pw$p.value, digits = 3)),
-              collapse = "\n")))
+    km$plot <- km$plot + ggplot2::labs(caption = paste(
+      "Pairwise log-rank p:\n",
+      paste(capture.output(print(pw$p.value, digits = 3)), collapse = "\n")
+    ))
   }
-
-  if (save_plot) {
-    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-    path <- file.path(save_dir,
-                      paste0("KM_", if (!is.null(group_col)) group_col else "overall",
-                             ".", format))
-    ggplot2::ggsave(path, km, width = width, height = height, dpi = 300)
-    cat("KM plot saved:", path, "\n")
-  }
+  
+  if (save_plot) .save_plot(km$plot, save_dir, paste0("KM_", if (!is.null(group_col)) group_col else "overall"), width, height, format)
   return(km)
 }
 

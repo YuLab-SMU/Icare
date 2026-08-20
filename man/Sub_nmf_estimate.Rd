@@ -8,6 +8,7 @@ Sub_nmf_estimate(
   object,
   rank_range = 2:4,
   seed = 8891,
+  nmf_shift = 0,
   nrun = 10,
   method = "brunet",
   save_dir = file.path(get_output_dir("m3", "cluster_results"), "nmf_results"),
@@ -20,6 +21,8 @@ Sub_nmf_estimate(
 \item{rank_range}{Integer vector of ranks to evaluate.}
 
 \item{seed}{Random seed.}
+
+\item{nmf_shift}{nmf_shift.}
 
 \item{nrun}{Number of NMF runs per rank.}
 
@@ -35,7 +38,27 @@ and saves rank-evaluation plots.
 }
 \examples{
 \dontrun{
-  # Assuming 'obj' is a Subtyping object with scale.data
-  obj <- Sub_nmf_estimate(subtype_obj_test, rank_range = 2:5, nrun = 10)
+set.seed(1)
+require('NMF')
+set.seed(1)
+demo_df <- data.frame(
+ group = rep(c(0, 1), each = 30),
+ feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+ feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+ feat3 = rnorm(60, 10, 2),
+ feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+)
+rownames(demo_df) <- paste0("S", 1:60)
+
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                           group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+
+sub_obj <- Sub_nmf_estimate(sub_obj, rank_range = 2:3, nrun = 2,
+                           method = "brunet", seed = 1)
+sub_obj <- Sub_nmf_best_rank(sub_obj, nrun = 2, method = "brunet")
+sub_obj <- Sub_nmf_assign_subtypes(sub_obj)
+table(sub_obj@info.data$cluster_nmf)
 }
 }

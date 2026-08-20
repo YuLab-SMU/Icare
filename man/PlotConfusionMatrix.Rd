@@ -66,13 +66,13 @@ negative predictive values, optionally adjusted for a given population prevalenc
 \examples{
 \dontrun{
 model_obj <- ModelTrainAnalysis(
-object       = train_obj_test,
+object       = model_obj_test,
 methods      = c("glm", "rf", "gbm"),
 control      = list(method = "repeatedcv", number = 5, repeats = 1),
 save_plots   = TRUE,
 save_dir     = ".",
 seed         = 123
 )
-PlotConfusionMatrix(model_obj, model_name = names(train_obj@train.models)[1], save_plot = FALSE)
+PlotConfusionMatrix(model_obj, model_name = names(model_obj@train.models)[1], save_plot = FALSE)
 }
 }

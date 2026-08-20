@@ -16,5 +16,7 @@ A data frame with columns: Method, Description, RequiredPackages, Recommendation
 List all available feature selection methods in surv_feature_selection_multi
 }
 \examples{
+\dontrun{
 list_surv_feature_methods()
+}
 }

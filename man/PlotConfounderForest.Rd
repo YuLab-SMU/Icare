@@ -2,29 +2,83 @@
 % Please edit documentation in R/model_08_clinical_analysis.R
 \name{PlotConfounderForest}
 \alias{PlotConfounderForest}
-\title{Multivariable Logistic Adjustment Bar Plot (Significance Fill)}
+\title{Plot a Confounder Adjustment Forest Plot}
 \usage{
 PlotConfounderForest(
   model_obj,
+  dataset_type = c("testing", "training", "external"),
   clinical_data = NULL,
   outcome_var,
-  newdata = NULL,
+  adjust_vars = NULL,
   model_name = NULL,
+  positive_class = "1",
   save_plot = FALSE,
   save_dir = NULL
 )
 }
 \arguments{
-\item{model_obj, clinical_data, outcome_var, newdata, model_name}{As above.}
+\item{model_obj}{A \code{Train_Model} S4 object.}
 
-\item{save_plot, save_dir}{Output options.}
+\item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+\code{"external"}. Determines which feature/clinical data are used.}
+
+\item{clinical_data}{Optional \code{data.frame} to override the clinical
+data that would otherwise be pulled automatically from \code{model_obj}.
+Rownames must match the feature data's rownames. Leave \code{NULL} for
+the default (recommended) behavior described above.}
+
+\item{outcome_var}{Character. Name of the binary outcome column, expected
+to be present in either the feature data or the clinical data.}
+
+\item{adjust_vars}{Optional character vector of clinical column names to
+adjust for. If \code{NULL}, all clinical columns (except
+\code{outcome_var}) are used as covariates.}
+
+\item{model_name}{Optional character. Name of a specific trained model in
+\code{model_obj@train.models} to use for prediction, or \code{"ensemble"}
+to use the ensemble predictor. Defaults to the best model.}
+
+\item{positive_class}{The outcome level treated as the "positive" class.
+Used both to select the corresponding column of predicted probabilities
+(passed to \code{.predict_probs()}) and to encode \code{outcome_bin}
+(\code{outcome == positive_class}), so the two are guaranteed to refer to
+the same class. Defaults to \code{"1"}. Coerced to character for
+comparison against outcome levels. If the model's predicted-probability
+matrix does not have a column matching \code{positive_class} exactly
+(common when outcome labels are numeric-like, since caret/many
+classifiers apply \code{make.names()} when training, e.g. turning
+\code{"1"} into \code{"X1"}), a \code{make.names()}-adjusted variant is
+tried automatically before falling back to \code{.predict_probs()}'s
+default column choice.}
+
+\item{save_plot}{Logical. If \code{TRUE}, saves the plot as a PDF.}
+
+\item{save_dir}{Directory to save the plot to when \code{save_plot = TRUE}.
+Defaults to the current working directory.}
 }
 \value{
-A ggplot object.
+A \code{ggplot} object (invisibly printed as a side effect).
 }
 \description{
-Fits \code{outcome ~ prediction + clinical_vars} using the binary outcome
-column from \code{newdata} and plots \code{-log10(p-value)} for each
-variable. Bar fill represents the significance level (darker = more
-significant). A dashed reference line marks \code{p = 0.05}.
+Fits a logistic regression of the binary outcome on the model's predicted
+logit plus a set of clinical covariates, and plots -log10(p-value) for each
+term as a horizontal bar chart. This is used to check whether the model's
+prediction remains significantly associated with the outcome after
+adjusting for potential confounders (e.g. age, sex, stage).
+}
+\details{
+For \code{dataset_type = "training"} or \code{"testing"}, the feature data
+is taken from \code{model_obj@filtered.set} (falling back to
+\code{model_obj@split.data}), and clinical data is taken automatically from
+\code{model_obj@process.info$clinical_data} (attached once via
+\code{AttachClinicalData()} for the full dataset) by intersecting rownames
+with the feature data — no manual \code{clinical_data} argument is needed
+in this case.
+
+For \code{dataset_type = "external"}, feature data is taken from
+\code{model_obj@process.info$external_data} and clinical data from
+\code{model_obj@process.info$external_clinical}, since external samples
+have no rowname lineage to the training data and must be attached
+separately via \code{AttachClinicalData(object, external_data = ...,
+external_clinical = ...)}.
 }

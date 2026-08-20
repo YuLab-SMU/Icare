@@ -2,20 +2,27 @@
 % Please edit documentation in R/model_08_clinical_analysis.R
 \name{AttachClinicalData}
 \alias{AttachClinicalData}
-\title{Attach Clinical Data to Train_Model Object}
+\title{Attach Clinical Data and External Validation Set to Train_Model Object}
 \usage{
-AttachClinicalData(object, clinical_data)
+AttachClinicalData(
+  object,
+  clinical_data = NULL,
+  external_data = NULL,
+  external_clinical = NULL
+)
 }
 \arguments{
-\item{object}{A \code{Train_Model} object.}
+\item{object}{A Train_Model object.}
 
-\item{clinical_data}{A data frame with clinical variables. Rownames must
-match the samples in the model's testing set.}
+\item{clinical_data}{A data frame with clinical variables (rownames must match sample IDs).}
+
+\item{external_data}{Optional matrix/data.frame for external validation dataset (expression/feature matrix).}
+
+\item{external_clinical}{Optional data frame for external validation dataset clinical metadata.}
 }
 \value{
-The updated \code{Train_Model} object.
+The updated Train_Model object.
 }
 \description{
-Stores the entire clinical data frame inside \code{@process.info$clinical_data}.
-Subsequent clinical analysis functions will use this by default.
+Attach Clinical Data and External Validation Set to Train_Model Object
 }

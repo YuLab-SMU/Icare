@@ -4,7 +4,7 @@
 #' and summary statistics (mean, median, standard deviation, min, max) for numeric variables. It also checks for normality
 #' of numeric variables and computes normality tests (Shapiro-Wilk or Anderson-Darling test), based on the number of unique
 #' values and sample size.
-#' @import stats
+#' @importFrom stats sd median quantile var shapiro.test p.adjust
 #' @importFrom nortest ad.test
 #' @import methods
 #' @param data A data frame containing the dataset to analyze.
@@ -23,13 +23,8 @@
 #' @export
 #'
 #' @examples
-#'my_data=stat_obj_test@clean.data
-#'my_data=my_data[,-9]
-#' # Example 1: Compute descriptive statistics for a data frame
-#'result <- compute_descriptive_stats(data = my_data, count_feature = TRUE, group_col = "SWAB")
-#'
-#' # Example 2: Compute overall descriptive statistics without considering group
-#'result <- compute_descriptive_stats(data = my_data, count_feature = FALSE)
+#' data(iris)
+#' compute_descriptive_stats(iris, group_col = "Species")
 compute_descriptive_stats <- function(data,
                                       count_feature = TRUE,
                                       group_col = "group",
@@ -142,7 +137,7 @@ compute_descriptive_stats <- function(data,
 #' `Stat` objects and standard data frames. The function computes counts for categorical variables, and summary statistics
 #' (mean, median, standard deviation, min, max) for numeric variables, along with normality tests for numeric variables.
 #'
-#' @import stats
+#' @importFrom stats sd median quantile var shapiro.test p.adjust
 #' @importFrom nortest ad.test
 #' @import methods
 #' @param object An object of class 'Stat' or a data frame containing the dataset to analyze.
@@ -236,8 +231,9 @@ stat_compute_descriptive <- function(
 #'   `compute.descriptive$count_plots` slot. Otherwise, a list of plots.
 #' @export
 #' @examples
-#' \dontrun{
-#' plot_categorical_descriptive(stat_obj_test, save_plots = FALSE)
+#' if (interactive()) {
+#'   stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#'   plot_categorical_descriptive(stat, save_plots = FALSE)
 #' }
 plot_categorical_descriptive <- function(
     object,
@@ -385,42 +381,46 @@ plot_categorical_descriptive <- function(
   })
 }
 
-#' Violin Plots for Numeric Variables
+#' Generate Violin Plots for Numeric Variables
 #'
-#' This function generates violin plots for numeric variables in the dataset,
-#' with boxplots and jittered points for enhanced visualization. The plots
-#' are grouped by a specified column and saved as PDF files, if desired.
-#' It handles large numbers of variables by splitting them into multiple
-#' plots, each containing a set of variables (defined by the `vars_per_plot`
-#' argument). The function also allows for customization of plot appearance
-#' and save locations.
+#' This function creates faceted violin plots for selected numeric variables,
+#' grouped by a categorical variable. It supports custom group colors via
+#' `group_colors` or a palette name via `palette_name` (RColorBrewer or wesanderson).
 #'
-#' @param data A data frame containing the data to plot.
-#' @param vars_per_plot Integer. The number of variables (columns) to include
-#'   in each individual plot. Default is 1.
-#' @param save_dir String. The directory to save the plots in. Default is `NULL`.
-#'   When `save_plots = TRUE` and this is `NULL`, a default figure directory is used.
-#' @param palette_name String. The name of the color palette to use. Default `"Royal1"`.
-#' @param group_col String. The name of the column in the data used to group
-#'   the samples. Default is `"group"`.
-#' @param max_unique_values Integer. The maximum number of unique values
-#'   allowed for categorical variables. Defaults to 5.
-#' @param sub_var Character vector. A subset of variable names (columns)
-#'   to include in the plot. If `NULL`, all numeric variables will be included.
-#' @param save_plots Logical. If `TRUE`, the plots will be saved as PDF
-#'   files in the specified `save_dir`. Default is `TRUE`.
-#' @param plot_width Numeric. The width of each saved plot (in inches). Default 5.
-#' @param plot_height Numeric. The height of each saved plot (in inches). Default 5.
-#' @param base_size Numeric. The base font size for the plot. Default 14.
-#' @param stat_method Statistical method for comparisons.
-#' @param paired_comparison Logical, whether to add pairwise comparisons.
+#' @param data A data frame containing the variables to plot.
+#' @param vars_per_plot Number of variables to display per facet page.
+#'   Default is 1.
+#' @param save_dir Directory to save the generated plots. If NULL and
+#'   save_plots is TRUE, a default directory is used.
+#' @param palette_name Name of the color palette to use when `group_colors`
+#'   is not provided. Supports RColorBrewer palettes (e.g., "Set1") or
+#'   wesanderson palettes (e.g., "Zissou1"). Default is "Zissou1".
+#' @param group_col Name of the column defining the grouping variable.
+#'   If NULL, no grouping is applied. Default is "group".
+#' @param max_unique_values Maximum number of unique values to treat a
+#'   variable as categorical (used internally). Default is 5.
+#' @param sub_var Character vector of specific numeric variables to plot.
+#'   If NULL, all numeric variables are used.
+#' @param save_plots Logical; if TRUE, saves each plot as a PDF.
+#'   Default is TRUE.
+#' @param plot_width Width of the saved plot (inches). Default is 5.
+#' @param plot_height Height of the saved plot (inches). Default is 5.
+#' @param base_size Base font size for the plot theme. Default is 14.
+#' @param stat_method Statistical test for pairwise comparisons.
+#'   Default is "wilcox.test".
+#' @param paired_comparison Logical; if TRUE, adds pairwise significance
+#'   labels. Default is TRUE.
+#' @param group_colors An optional named character vector specifying custom
+#'   colors for each group. Names must match the group levels. If provided,
+#'   it overrides `palette_name`. Default is NULL.
 #'
-#' @returns A list of ggplot objects containing the generated violin plots.
-#'   If `save_plots` is `TRUE`, the plots are also saved as PDF files.
+#' @return A list of ggplot objects (one per facet page).
 #' @export
+#'
 #' @examples
-#' \dontrun{
-#' vplots <- violin_plots(stat_obj_test@clean.data, group_col = "SWAB", save_plots = FALSE)
+#' if (interactive()) {
+#'   data(iris)
+#'   violin_plots(iris, group_col = "Species", save_plots = FALSE)
 #' }
 violin_plots <- function(data,
                          vars_per_plot = 1,
@@ -434,7 +434,8 @@ violin_plots <- function(data,
                          plot_height = 5,
                          base_size = 14,
                          stat_method = "wilcox.test",
-                         paired_comparison = TRUE) {
+                         paired_comparison = TRUE,
+                         group_colors = NULL) {
   
   # ---- Handle default save_dir ----
   if (save_plots && is.null(save_dir)) {
@@ -445,11 +446,14 @@ violin_plots <- function(data,
     }
   }
   
+  # ---- Validate group column ----
   if (!is.null(group_col) && !group_col %in% names(data)) {
     stop(paste("Column", group_col, "not found in data"))
   }
   
-  variable_types <- diagnose_variable_type(data, group_col = group_col, max_unique_values = max_unique_values)
+  # ---- Identify numeric variables ----
+  variable_types <- diagnose_variable_type(data, group_col = group_col,
+                                           max_unique_values = max_unique_values)
   num_cols <- variable_types$numeric_vars
   
   if (!is.null(sub_var)) {
@@ -460,6 +464,7 @@ violin_plots <- function(data,
     stop("No numeric variables found after filtering with sub_var")
   }
   
+  # ---- Reshape data ----
   if (is.null(group_col)) {
     melted_data <- reshape2::melt(data, measure.vars = num_cols)
     melted_data$group <- "All"
@@ -468,9 +473,11 @@ violin_plots <- function(data,
     melted_data$group <- as.character(melted_data[[group_col]])
   }
   
+  # ---- Split variables into groups for faceting ----
   num_vars <- length(num_cols)
   num_groups <- ceiling(num_vars / vars_per_plot)
-  var_groups <- split(num_cols, rep(1:num_groups, each = vars_per_plot, length.out = num_vars))
+  var_groups <- split(num_cols, rep(1:num_groups, each = vars_per_plot,
+                                    length.out = num_vars))
   
   plot_list <- list()
   
@@ -479,13 +486,67 @@ violin_plots <- function(data,
     group_data <- melted_data[melted_data$variable %in% group_vars, ]
     
     if (nrow(group_data) > 0) {
-      n_groups <- length(unique(group_data$group))
-      if (is.null(group_col)) {
-        pal <- wesanderson::wes_palette(palette_name, n = 1, type = "continuous")
+      # ---- Determine group levels ----
+      groups <- unique(group_data$group)
+      n_groups <- length(groups)
+      
+      # ---- Generate colors ----
+      if (!is.null(group_colors)) {
+        # Check if named vector and match groups
+        if (!is.null(names(group_colors))) {
+          matched <- intersect(names(group_colors), groups)
+          if (length(matched) == n_groups) {
+            pal <- group_colors[groups]   # reorder to match group order
+          } else {
+            warning("Names in 'group_colors' do not match all group levels. Falling back to palette.")
+            pal <- NULL   # will be generated from palette_name
+          }
+        } else {
+          # Unnamed: assume order matches group levels
+          if (length(group_colors) == n_groups) {
+            pal <- group_colors
+            names(pal) <- groups
+            message("Using 'group_colors' in the order of group levels: ",
+                    paste(groups, collapse = ", "))
+          } else {
+            warning("Length of 'group_colors' does not match number of groups. Falling back to palette.")
+            pal <- NULL
+          }
+        }
       } else {
-        pal <- wesanderson::wes_palette(palette_name, n = n_groups, type = "continuous")
+        pal <- NULL
       }
       
+      # If pal is NULL (either because group_colors not provided or mismatch),
+      # generate from palette_name
+      if (is.null(pal)) {
+        # Try RColorBrewer first
+        if (requireNamespace("RColorBrewer", quietly = TRUE) &&
+            palette_name %in% rownames(RColorBrewer::brewer.pal.info)) {
+          max_colors <- RColorBrewer::brewer.pal.info[palette_name, "maxcolors"]
+          if (n_groups <= max_colors) {
+            pal <- RColorBrewer::brewer.pal(n_groups, palette_name)
+          } else {
+            base_cols <- RColorBrewer::brewer.pal(max_colors, palette_name)
+            pal <- grDevices::colorRampPalette(base_cols)(n_groups)
+          }
+        } else if (requireNamespace("wesanderson", quietly = TRUE)) {
+          # Fallback to wesanderson
+          tryCatch({
+            pal <- wesanderson::wes_palette(palette_name, n = n_groups, type = "discrete")
+          }, error = function(e) {
+            warning("wesanderson palette '", palette_name, "' not found. Using rainbow colors.")
+            pal <- grDevices::rainbow(n_groups)
+          })
+        } else {
+          # Ultimate fallback
+          warning("No known palette found. Using rainbow colors.")
+          pal <- grDevices::rainbow(n_groups)
+        }
+        names(pal) <- groups
+      }
+      
+      # ---- Build plot ----
       p <- ggplot2::ggplot(group_data,
                            ggplot2::aes(x = as.factor(group), y = value)) +
         ggplot2::geom_violin(ggplot2::aes(fill = group), scale = "area", alpha = 0.5) +
@@ -495,13 +556,15 @@ violin_plots <- function(data,
         ggplot2::facet_wrap(~variable, scales = "free_y", ncol = 1) +
         ggprism::theme_prism(base_size = base_size) +
         ggplot2::theme(legend.position = "bottom") +
-        ggplot2::labs(title = paste("Violin Plots - Part", i), x = "Group", y = "Value")
+        ggplot2::labs(title = paste("Violin Plots - Part", i),
+                      x = "Group", y = "Value")
       
+      # ---- Add pairwise comparisons ----
       if (!is.null(group_col) && paired_comparison && n_groups >= 2) {
         comparisons <- if (n_groups >= 3) {
           list(c(groups[1], groups[3]), c(groups[2], groups[3]), c(groups[1], groups[2]))
         } else {
-          combn(unique(group_data$group), 2, simplify = FALSE)
+          utils::combn(groups, 2, simplify = FALSE)
         }
         if (length(comparisons) > 0) {
           p <- p + ggpubr::stat_compare_means(
@@ -517,6 +580,7 @@ violin_plots <- function(data,
       
       plot_list[[i]] <- p
       
+      # ---- Save plot ----
       if (save_plots) {
         if (!dir.exists(save_dir)) {
           dir.create(save_dir, recursive = TRUE)
@@ -564,8 +628,9 @@ violin_plots <- function(data,
 #'   If `save_plots` is `TRUE`, the plots are also saved as PDF files.
 #' @export
 #' @examples
-#' \dontrun{
-#' rplots <- density_ridge_plots(stat_obj_test@clean.data, group_col = "SWAB", save_plots = FALSE)
+#' if (interactive()) {
+#'   data(iris)
+#'   density_ridge_plots(iris[, 1:4], group_col = NULL, save_plots = FALSE)
 #' }
 density_ridge_plots <- function(data,
                                 vars_per_plot = 1,
@@ -657,65 +722,51 @@ density_ridge_plots <- function(data,
   return(plot_list)
 }
 
-#' Numeric Descriptive Plots (Violin or Ridge Density)
+
+#' Descriptive Numeric Variable Plots (Violin or Ridge)
 #'
-#' This function generates either violin plots or ridge density plots for numeric variables
-#' in the given dataset (either a `Stat` object or a data frame). The function allows
-#' customizing the number of variables per plot, palette style, and grouping columns, and
-#' saves the plots if required. It provides a flexible approach to visualizing the distribution
-#' of numeric data and comparing different groups.
+#' This function generates descriptive plots for numeric variables in a dataset,
+#' either violin plots or ridge density plots, grouped by a categorical variable.
+#' It supports custom color specification for groups.
 #'
-#' @param object An object of class `Stat` or a data frame containing numeric data.
-#'   If the object is of class `Stat`, the clean data is extracted from the `Stat` object.
-#' @param vars_per_plot Integer. The number of variables (columns) to include in each
-#'   individual plot. Default is 1.
-#' @param save_dir String. The directory where the plots will be saved. Default is `NULL`.
-#'   When `save_plots = TRUE` and this is `NULL`, a default figure directory is used.
-#' @param palette_name String. The name of the color palette to use. Default is `"Zissou1"`.
-#' @param group_col String. The name of the column in the data to group the samples by.
-#'   Default is `"group"`. If not provided, no grouping is performed.
-#' @param max_unique_values Integer. The maximum number of unique values allowed for
-#'   categorical variables. Default is 5. Used for filtering variables when diagnosing
-#'   their types.
-#' @param plot_type String. The type of plot to generate. Options are `"violin"` or
-#'   `"ridge"`. Default is `"violin"`.
-#' @param save_plots Logical. If `TRUE`, the plots will be saved as PDF files. Default is `TRUE`.
-#' @param plot_width Numeric. The width of each saved plot (in inches). Default is 5.
-#' @param plot_height Numeric. The height of each saved plot (in inches). Default is 5.
-#' @param base_size Numeric. The base font size for the plot. Default is 14.
-#' @param sub_var Character vector. A subset of variable names (columns) to include in
-#'   the plot. If `NULL`, all numeric variables are included.
+#' @param object A `Stat` object or a data frame.
+#' @param vars_per_plot Number of variables to display per plot (for faceting). Default is 1.
+#' @param save_dir Directory to save plots. If NULL and save_plots is TRUE, default directory is used.
+#' @param palette_name Name of the palette to use if `group_colors` is not provided.
+#'   Supports RColorBrewer (e.g., "Set1") or wesanderson (e.g., "Zissou1"). Default is "Zissou1".
+#' @param group_col Column name defining the grouping variable. If NULL, attempts to extract from Stat object.
+#' @param max_unique_values Maximum unique values to treat a variable as categorical. Default is 5.
+#' @param plot_type Type of plot: "violin" or "ridge". Default is "violin".
+#' @param save_plots Logical; if TRUE, saves plots to disk. Default is TRUE.
+#' @param plot_width Width of saved plots (inches). Default is 5.
+#' @param plot_height Height of saved plots (inches). Default is 5.
+#' @param base_size Base font size for plots. Default is 14.
+#' @param sub_var Character vector of specific numeric variables to plot. If NULL, all numeric variables are used.
+#' @param group_colors An optional named character vector specifying custom colors for each group.
+#'   Names must match group levels. If provided, overrides `palette_name`.
 #'
-#' @returns The input object (either a `Stat` object or a data frame) with the
-#'   updated plots added to the appropriate slot. If the input is a `Stat` object,
-#'   the `compute.descriptive` slot is updated with the generated plots.
+#' @return The updated object (if `object` is a Stat) with plots stored in `compute.descriptive` slot.
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' plot_numeric_descriptive(object = stat_obj_test,
-#'                           vars_per_plot = 1,
-#'                           save_dir = NULL,
-#'                           palette_name = "Zissou1",
-#'                           group_col = "group",
-#'                           plot_type = "violin",
-#'                           save_plots = TRUE)
-#'}
-plot_numeric_descriptive <- function(
-    object,
-    vars_per_plot = 1,
-    save_dir = NULL,
-    palette_name = "Zissou1",
-    group_col = "group",
-    max_unique_values = 5,
-    plot_type = "violin",
-    save_plots = TRUE,
-    plot_width = 5,
-    plot_height = 5,
-    base_size = 14,
-    sub_var = NULL) {
+#' if (interactive()) {
+#'   stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#'   plot_numeric_descriptive(stat, save_plots = FALSE,group_col = "cyl")
+#' }
+plot_numeric_descriptive <- function(object,
+                                     vars_per_plot = 1,
+                                     save_dir = NULL,
+                                     palette_name = "Zissou1",
+                                     group_col = "group",
+                                     max_unique_values = 5,
+                                     plot_type = "violin",
+                                     save_plots = TRUE,
+                                     plot_width = 5,
+                                     plot_height = 5,
+                                     base_size = 14,
+                                     sub_var = NULL,
+                                     group_colors = NULL) {
   
-  # ---- Handle default save_dir ----
   if (save_plots && is.null(save_dir)) {
     if (exists(".get_viz_output_dir")) {
       save_dir <- .get_viz_output_dir("Stat")
@@ -730,7 +781,9 @@ plot_numeric_descriptive <- function(
     if (is.null(data) || nrow(data) == 0) {
       data <- slot(object, "raw.data")
     }
-    group_col <- object@group_col
+    if (is.null(group_col)) {
+      group_col <- object@group_col
+    }
     if (length(group_col) == 0) {
       group_col <- NULL
       cat("No group_col found in Stat object. Using NULL.\n")
@@ -738,6 +791,9 @@ plot_numeric_descriptive <- function(
   } else if (is.data.frame(object)) {
     cat("Input is a data frame. Using it directly.\n")
     data <- object
+    if (is.null(group_col)) {
+      stop("When object is a data frame, 'group_col' must be specified.")
+    }
   } else {
     stop("Input must be an object of class 'Stat' or a data frame\n")
   }
@@ -746,8 +802,9 @@ plot_numeric_descriptive <- function(
     stop("No valid data found in the input\n")
   }
   
-  variable_types <- diagnose_variable_type(data, group_col = group_col, max_unique_values = max_unique_values)
-  
+  # diagnose_variable_type is an internal helper (assumed available)
+  variable_types <- diagnose_variable_type(data, group_col = group_col,
+                                           max_unique_values = max_unique_values)
   if (length(variable_types$numeric_vars) == 0) {
     stop("No valid numeric variables found after diagnosis\n")
   }
@@ -758,13 +815,11 @@ plot_numeric_descriptive <- function(
   } else {
     numeric_vars <- variable_types$numeric_vars
   }
-  
   if (length(numeric_vars) == 0) {
     stop("No valid numeric variables found after filtering with sub_var\n")
   }
   
   plots_list <- list()
-  
   if (plot_type == "violin") {
     cat("Generating violin plots...\n")
     plots_list <- violin_plots(data,
@@ -777,9 +832,11 @@ plot_numeric_descriptive <- function(
                                plot_width = plot_width,
                                plot_height = plot_height,
                                base_size = base_size,
-                               sub_var = numeric_vars)
+                               sub_var = numeric_vars,
+                               group_colors = group_colors)   # pass to internal
   } else if (plot_type == "ridge") {
     cat("Generating ridge density plots...\n")
+    # density_ridge_plots also needs to support group_colors; if not, ignore or adapt.
     plots_list <- density_ridge_plots(data,
                                       vars_per_plot = vars_per_plot,
                                       save_dir = save_dir,
@@ -791,6 +848,7 @@ plot_numeric_descriptive <- function(
                                       plot_height = plot_height,
                                       base_size = base_size,
                                       sub_var = numeric_vars)
+    # Note: group_colors not passed to ridge as per request
   } else {
     stop("Invalid plot type. Choose either 'violin' or 'ridge'.\n")
   }
@@ -798,7 +856,6 @@ plot_numeric_descriptive <- function(
   if (length(plots_list) > 0) {
     print(plots_list[[1]])
   }
-  
   total_plots <- length(plots_list)
   cat("A total of", total_plots, "plots were generated.\n")
   
@@ -807,7 +864,6 @@ plot_numeric_descriptive <- function(
     cat("Updating 'Stat' object...\n")
     cat("- 'compute.descriptive' slot updated.\n")
   }
-  
   return(object)
 }
 
@@ -830,12 +886,10 @@ plot_numeric_descriptive <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Example of usage
-#' data <- data.frame(a = c(1, 2, 3), b = c("low", "medium", "high"))
-#' variable_types <- list(numeric_vars = c("a"))
-#' converted_data <- convert_variables(data, variable_types)
-#' }
+#' data(iris)
+#' types <- diagnose_variable_type(iris, group_col = "Species")
+#' converted <- convert_variables(iris, types, save_data = FALSE)
+#' str(converted)
 convert_variables <- function(data, 
                               variable_types,
                               save_dir = NULL,
@@ -893,17 +947,9 @@ convert_variables <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Convert variables in a Stat object
-#' updated_stat <- stat_convert_variables(stat_obj_test, save_dir = "./output")
-#'
-#' # Convert variables in a data frame
-#' converted_df <- stat_convert_variables(
-#'   object = my_data,
-#'   group_col = "group",
-#'   save_data = FALSE
-#' )
-#' }
+#' stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#' stat <- stat_convert_variables(stat, save_data = FALSE)
+#' str(stat@clean.data)
 stat_convert_variables <- function(object,
                                    group_col = "group",
                                    max_unique_values = 5,
@@ -968,9 +1014,9 @@ stat_convert_variables <- function(object,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' one_hot_encode(iris, group_col = "Species", max_unique_values = 2,save_dir = ".")
-#' }
+#' data(iris)
+#' encoded <- one_hot_encode(iris, group_col = "Species", save_data = FALSE)
+#' head(encoded)
 one_hot_encode <- function(data, 
                            group_col = "group",
                            max_unique_values = 5,
@@ -1050,18 +1096,9 @@ one_hot_encode <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # One-hot encode a Stat object
-#' stat_encoded <- stat_onehot_encode(stat_obj_test, save_dir = "./output")
-#'
-#' # One-hot encode a data frame without saving
-#' df_encoded <- stat_onehot_encode(
-#'   object = my_data,
-#'   group_col = "group",
-#'   max_unique_values = 3,
-#'   save_data = FALSE
-#' )
-#' }
+#' stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+#' stat <- stat_onehot_encode(stat, save_data = FALSE,group_col = "cyl")
+#' head(stat@clean.data)
 stat_onehot_encode <- function(object, 
                                method = 1, 
                                group_col = "group", 

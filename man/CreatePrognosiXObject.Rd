@@ -25,60 +25,62 @@ CreatePrognosiXObject(
 )
 }
 \arguments{
-\item{clean.data}{Clean data.}
+\item{clean.data}{Data frame of numeric features (samples x features).}
 
-\item{info.data}{Info data.}
+\item{info.data}{Data frame of metadata (including time, status, clinical vars).}
 
-\item{time_col}{Time col.}
+\item{time_col}{Character; name of the survival time column (default "time").}
 
-\item{status_col}{Status col.}
+\item{status_col}{Character; name of the event status column (default "status").}
 
-\item{baseline.table}{Baseline table.}
+\item{baseline.table}{Optional baseline table (reserved).}
 
-\item{variable.types}{Variable types.}
+\item{variable.types}{List of variable types (reserved).}
 
-\item{survival.var}{Survival var.}
+\item{survival.var}{List of survival variables (reserved).}
 
-\item{survival.data}{Survival data.}
+\item{survival.data}{Pre-computed survival data (if NULL, built automatically).}
 
-\item{sub.data}{Sub data.}
+\item{sub.data}{Data frame for subgroup analysis (reserved).}
 
-\item{univariate.analysis}{Univariate analysis.}
+\item{univariate.analysis}{Results of univariate analysis (reserved).}
 
-\item{split.data}{Split data.}
+\item{split.data}{Train/test split info (reserved).}
 
-\item{feature.result}{Feature result.}
+\item{feature.result}{Feature selection results (reserved).}
 
-\item{filtered.set}{Filtered set.}
+\item{filtered.set}{Filtered data sets (reserved).}
 
-\item{survival.model}{Survival model.}
+\item{survival.model}{Fitted survival model (reserved).}
 
-\item{best.model}{Best model.}
+\item{best.model}{Best model info (reserved).}
 
-\item{subgroup.risk}{Subgroup risk.}
+\item{subgroup.risk}{Subgroup risk results (reserved).}
 
-\item{object}{Input object.}
+\item{object}{Optional input object of class \code{Stat}, \code{Subtyping}, or \code{PrognosiX}.}
 }
 \value{
-A PrognosiX S4 object.
+A \code{PrognosiX} S4 object.
 }
 \description{
-This function constructs a PrognosiX S4 object from raw data frames or by
-converting an existing Stat, Subtyping, or PrognosiX object. It handles
-time/status column extraction, row matching, and initial preparation for
-downstream prognostic modeling.
+Constructs a PrognosiX S4 object. This function ensures that:
+\itemize{
+  \item The time and status columns are stored in \code{info.data}.
+  \item \code{clean.data} contains only numeric feature columns.
+  \item All other columns (clinical, IDs, etc.) are preserved in \code{info.data}.
+}
+It handles input from raw data frames or by converting existing \code{Stat},
+\code{Subtyping}, or \code{PrognosiX} objects.
 }
 \examples{
 \dontrun{
-  # Create from data frames
-  clean <- data.frame(gene1 = c(1, 2, 3), gene2 = c(4, 5, 6),
-                      row.names = c("S1", "S2", "S3"))
-  info <- data.frame(time = c(10, 20, 30), status = c(1, 0, 1),
-                     row.names = c("S1", "S2", "S3"))
-  obj <- CreatePrognosiXObject(clean.data = clean, info.data = info,
-                               time_col = "time", status_col = "status")
-
-  # Create from existing Stat object
-  # obj <- CreatePrognosiXObject(object = stat_obj, time_col = "time", status_col = "status")
+veteran <- survival::veteran
+veteran$celltype <- as.character(veteran$celltype)
+prog <- CreatePrognosiXObject(
+  clean.data = veteran[, c("karno", "diagtime", "age")],
+  info.data = veteran[, c("time", "status", "celltype", "trt")],
+  time_col = "time", status_col = "status"
+)
+class(prog)
 }
 }

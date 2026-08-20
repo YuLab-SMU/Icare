@@ -46,7 +46,8 @@ variables and their percentages across different groups. It handles both
 `Stat` objects and data frames. Plots can optionally be saved.
 }
 \examples{
-\dontrun{
-plot_categorical_descriptive(stat_obj_test, save_plots = FALSE)
+if (interactive()) {
+  stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+  plot_categorical_descriptive(stat, save_plots = FALSE)
 }
 }

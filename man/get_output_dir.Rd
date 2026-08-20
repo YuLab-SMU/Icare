@@ -21,8 +21,11 @@ Character string with the full output path
 }
 \description{
 Returns the appropriate output directory for a specific module.
-If a global output root is set, returns a path under that root.
-Otherwise, returns the default path under the code folder.
+If a global output root has been explicitly set via \code{set_output_root()}
+or \code{use_local_output()}, returns a path under that root. Otherwise,
+falls back to a subdirectory under \code{tempdir()} for the current R
+session, so the package never writes to the user's working directory
+unless the user has explicitly opted in.
 }
 \examples{
 \dontrun{

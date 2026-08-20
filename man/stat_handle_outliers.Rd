@@ -30,8 +30,8 @@ stat_handle_outliers(
 Handle Outliers in Stat Object
 }
 \examples{
-\dontrun{
-stat_obj <- stat_handle_outliers(stat_obj_test, method = "remove")
-stat_obj <- stat_handle_outliers(stat_obj_test, method = "impute")
-}
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_detect_and_mark_outliers(stat)
+stat <- stat_handle_outliers(stat, method = "remove", save_data = FALSE)
+head(stat@clean.data)
 }

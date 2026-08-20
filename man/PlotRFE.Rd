@@ -14,6 +14,7 @@ PlotRFE(
   save_dir = NULL,
   width = 8,
   height = 6,
+  y_limits = c(0, 1),
   format = "pdf"
 )
 }
@@ -35,7 +36,9 @@ from \code{FeatureSelectRFE}.}
 
 \item{width, height}{Plot dimensions (inches). Defaults 8 x 6.}
 
-\item{format}{File format: "pdf", "png", "svg". Default "pdf".}
+\item{y_limits}{y_limits.}
+
+\item{format}{File format: "pdf", "png", "svg". Default "pdf"}
 }
 \value{
 A ggplot object.

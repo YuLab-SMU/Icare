@@ -7,17 +7,65 @@
 ClinicalSubgroup(model_obj, clinical_data = NULL, subgroup_vars = NULL, ...)
 }
 \arguments{
-\item{model_obj}{A Train_Model or caret model.}
+\item{model_obj}{A \code{Train_Model} S4 object containing a trained model,
+and optionally clinical data attached via \code{\link{AttachClinicalData}}.}
 
-\item{clinical_data}{Data frame of clinical variables. If NULL, uses
-\code{@process.info$clinical_data} (set by \code{AttachClinicalData}).}
+\item{clinical_data}{Optional data frame with clinical variables. If
+\code{NULL} (default), the function attempts to use
+\code{model_obj@process.info$clinical_data}.}
 
-\item{subgroup_vars}{Character vector of categorical variables for subgroup
-analysis. If NULL, skipped.}
+\item{subgroup_vars}{Character vector specifying the categorical column names
+in \code{clinical_data} to be used for subgroup stratification.
+Each unique level of each variable becomes a separate subgroup.
+This argument is \strong{required}.}
 
-\item{...}{Additional arguments passed to \code{CalculateThresholds}
-(e.g., \code{target_se}, \code{target_ppv}).}
+\item{...}{Additional arguments passed to \code{\link{PlotSubgroupForest}},
+such as:
+\describe{
+  \item{newdata}{Data frame used for model prediction. If \code{NULL},
+    the default data from the model object is used.}
+  \item{dataset_type}{One of \code{"testing"}, \code{"training"}, or
+    \code{"external"}. Default is \code{"testing"}.}
+  \item{model_name}{Character. Specific model or \code{"ensemble"}.
+    Defaults to the best model.}
+  \item{var_labels}{Named character vector to relabel section headers.}
+  \item{level_order}{Named list specifying display order of factor levels.}
+  \item{min_n}{Minimum subgroup size required for evaluation. Default \code{5}.}
+  \item{xlim}{Numeric length-2 vector for x-axis limits.}
+  \item{ref_line}{Reference vertical line (default \code{0.5} for AUC).}
+  \item{save_plot}{Logical. Save plot as PDF? Default \code{FALSE}.}
+  \item{save_dir}{Character. Directory to save the plot.}
+}}
+}
+\value{
+Invisibly returns a list for the last generated forest plot,
+  containing the \code{plot} (forestploter graphic), \code{data}
+  (summary data frame), and \code{fits} (Cox regression fits, if applicable).
 }
 \description{
-Subgroup Analysis (Standalone)
+Convenience wrapper around \code{\link{PlotSubgroupForest}}.
+Iterates over one or more categorical clinical variables and generates
+a publication‑style forest plot showing subgroup‑specific AUCs with
+95% confidence intervals. Clinical data is automatically extracted
+from the model object if not provided.
+}
+\examples{
+\dontrun{
+# Prepare model
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+
+# Attach clinical data (subgroup variables)
+clin <- data.frame(row.names = rownames(mtcars),
+                   cyl = factor(mtcars$cyl),
+                   vs = factor(mtcars$vs))
+model <- AttachClinicalData(model, clinical_data = clin)
+
+# Subgroup analysis by cyl and vs
+ClinicalSubgroup(model, subgroup_vars = c("cyl", "vs"),
+                 save_plot = FALSE)
+}
+}
+\seealso{
+\code{\link{PlotSubgroupForest}}, \code{\link{AttachClinicalData}}
 }

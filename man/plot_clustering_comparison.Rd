@@ -44,16 +44,30 @@ clustering solutions, with numerical values overlaid on each cell.
 }
 \examples{
 \dontrun{
-# Assuming 'obj' is a Subtyping object with multiple clustering results
-plot_clustering_comparison(obj, save_dir = "./results")
+set.seed(1)
+demo_df <- data.frame(
+  group = rep(c(0, 1), each = 30),
+  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+  feat3 = rnorm(60, 10, 2),
+  feat4 = c(rnorm(30, 1, 0.3), rnorm(30, 3, 0.3))
+)
+rownames(demo_df) <- paste0("S", 1:60)
 
-# Customize with additional pheatmap arguments
-plot_clustering_comparison(obj,
-  methods = c("cluster_kmeans", "cluster_lpa"),
-  save_dir = "./output",
-  width = 6,
-  height = 5,
-  fontsize = 12
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                             group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+sub_obj <- Sub_normalize_process(sub_obj, normalize_method = "min_max")
+
+sub_obj <- Sub_kmeans_with_optimal_k(sub_obj, k.max = 3, save_plots = FALSE, seed = 1)
+sub_obj <- Sub_lpa_with_optimal_k(sub_obj, max_clusters = 3, verbose = FALSE,
+                                  save_plots = FALSE, seed = 1)
+sub_obj@info.data$cluster_kmeans <- paste0("S", sub_obj@info.data$cluster_kmeans)
+sub_obj@info.data$cluster_lpa    <- paste0("S", sub_obj@info.data$cluster_lpa)
+
+# save_dir omitted / NULL so the example does not write to disk.
+plot_clustering_comparison(
+  sub_obj, methods = c("cluster_kmeans", "cluster_lpa")
 )
 }
 }

@@ -45,21 +45,12 @@
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' data("stat_obj_test")
-#' missing_info <- plot_missing_data(data = stat_obj_test@raw.data, save_plots = FALSE)
-#'
-#' # Customized parameters
-#' missing_info <- plot_missing_data(
-#'   data = stat_obj_test@raw.data,
-#'   palette_name = "Zissou1",
-#'   alpha = 0.7,
-#'   plot_width = 6,
-#'   plot_height = 6,
-#'   save_data = TRUE,
-#'   var_filename = "var_missing.csv",
-#'   sample_filename = "sample_missing.csv"
-#' )
+#' if (interactive()) {
+#'   data(iris)
+#'   # Introduce missing values
+#'   iris_na <- iris
+#'   iris_na[1:5, 1] <- NA
+#'   plot_missing_data(iris_na, save_plots = FALSE)
 #' }
 plot_missing_data <- function(data,
                               palette_name = 'Royal1',
@@ -73,7 +64,9 @@ plot_missing_data <- function(data,
                               var_filename = "var_missing_data.csv",
                               sample_filename = "sample_missing_data.csv") {
   if (is.null(save_dir)) save_dir <- get_output_dir("StatObject", "missing_info")
-
+  if (!requireNamespace("wesanderson", quietly = TRUE)) {
+    stop("Package 'wesanderson' is required. Please install it.")
+  }
   colors <- wes_palette(n = 3, name = palette_name, type = "discrete")
   colors <- as.list(colors)
 
@@ -171,7 +164,7 @@ plot_missing_data <- function(data,
 #' @import ggplot2
 #' @import here
 #' @import wesanderson
-#' @import stats
+#' @importFrom stats quantile var sd median shapiro.test p.adjust
 #' @import methods
 #' @import here 
 #' @importFrom ggprism theme_prism
@@ -197,12 +190,9 @@ plot_missing_data <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' data("stat_obj_test")
-#' # Generate missing data plots for a Stat object
-#' updated_stat <- state_plot_missing_data(stat_obj_test, save_plots = TRUE)
-#' # Generate missing data plots for a data frame
-#' missing_info <- state_plot_missing_data(stat_obj_test@raw.data, save_plots = FALSE)
+#' if (interactive()) {
+#'   stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#'   state_plot_missing_data(stat, save_plots = FALSE)
 #' }
 state_plot_missing_data <- function(
     object,
@@ -268,11 +258,9 @@ state_plot_missing_data <- function(
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' data("stat_obj_test")
-#' # Assuming 'stat_object' is a valid Stat object
-#' raw_data <- ExtractRawData(stat_obj_test)
-#' }
+#' stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#' raw <- ExtractRawData(stat)
+#' head(raw)
 ExtractRawData <- function(object) {
   data <- tryCatch(slot(object, "raw.data"), error = function(e) NULL)
   return(data)
@@ -317,25 +305,13 @@ ExtractRawData <- function(object) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Example data
 #' df <- data.frame(
 #'   group = rep(1:2, each = 5),
 #'   age = c(25, 30, 35, 40, 45, 50, 55, 60, 65, 70),
-#'   rating = c(1,2,1,2,3,2,1,3,2,1),   # low-cardinality numeric
-#'   city = c("A","B","A","C","D","E","F","G","H","I"),
-#'   stringsAsFactors = FALSE
+#'   rating = c(1,2,1,2,3,2,1,3,2,1),
+#'   city = c("A","B","A","C","D","E","F","G","H","I")
 #' )
-#'
-#' # Default: rating stays numeric
-#' res <- diagnose_variable_type(df, group_col = "group")
-#' print(res)
-#'
-#' # Force low-cardinality numerics to categorical
-#' res2 <- diagnose_variable_type(df, group_col = "group",
-#'                                treat_low_card_numeric_as_categorical = TRUE)
-#' print(res2)
-#' }
+#' diagnose_variable_type(df, group_col = "group")
 diagnose_variable_type <- function(data,
                                    group_col = "group",
                                    max_unique_values = 5,
@@ -436,16 +412,9 @@ diagnose_variable_type <- function(data,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' # Example 1: Diagnose variables in a "Stat" object
-#' stat_obj <- stat_diagnose_variable_type(stat_obj_test, group_col = "group")
-#' print(stat_obj)
-#'
-#' # Example 2: Diagnose variables in a data frame
-#' result <- stat_diagnose_variable_type(stat_obj_test@raw.data,
-#'                                       treat_low_card_numeric_as_categorical = TRUE)
-#' print(result)
-#' }
+#' stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#' stat <- stat_diagnose_variable_type(stat)
+#' print(stat@variable.types)
 stat_diagnose_variable_type <- function(object,
                                         group_col = "group",
                                         max_unique_values = 5,
@@ -518,7 +487,7 @@ stat_diagnose_variable_type <- function(object,
 #' @import here
 #' @import officer
 #' @import flextable
-#' @import stats
+#' @importFrom stats quantile var sd median shapiro.test p.adjust
 #' @import methods
 #' @import autoReg
 #' @param data A data frame containing the data to analyze.
@@ -537,14 +506,10 @@ stat_diagnose_variable_type <- function(object,
 #'
 #' @examples
 #' \dontrun{
-#'my_data=stat_obj_test@clean.data
-#' # Example 1: Performing gaze analysis with a formula and custom settings
-#'result <- gaze_analysis(data = my_data,formula = ~ SWAB + AGE,digits = 2,show.p = TRUE,
-#'                     gaze_method = 3,save_word = TRUE, save_dir = "./")
-#' # Example 2: Using the default formula based on group columns
-#'  result <- gaze_analysis(data = my_data,group_cols = c("SWAB"),
-#'                         digits = 1,show.p = FALSE,save_word = TRUE,
-#'                         save_dir = "./",gaze_method = 1)
+#' if (requireNamespace("autoReg", quietly = TRUE)) {
+#'   data(mtcars)
+#'   gaze_analysis(mtcars, group_cols = "cyl", save_word = FALSE)
+#' }
 #' }
 gaze_analysis <- function(data,
                           formula = NULL,
@@ -587,11 +552,11 @@ gaze_analysis <- function(data,
 
   tryCatch({
     cat("Running gaze analysis with method:", gaze_method, "\n")
-    result <- gaze(formula, data, digits = digits, show.p = show.p, method = gaze_method)
+    result <- autoReg::gaze(formula, data, digits = digits, show.p = show.p, method = gaze_method)
 
     cat("Result type:", class(result), "\n")
     if (is.data.frame(result) || is.matrix(result)) {
-      result <- myft(result)
+      result <- autoReg::myft(result)
       cat("Gaze analysis completed successfully.\n")
 
       if (save_word) {

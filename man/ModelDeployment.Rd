@@ -2,27 +2,56 @@
 % Please edit documentation in R/model_10_deploy.R
 \name{ModelDeployment}
 \alias{ModelDeployment}
-\title{Model Deployment Constructor}
+\title{Model Deployment Constructor with Multi‑Ensemble Support}
 \usage{
 ModelDeployment(
   object,
   preproc = NULL,
   class_labels = c("Normal", "High Risk"),
-  model_description = "Platelet-based diagnostic ensemble."
+  model_description = "Clinlabomics based diagnostic ensemble."
 )
 }
 \arguments{
-\item{object}{The trained model object.}
+\item{object}{A `Train_Model` S4 object, typically returned by
+`ModelTrainAnalysis()` and subsequent `TrainEnsemble()` calls.}
 
-\item{preproc}{Preprocessing object (e.g., from caret::preProcess).}
+\item{preproc}{A `caret::preProcess` object (or `NULL`) to apply to new data
+before prediction. Must be compatible with `predict(preproc, newdata)`.}
 
-\item{class_labels}{Labels for the classification outcome.}
+\item{class_labels}{Character vector of length 2 giving the names of the
+negative and positive classes, respectively. Default: `c("Normal", "High Risk")`.}
 
-\item{model_description}{Short text describing the model's purpose.}
+\item{model_description}{A short descriptive string about the model platform,
+displayed in the Shiny app's metadata card.}
 }
 \value{
-An object of class 'ModelDeployment'.
+A list of class `"ModelDeployment"` with components:
+  \describe{
+    \item{object}{The original `Train_Model` object.}
+    \item{preproc}{The preprocessing object.}
+    \item{ref_data}{The training data (used for reference/UI).}
+    \item{group_col}{The name of the outcome column.}
+    \item{class_labels}{The class labels.}
+    \item{model_desc}{The description string.}
+    \item{model_list}{Character vector of all selectable model identifiers.}
+    \item{predict_fn}{A function `function(newdata, selected_model = "auto")`
+      that returns a two column data frame of class probabilities.}
+  }
 }
 \description{
-Wraps the model object and preprocessing logic into a deployment-ready list.
+Creates a deployment-ready object that encapsulates all trained models,
+fine tuned models, and all stored ensembles (from `process.info$ensembles`).
+The returned list includes a unified prediction function that can dispatch
+to any of these models based on a user selected string.
+}
+\examples{
+\dontrun{
+deploy <- ModelDeployment(
+  object = model_obj,
+  preproc = preProc,
+  class_labels = c("Control", "Case"),
+  model_description = "Omics based diagnostic ensemble"
+)
+pred <- deploy$predict_fn(newdata, selected_model = "Ensemble: Stacking")
+}
 }

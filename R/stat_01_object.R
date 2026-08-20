@@ -151,14 +151,14 @@ Stat <- setClass(
 #' @export
 #'
 #' @examples
-#'raw <- data.frame(id = 1:10, value = rnorm(10), group = rep(c("A","B"), each=5))
-#'inf<-data.frame(age = 1:10, value = rnorm(10), group = rep(c("A","B"), each=5))
-#'stat_new <- CreateStatObject(raw.data = raw,  group_col = "group")
-#'print(stat_new)
-#'stat_new <- CreateStatObject(raw.data = raw, clean.data = raw, group_col = "group")
-#'print(stat_new)
-#'stat_new <- CreateStatObject(raw.data = raw, group_col = "group",info.data = inf)
-#'print(stat_new)
+#' raw <- data.frame(id = 1:10, value = rnorm(10), group = rep(c("A","B"), each=5))
+#' inf<-data.frame(age = 1:10, value = rnorm(10), group = rep(c("A","B"), each=5))
+#' stat_new <- CreateStatObject(raw.data = raw,  group_col = "group")
+#' print(stat_new)
+#' stat_new <- CreateStatObject(raw.data = raw, clean.data = raw, group_col = "group")
+#' print(stat_new)
+#' stat_new <- CreateStatObject(raw.data = raw, group_col = "group",info.data = inf)
+#' print(stat_new)
 CreateStatObject <- function(
     raw.data = data.frame(),
     clean.data = data.frame(),

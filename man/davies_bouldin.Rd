@@ -4,10 +4,12 @@
 \alias{davies_bouldin}
 \title{Davies-Bouldin Index}
 \usage{
-davies_bouldin(clustered.data)
+davies_bouldin(clustered.data, label_col = "group")
 }
 \arguments{
 \item{clustered.data}{Clustered data.}
+
+\item{label_col}{Column for label.}
 }
 \value{
 Numeric DB index value.

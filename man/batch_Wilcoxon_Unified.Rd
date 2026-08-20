@@ -11,10 +11,12 @@ batch_Wilcoxon_Unified(
   logfc_mat = NULL,
   logfc_type = "log2ratio",
   p_threshold = 0.05,
+  logfc_threshold = 0.1,
   only.pos = NULL,
   save_dir = NULL,
   save_data = FALSE,
-  csv_filename = NULL
+  csv_filename = NULL,
+  use_adjusted_p = FALSE
 )
 }
 \arguments{
@@ -34,6 +36,8 @@ batch_Wilcoxon_Unified(
 
 \item{p_threshold}{P-value threshold. Default 0.05.}
 
+\item{logfc_threshold}{Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.}
+
 \item{only.pos}{Logical; filter to positive logFC. Default depends on analysis_type.}
 
 \item{save_dir}{Directory to save results.}
@@ -41,6 +45,8 @@ batch_Wilcoxon_Unified(
 \item{save_data}{Logical; whether to write CSV. Default TRUE.}
 
 \item{csv_filename}{Output filename. If NULL, auto-generated based on analysis_type.}
+
+\item{use_adjusted_p}{Logical; if TRUE, uses adjusted p-values (p.adjust) to determine significance;}
 }
 \value{
 Data frame with DEG results. For multi-class: includes "target_group" column.
@@ -51,7 +57,6 @@ Automatically detects number of groups and routes to appropriate function.
 Provides a single entry point for both binary and multi-class DEG analysis.
 }
 \examples{
-\dontrun{
 # Binary analysis (2 groups) - automatic
 result_binary <- batch_Wilcoxon_Unified(mtcars,group_col = 'vs')
 # Multi-class analysis (3+ groups) - automatic
@@ -60,5 +65,4 @@ result_multi <- batch_Wilcoxon_Unified(iris,group_col ="Species")
 iris$Species=factor(iris$Species,levels = unique(iris$Species))
 result_ordered <- batch_Wilcoxon_Unified(
 iris,group_col = "Species",analysis_type = "ordered")
-}
 }

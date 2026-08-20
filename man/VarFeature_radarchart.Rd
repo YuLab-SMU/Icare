@@ -2,12 +2,18 @@
 % Please edit documentation in R/stat_06_deg.R
 \name{VarFeature_radarchart}
 \alias{VarFeature_radarchart}
-\title{Generate Radar Chart for Variable Features (with auto-save option)}
+\title{Generate a Variable Feature Radar Chart from a Stat Object or Data Frame}
 \usage{
 VarFeature_radarchart(
   object,
   group_col = NULL,
   palette_name = "Zissou1",
+  sort_by = c("logFC", "pvalue"),
+  height_mode = c("rank", "value"),
+  drop_stable = FALSE,
+  point_size_range = NULL,
+  label_size_range = c(3, 4.2),
+  label_offset_frac = 0.06,
   plot_width = 5,
   plot_height = 5,
   save_dir = NULL,
@@ -17,32 +23,70 @@ VarFeature_radarchart(
 )
 }
 \arguments{
-\item{object}{Stat object or data frame.}
+\item{object}{An object of class \code{Stat}, or a data frame of
+differential expression results (e.g. output of
+\code{\link{batch_Wilcoxon}}).}
 
-\item{group_col}{Group column name. If NULL, auto-detect from Stat object.}
+\item{group_col}{Character or \code{NULL}. Name of the grouping column.
+If \code{NULL} and \code{object} is a \code{Stat} object, inferred from
+its \code{group_col} slot; if \code{object} is a data frame, defaults
+to \code{"group"}.}
 
-\item{palette_name}{Colour palette.}
+\item{palette_name}{Character. \pkg{wesanderson} palette name passed to
+\code{\link{plot_deg_radarchart}}. Default \code{"Zissou1"}.}
 
-\item{plot_width, plot_height}{Plot dimensions (inches).}
+\item{sort_by}{Character. Ordering criterion: \code{"logFC"} or
+\code{"pvalue"}. Default \code{"logFC"}.}
 
-\item{save_dir}{Output directory. If NULL and save_plots=TRUE, will use
-"./figures/deg_info" or get_output_dir() if available.}
+\item{height_mode}{Character. \code{"rank"} (default) or \code{"value"}.}
 
-\item{save_plots}{Logical. Save the plot? Default TRUE.}
+\item{drop_stable}{Logical. If \code{TRUE}, features labeled
+\code{"Stable"} are excluded before plotting. Default \code{FALSE}.}
 
-\item{base_size}{Base font size.}
+\item{point_size_range}{Numeric vector of length 2, or \code{NULL} for
+automatic sizing. Default \code{NULL}.}
 
-\item{title}{Plot title.}
+\item{label_size_range}{Numeric vector of length 2. Min/max feature-label
+font size in mm, scaled by significance rank. Default \code{c(3, 4.2)}.}
+
+\item{label_offset_frac}{Numeric. Distance of feature labels from bar
+tips as a fraction of the tallest bar. Default \code{0.06}.}
+
+\item{plot_width}{Numeric. Width in inches for saving. Default 5.}
+
+\item{plot_height}{Numeric. Height in inches for saving. Default 5.}
+
+\item{save_dir}{Character or \code{NULL}. Directory to save the plot. If
+\code{NULL} and \code{save_plots = TRUE}, a default output directory is
+used via \code{get_output_dir("Figures", "deg_info")} if available,
+otherwise \code{"./figures/deg_info"}. Ignored if
+\code{save_plots = FALSE}.}
+
+\item{save_plots}{Logical. Whether to save the plot to disk. Default
+\code{TRUE}.}
+
+\item{base_size}{Numeric. Base font size for \code{ggprism::theme_prism}.
+Default 14.}
+
+\item{title}{Character. Plot title.}
 }
 \value{
-Updated Stat object or ggplot.
+If \code{object} is a \code{Stat} object, the same object with
+  the plot stored in \code{object@var.result[["VarFeaturePlot"]]}.
+  If \code{object} is a data frame, a \code{ggplot} object.
 }
 \description{
-Generate Radar Chart for Variable Features (with auto-save option)
+High-level wrapper that extracts differential expression results from a
+\code{Stat} S4 object (or accepts a data frame directly), generates a
+radar-style chart via \code{\link{plot_deg_radarchart}}, optionally saves
+it to disk, and (for \code{Stat} inputs) stores the resulting plot back
+into the object's \code{var.result} slot.
 }
 \examples{
-\dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-VarFeature_radarchart(stat_obj, palette_name = "Zissou1", title = "Differential Expression Radar")
+if (interactive()) {
+  data(iris)
+  stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+  stat <- stat_var_feature(stat, p_threshold = 0.05)
+  VarFeature_radarchart(stat, drop_stable = TRUE, save_plots = FALSE)
 }
 }

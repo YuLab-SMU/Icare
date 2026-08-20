@@ -7,7 +7,7 @@
 PlotFeatureStability(
   multi_result,
   top_n = NULL,
-  palette_name = "Darjeeling1",
+  palette_name = "BottleRocket2",
   base_size = 13,
   save_plot = FALSE,
   save_dir = NULL,

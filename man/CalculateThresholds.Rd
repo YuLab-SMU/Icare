@@ -8,6 +8,7 @@ CalculateThresholds(
   model_obj,
   newdata = NULL,
   model_name = NULL,
+  dataset_type = c("testing", "training", "external"),
   target_se = NULL,
   target_sp = NULL,
   target_ppv = NULL,
@@ -17,6 +18,10 @@ CalculateThresholds(
 }
 \arguments{
 \item{model_obj, newdata, model_name}{As elsewhere.}
+
+\item{dataset_type}{Character string indicating the dataset origin for plot
+labelling. Must be one of \code{"testing"}, \code{"training"}, or
+\code{"external"}. Default is \code{"testing"}.}
 
 \item{target_se}{Target Sensitivity (e.g., 0.9). Default NULL.}
 
@@ -38,4 +43,48 @@ then finds:
   - Youden index (Se + Sp - 1)
   - Thresholds that reach a target Sensitivity, Specificity, PPV, or NPV
   - Threshold that maximises Accuracy (if requested)
+}
+\section{A note on where to call this}{
+
+This function \strong{searches} for a threshold (Youden index, "reach
+target Se/Sp/PPV/NPV", "maximise Accuracy") over whatever data you pass
+in. If you call it on the testing (or external) set and then report that
+threshold's Accuracy/Sensitivity/etc. as "test-set performance", you are
+reporting an optimistic, overfit number: the threshold was chosen
+specifically because it did well on that same data. Prefer determining
+the threshold on the \strong{training} set (\code{dataset_type =
+"training"}), then applying that fixed numeric value to the testing/
+external set yourself (e.g. via \code{ApplyThreshold(..., custom_threshold
+= your_value)}) for a genuine out-of-sample evaluation.
+
+To keep this visible, calling this function with \code{dataset_type =
+"testing"} or \code{"external"} emits a warning every time. The warning
+does not block execution -- e.g. you may legitimately want to inspect the
+full metrics table for exploratory purposes -- but any threshold selected
+under that warning should not be reported as if it were fixed in advance.
+}
+
+\examples{
+\dontrun{
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model, methods = c("glm"), control = list(method = "cv", number = 3),
+save_plots = FALSE)
+# Calculate thresholds on training set (preferred)
+thresh <- CalculateThresholds(trained, newdata = trained@filtered.set$training, 
+dataset_type = "training")
+print(thresh$thresholds)
+# Apply to test set
+apply_res <- ApplyThreshold(thresh, which_threshold = "Youden", 
+newdata = trained@filtered.set$testing)
+print(apply_res$metrics)
+# ClinicalThreshold wrapper (plots if interactive)
+if (interactive()) {
+  ClinicalThreshold(model_obj = trained, newdata = trained@filtered.set$testing, 
+  save_plot = FALSE)
+}
+}
 }

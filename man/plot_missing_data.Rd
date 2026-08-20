@@ -74,20 +74,11 @@ Provides variable-wise and sample-wise missing data distributions, plus a combin
 plot. Optionally saves plots as PDF files and exports missing data summaries as CSV.
 }
 \examples{
-\dontrun{
-data("stat_obj_test")
-missing_info <- plot_missing_data(data = stat_obj_test@raw.data, save_plots = FALSE)
-
-# Customized parameters
-missing_info <- plot_missing_data(
-  data = stat_obj_test@raw.data,
-  palette_name = "Zissou1",
-  alpha = 0.7,
-  plot_width = 6,
-  plot_height = 6,
-  save_data = TRUE,
-  var_filename = "var_missing.csv",
-  sample_filename = "sample_missing.csv"
-)
+if (interactive()) {
+  data(iris)
+  # Introduce missing values
+  iris_na <- iris
+  iris_na[1:5, 1] <- NA
+  plot_missing_data(iris_na, save_plots = FALSE)
 }
 }

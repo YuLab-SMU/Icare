@@ -25,8 +25,7 @@ analysis. Must be one of \code{"sample_size"} or \code{"censoring"}.}
 For \code{"censoring"}, these are additional censoring proportions
 (e.g., \code{c(0.1, 0.2, 0.3, 0.5)}). If \code{NULL}, uses reasonable defaults.}
 
-\item{palette_name}{A character string specifying the Wes Anderson palette name.
-Default is \code{"AsteroidCity1"}.}
+\item{palette_name}{A character string (kept for compatibility, no longer used).}
 }
 \value{
 A list with two components:
@@ -39,22 +38,4 @@ A list with two components:
 Evaluates how model performance (C-index) changes under varying conditions
 such as sample size or censoring rate. This helps assess the robustness of
 the model to data perturbations.
-}
-\examples{
-\dontrun{
-library(mlr3proba)
-library(survival)
-
-data("veteran", package = "survival")
-task <- surv_create_surv_task(veteran, "time", "status")
-
-# Sample size sensitivity
-sens <- surv_analyze_model_sensitivity(
-  object = task,
-  learner_id = "surv.coxph",
-  analysis_type = "sample_size",
-  param_values = c(0.3, 0.5, 0.7, 0.9)
-)
-print(sens$plot)
-}
 }

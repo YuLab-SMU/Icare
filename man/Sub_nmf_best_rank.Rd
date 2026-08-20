@@ -8,6 +8,7 @@ Sub_nmf_best_rank(
   object,
   nrun = 10,
   seed = 8891,
+  nmf_shift = 0,
   method = "brunet",
   palette_name = "Zissou1",
   save_dir = file.path(get_output_dir("Subtyping", "cluster_results"), "nmf_results")
@@ -19,6 +20,8 @@ Sub_nmf_best_rank(
 \item{nrun}{Number of NMF runs.}
 
 \item{seed}{Random seed.}
+
+\item{nmf_shift}{nmf_shift.}
 
 \item{method}{NMF algorithm.}
 

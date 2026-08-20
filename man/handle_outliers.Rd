@@ -33,9 +33,8 @@ handle_outliers(
 Handle Outliers
 }
 \examples{
-\dontrun{
-out_info <- extract_outlier_data (stat_obj_test)
-clean_after <- handle_outliers(stat_obj_test@clean.data, out_info,
- method = "remove", save_data = FALSE)
-}
+data(iris)
+out_info <- detect_and_mark_outliers(iris[, 1:4], method = "zscore", threshold = 3)
+cleaned <- handle_outliers(iris[, 1:4], out_info, method = "remove", save_data = FALSE)
+head(cleaned)
 }

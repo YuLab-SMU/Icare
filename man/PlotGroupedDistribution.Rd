@@ -2,14 +2,15 @@
 % Please edit documentation in R/viz_functions.R
 \name{PlotGroupedDistribution}
 \alias{PlotGroupedDistribution}
-\title{Grouped box-violin plot with statistical comparisons}
+\title{Grouped Distribution Plot with Violin and Boxplot}
 \usage{
 PlotGroupedDistribution(
   object,
   features = NULL,
-  group_col = "group",
+  group_col = NULL,
   test = "wilcox.test",
   palette_name = "Royal1",
+  group_colors = NULL,
   ncol = 3,
   base_size = 13,
   save_plot = FALSE,
@@ -20,40 +21,71 @@ PlotGroupedDistribution(
 )
 }
 \arguments{
-\item{object}{A \code{Stat} object, or a plain data frame.}
+\item{object}{A `Stat` object (from the package) or a data frame containing the data.
+If a `Stat` object is provided, the function will extract the clean data and
+the default group column from the object.}
 
-\item{features}{Character vector of feature names to plot. When \code{NULL}
-all numeric columns are used (max 12).}
+\item{features}{A character vector of feature (column) names to plot. If `NULL`
+(default), the first 12 numeric columns (excluding the group column) are used.}
 
-\item{group_col}{Grouping column. Ignored when \code{object} is a
-\code{Stat} and the slot is already set.}
+\item{group_col}{A character string specifying the column name that defines the
+grouping variable. If `NULL` (default) and `object` is a `Stat` object, it will
+be automatically taken from `object@group_col`. Otherwise, it must be provided.}
 
-\item{test}{Statistical test passed to \code{ggpubr::stat_compare_means}:
-\code{"wilcox.test"} (default) or \code{"t.test"}.}
+\item{test}{A character string specifying the statistical test to use for pairwise
+comparisons. Passed to \code{ggpubr::stat_compare_means()}. Default is `"wilcox.test"`.}
 
-\item{palette_name}{Wesanderson / RColorBrewer palette.}
+\item{palette_name}{A character string indicating the color palette to use when
+`group_colors` is `NULL`. Supports RColorBrewer palettes (e.g., "Set1") or
+wesanderson palettes (e.g., "Zissou1"). Default is `"Royal1"`.}
 
-\item{ncol}{Number of facet columns.}
+\item{group_colors}{An optional named character vector specifying custom colors
+for each group. The names must exactly match the group levels (case-sensitive).
+If provided, this overrides `palette_name`. Default is `NULL`.}
 
-\item{base_size}{Base font size.}
+\item{ncol}{Number of columns in the faceted plot. Default is 3.}
 
-\item{save_plot}{Logical. Save the plot? Default \code{FALSE}.}
+\item{base_size}{Base font size for the plot theme. Default is 13.}
 
-\item{save_dir}{Output directory. When \code{NULL} and \code{save_plot=TRUE}
-the default Stat figure directory is used.}
+\item{save_plot}{Logical; if `TRUE`, the plot is saved to disk. Default is `FALSE`.}
 
-\item{width, height}{Plot dimensions (inches).}
+\item{save_dir}{Directory path where the plot will be saved. If `NULL` and
+`save_plot` is `TRUE`, a default directory is used.}
 
-\item{format}{\code{"pdf"}, \code{"png"}, or \code{"svg"}.}
+\item{width}{Width of the saved plot (in inches). Default is 10.}
+
+\item{height}{Height of the saved plot (in inches). Default is 6.}
+
+\item{format}{Output format for the saved plot (`"pdf"` or `"png"`). Default is `"pdf"`.}
 }
 \value{
-A \code{ggplot} object.
+A `ggplot` object. The plot is also saved if `save_plot = TRUE`.
 }
 \description{
-Grouped box-violin plot with statistical comparisons
+This function generates a faceted grouped distribution plot for selected numeric features.
+It visualizes the distribution of each feature across groups using violin plots overlaid
+with boxplots, and optionally adds statistical significance labels (p-values).
+}
+\details{
+The function converts the grouping column to character internally to ensure that
+custom color names (provided via `group_colors`) can match the group levels correctly.
 }
 \examples{
 \dontrun{
-PlotGroupedDistribution(stat_obj_test,save_plot = FALSE,ncol = 4)
+# Using a Stat object with custom colors
+p <- PlotGroupedDistribution(
+  object = stat_obj,
+  features = c("GeneA", "GeneB"),
+  group_colors = c("0" = "#404040", "1" = "#ca0020")
+)
+print(p)
+
+# Using a data frame
+df <- data.frame(
+  Group = rep(c("A", "B"), each = 20),
+  Feature1 = rnorm(40),
+  Feature2 = rnorm(40, mean = 2)
+)
+p2 <- PlotGroupedDistribution(df, group_col = "Group")
 }
 }

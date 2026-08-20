@@ -18,3 +18,23 @@ ggplot object
 \description{
 Plot Continuous Time-dependent AUC (Dynamic AUC)
 }
+\examples{
+\dontrun{
+veteran <- survival::veteran
+veteran$celltype <- as.character(veteran$celltype)
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+lrn <- surv_get_learner("surv.ranger", task)
+lrn$train(task)
+
+auc_plot <- surv_plot_time_dependent_auc(lrn, task)
+
+# Comparison needs two tasks (e.g. train vs validation split):
+set.seed(1)
+idx <- sample(seq_len(task$nrow), size = floor(0.7 * task$nrow))
+train_task <- task$clone()$filter(idx)
+val_task   <- task$clone()$filter(setdiff(seq_len(task$nrow), idx))
+lrn2 <- surv_get_learner("surv.ranger", train_task)
+lrn2$train(train_task)
+auc_cmp <- surv_plot_comparison_auc(lrn2, train_task, val_task)
+}
+}

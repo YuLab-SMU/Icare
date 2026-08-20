@@ -58,28 +58,37 @@
 #' @param save_plot Logical.
 #' @param save_dir Output directory.
 #' @export
-PlotTopModelAUC <- function(model_obj, top_n = 6,
-                            save_plot = FALSE, save_dir = NULL) {
+PlotTopModelAUC <- function(model_obj, top_n = 6, save_plot = FALSE, save_dir = NULL) {
   .check_final_pkgs()
-  cat("Generating top model AUC dot plot...\n")
   
   perf <- model_obj@all.results
+  if (nrow(perf) == 0) stop("No performance data available.")
+  
   perf <- head(perf[order(-perf$auc), ], top_n)
-  perf$Model <- factor(perf$Model, levels = perf$Model)
+  perf$Model <- factor(perf$Model, levels = rev(perf$Model))
   
-  cols <- .get_palette("Darjeeling1", top_n)
+  has_ci <- all(c("auc_lower", "auc_upper") %in% colnames(perf))
+  cols <- .get_palette("Darjeeling1", nrow(perf))
   
-  p <- ggplot2::ggplot(perf, ggplot2::aes(x = auc, y = reorder(Model, auc), color = Model)) +
+  p <- ggplot2::ggplot(perf, ggplot2::aes(x = auc, y = Model, color = Model)) +
     ggplot2::geom_point(size = 4, shape = 18) +
-    ggplot2::geom_segment(ggplot2::aes(x = auc - 0.02, xend = auc + 0.02, yend = Model),
-                          linewidth = 1.2) +
     ggplot2::scale_color_manual(values = cols) +
-    ggplot2::labs(title = "Top Models by AUC",
-                  x = "AUC", y = NULL) +
+    ggplot2::labs(title = "Top Models by AUC", x = "AUC (95% CI)", y = NULL) +
     .pub_theme(13) +
     ggplot2::theme(legend.position = "none")
   
-  if (save_plot) .save_plot(p, save_dir, "top_model_auc", 6, 4)
+  # Only draw error bars if real confidence intervals exist
+  if (has_ci) {
+    p <- p + ggplot2::geom_errorbarh(
+      ggplot2::aes(xmin = auc_lower, xmax = auc_upper),
+      height = 0.2, linewidth = 0.8
+    )
+  }
+  
+  if (save_plot && !is.null(save_dir)) {
+    if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
+    ggplot2::ggsave(file.path(save_dir, "top_model_auc.pdf"), plot = p, width = 6, height = 4, dpi = 300)
+  }
   return(p)
 }
 
@@ -96,90 +105,78 @@ PlotTopModelAUC <- function(model_obj, top_n = 6,
 #' @param width,height Plot dimensions.
 #' @return A ggplot object.
 #' @export
+#' @examples
+#' \dontrun{
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#' set.seed(123)
+#' idx <- sample(1:nrow(mtcars), 20)
+#' model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#' trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+#'                               control = list(method = "cv", number = 3),
+#'                               save_plots = FALSE)
+#' if (interactive()) {
+#'   PlotModelComparison(trained, top_n = 2, save_plot = FALSE)
+#'   PlotModelHeatmap(trained, save_plot = FALSE)
+#'   PlotModelParallel(trained, top_n = 2, save_plot = FALSE)
+#' }
+#' }
 PlotModelComparison <- function(model_obj, 
                                 top_n = 4,
-                                metrics = c("auc", "Sensitivity", "Specificity", 
-                                            "accuracy_score", "f1_score"),
+                                metrics = c("auc", "Sensitivity", "Specificity", "accuracy_score", "f1_score"),
                                 palette_name = "Darjeeling1",
                                 base_size = 13,
                                 save_plot = FALSE,
                                 save_dir = NULL,
                                 width = 10,
                                 height = 6) {
-  
-  cat("Generating model comparison bar chart...\n")
-  
+  .check_final_pkgs()
   perf <- model_obj@all.results
   if (nrow(perf) == 0) stop("No model performance data available.")
   
   available_metrics <- intersect(metrics, colnames(perf))
-  if (length(available_metrics) < 2) {
-    stop("Need at least 2 valid metrics.")
-  }
+  if (length(available_metrics) < 1) stop("No valid metrics found in model results.")
   
   perf <- head(perf[order(-perf$auc), ], top_n)
-  perf[, available_metrics] <- lapply(perf[, available_metrics], function(x) {
-    ifelse(is.na(x), 0, x)
-  })
   
-  # Long format
   bar_long <- perf %>%
     dplyr::select(dplyr::all_of(c("Model", available_metrics))) %>%
     tidyr::pivot_longer(cols = -Model, names_to = "Metric", values_to = "Value")
   
-  # Rename metrics for display
-  metric_labels <- c(
-    auc = "AUC",
-    accuracy_score = "Accuracy",
-    f1_score = "F1 Score",
-    Sensitivity = "Sensitivity",
-    Specificity = "Specificity",
-    Precision = "Precision",
-    recall_score = "Recall"
-  )
-  bar_long$Metric <- factor(
-    metric_labels[bar_long$Metric],
-    levels = metric_labels[available_metrics]
+  # Safe dictionary lookup with fallback to original metric name
+  metric_dict <- c(
+    auc = "AUC", accuracy_score = "Accuracy", f1_score = "F1 Score",
+    Sensitivity = "Sensitivity", Specificity = "Specificity",
+    Precision = "Precision", recall_score = "Recall"
   )
   
-  cols <- tryCatch({
-    as.character(wesanderson::wes_palette(palette_name, top_n, type = "discrete"))
-  }, error = function(e) {
-    RColorBrewer::brewer.pal(max(3, top_n), "Set2")[1:top_n]
-  })
+  bar_long$Metric_Label <- ifelse(
+    bar_long$Metric %in% names(metric_dict),
+    metric_dict[bar_long$Metric],
+    bar_long$Metric
+  )
+  bar_long$Metric_Label <- factor(bar_long$Metric_Label, levels = unique(bar_long$Metric_Label))
   
-  p <- ggplot2::ggplot(bar_long, 
-                       ggplot2::aes(x = Model, y = Value, fill = Model)) +
+  cols <- .get_palette(palette_name, length(unique(bar_long$Model)))
+  
+  p <- ggplot2::ggplot(bar_long, ggplot2::aes(x = Model, y = Value, fill = Model)) +
     ggplot2::geom_col(width = 0.7, colour = "white", linewidth = 0.3) +
     ggplot2::geom_text(
-      ggplot2::aes(label = sprintf("%.3f", Value)),
+      ggplot2::aes(label = ifelse(is.na(Value), "N/A", sprintf("%.3f", Value))),
       vjust = -0.5, size = 3, fontface = "bold"
     ) +
-    ggplot2::facet_wrap(~ Metric, scales = "free_y", nrow = 1) +
+    ggplot2::facet_wrap(~ Metric_Label, scales = "free_y", nrow = 1) +
     ggplot2::scale_fill_manual(values = cols, guide = "none") +
     ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.15))) +
-    ggplot2::labs(
-      title = "Model Performance Comparison",
-      subtitle = paste("Top", top_n, "models by AUC"),
-      x = NULL, y = NULL
-    ) +
-    ggprism::theme_prism(base_size = base_size) +
-    ggplot2::theme(
-      plot.title    = ggplot2::element_text(hjust = 0.5, face = "bold"),
-      plot.subtitle = ggplot2::element_text(hjust = 0.5, colour = "grey40"),
-      axis.text.x   = ggplot2::element_text(angle = 45, hjust = 1, face = "bold"),
-      strip.text    = ggplot2::element_text(face = "bold", size = base_size)
-    )
+    ggplot2::labs(title = "Model Performance Comparison", subtitle = paste("Top", top_n, "models by AUC"), x = NULL, y = NULL) +
+    .pub_theme(base_size) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
   
   print(p)
-  
-  if (save_plot) {
+  if (save_plot && !is.null(save_dir)) {
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
-    path <- file.path(save_dir, "model_comparison.pdf")
-    ggplot2::ggsave(path, plot = p, width = width, height = height, dpi = 300)
-    cat("Plot saved to:", path, "\n")
+    ggplot2::ggsave(file.path(save_dir, "model_comparison.pdf"), plot = p, width = width, height = height, dpi = 300)
   }
-  
   return(p)
 }
 
@@ -313,6 +310,20 @@ PlotModelParallel <- function(model_obj,
 #' @param save_plot Logical.
 #' @param save_dir Output directory.
 #' @export
+#' @examples
+#' \dontrun{
+#' if (interactive()) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   set.seed(123)
+#'   idx <- sample(1:nrow(mtcars), 20)
+#'   model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+#'   trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+#'   control = list(method = "cv", number = 3), save_plots = FALSE)
+#'   PlotProbDensity(trained, data = trained@filtered.set$testing, save_plot = FALSE)
+#'   PlotProbStrip(trained, data = trained@filtered.set$testing, save_plot = FALSE)
+#' }
+#' }
 PlotProbDensity <- function(model_obj, data = NULL,
                             save_plot = FALSE, save_dir = NULL) {
   cat("Generating probability density plot...\n")
@@ -423,60 +434,21 @@ PlotProbStrip <- function(model_obj, data = NULL,
 # Part 2: caretEnsemble Integration
 # =============================================================================
 
-#' Multi-Strategy Model Ensemble
+#' Multi-Strategy Model Ensemble (Robust to Single-Row Input)
 #'
-#' Combines multiple trained \code{caret} models stored in a
-#' \code{Train_Model} object using one of four strategies: stacking
-#' (with a user-chosen meta-learner), simple average, weighted average
-#' (by AUC or custom weights), or majority voting.  The function does
-#' not depend on \code{caretEnsemble}; all logic is implemented directly
-#' on top of the existing \code{@train.models} slot.
+#' Combines multiple trained caret models using one of four strategies.
+#' All predict_fn implementations now handle both single-row and multi-row
+#' newdata without dimension errors.
 #'
-#' For stacking, the meta-learner is trained on out-of-fold predictions
-#' obtained by re-fitting each base model on every CV fold.  Models that
-#' cannot be successfully re-fitted on all folds are automatically
-#' excluded from the ensemble to avoid imputation or data leakage.
-#'
-#' @param model_obj   A trained \code{Train_Model} object.
-#' @param strategy    Ensemble strategy: \code{"stacking"},
-#'   \code{"average"}, \code{"weighted"}, or \code{"voting"}.
-#' @param meta_method Meta-learner method for stacking (default
-#'   \code{"glm"}).  Any caret classification method name is allowed
-#'   (e.g., \code{"rf"}, \code{"gbm"}).  Ignored for other strategies.
-#' @param top_n       Number of top models (ranked by AUC) to include.
-#'   \code{NULL} (default) uses all available models.
-#' @param cv_folds    Number of cross-validation folds used to generate
-#'   out-of-fold meta-features for stacking (default 5).
-#' @param weights     Named numeric vector of weights for the
-#'   \code{"weighted"} strategy.  If \code{NULL}, weights are
-#'   automatically set proportional to the training AUC of each model.
-#' @param seed        Random seed for reproducibility (default 123).
-#'
-#' @return The input \code{model_obj} updated with an \code{ensemble}
-#'   element inside \code{@best.model.result}.  The ensemble contains a
-#'   \code{predict_fn} that can be called via \code{\link{PredictEnsemble}}.
-#'
+#' @param model_obj A trained Train_Model object.
+#' @param strategy Ensemble strategy: "stacking", "average", "weighted", "voting".
+#' @param meta_method Meta-learner method for stacking (default "glm").
+#' @param top_n Number of top models (by AUC) to include. NULL uses all.
+#' @param cv_folds Number of CV folds for stacking meta-features.
+#' @param weights Named numeric vector for weighted strategy.
+#' @param seed Random seed.
+#' @return Updated model_obj with ensemble stored in @best.model.result$ensemble.
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Stacking with glm meta-learner, top 4 models
-#' model_obj <- TrainEnsemble(model_obj, strategy = "stacking",
-#'                            meta_method = "glm", top_n = 4)
-#'
-#' # Simple average of all models
-#' model_obj <- TrainEnsemble(model_obj, strategy = "average")
-#'
-#' # Weighted average with custom weights
-#' model_obj <- TrainEnsemble(model_obj, strategy = "weighted",
-#'                            weights = c(rf = 0.5, glm = 0.3, gbm = 0.2))
-#'
-#' # Majority voting
-#' model_obj <- TrainEnsemble(model_obj, strategy = "voting")
-#'
-#' # Predict on new data
-#' probs <- PredictEnsemble(model_obj, newdata)
-#' }
 TrainEnsemble <- function(model_obj,
                           strategy   = c("stacking", "average", "weighted", "voting"),
                           meta_method = "glm",
@@ -498,7 +470,12 @@ TrainEnsemble <- function(model_obj,
   if (!is.null(top_n)) {
     perf <- model_obj@all.results
     if (nrow(perf) == 0) stop("No performance data in @all.results.")
-    best <- head(perf[order(-perf$auc), ]$Model, top_n)
+    cv_metrics <- model_obj@process.info$cv_metrics
+    if (is.null(cv_metrics) || nrow(cv_metrics) == 0) {
+      stop("No CV metrics found in model_obj@process.info$cv_metrics. ",
+           "Run ModelTrainAnalysis() first to obtain cross-validated performance.")
+    }
+    best <- head(cv_metrics[order(-cv_metrics$CV_Mean), ]$Model, top_n)
     model_list <- model_list[intersect(best, names(model_list))]
     if (length(model_list) < 2) stop("Fewer than 2 models after top_n filtering.")
   }
@@ -516,14 +493,13 @@ TrainEnsemble <- function(model_obj,
                        if (!is.factor(outcome_orig)) outcome_orig <- as.factor(outcome_orig)
                        valid_levels <- make.names(levels(outcome_orig), unique = TRUE)
                        train_data[[gc]] <- factor(outcome_orig, levels = levels(outcome_orig), labels = valid_levels)
-                       folds <- createFolds(train_data[[gc]], k = cv_folds, list = TRUE)
-                       # Strict reliability check: train + predict must succeed on every fold
+                       folds <- caret::createFolds(train_data[[gc]], k = cv_folds, list = TRUE)
+                       
+                       # Reliability check
                        reliable_models <- names(model_list)[sapply(names(model_list), function(nm) {
                          all(sapply(folds, function(fold_idx) {
                            train_fold <- train_data[-fold_idx, ]
                            test_fold  <- train_data[fold_idx, ]
-                           
-                           # Try training
                            m <- tryCatch(
                              caret::train(as.formula(paste(gc, "~ .")), data = train_fold,
                                           method = model_list[[nm]]$method,
@@ -533,35 +509,28 @@ TrainEnsemble <- function(model_obj,
                              error = function(e) NULL
                            )
                            if (is.null(m)) return(FALSE)
-                           
-                           # Try prediction
                            preds <- tryCatch(
                              predict(m, test_fold, type = "prob")[, 2],
                              error = function(e) NULL
                            )
                            if (is.null(preds) || any(is.na(preds)) || length(preds) != nrow(test_fold))
                              return(FALSE)
-                           
                            TRUE
                          }))
                        })]
                        
                        if (length(reliable_models) < 2) {
-                         stop("Fewer than 2 models passed the strict training+prediction test. ",
-                              "Use 'average' or 'voting' strategy instead.")
+                         stop("Fewer than 2 models passed reliability test. Use 'average' or 'voting'.")
                        }
-                       
                        cat("Reliable models for stacking:", paste(reliable_models, collapse = ", "), "\n")
                        
-                       # Generate meta-features with reliable models
+                       # Generate meta-features
                        meta_train <- matrix(NA, nrow = nrow(train_data), ncol = length(reliable_models))
                        colnames(meta_train) <- reliable_models
-                       
                        for (i in seq_along(folds)) {
                          fold_idx <- folds[[i]]
                          train_fold <- train_data[-fold_idx, ]
                          test_fold  <- train_data[fold_idx, ]
-                         
                          for (nm in reliable_models) {
                            m <- caret::train(as.formula(paste(gc, "~ .")), data = train_fold,
                                              method = model_list[[nm]]$method,
@@ -571,7 +540,6 @@ TrainEnsemble <- function(model_obj,
                            meta_train[fold_idx, nm] <- predict(m, test_fold, type = "prob")[, 2]
                          }
                        }
-                       
                        meta_df <- as.data.frame(meta_train)
                        meta_df$outcome <- train_data[[gc]]
                        
@@ -591,8 +559,12 @@ TrainEnsemble <- function(model_obj,
                            base_preds <- sapply(reliable_models, function(nm) {
                              predict(model_list[[nm]], newdata, type = "prob")[, 2]
                            })
+                           # Ensure matrix even for single row
+                           if (is.vector(base_preds)) {
+                             base_preds <- matrix(base_preds, nrow = 1,
+                                                  dimnames = list(NULL, reliable_models))
+                           }
                            base_preds <- as.data.frame(base_preds)
-                           colnames(base_preds) <- reliable_models
                            predict(meta_model, base_preds, type = "prob")[, 2]
                          },
                          object = list(base_models = model_list[reliable_models], meta_model = meta_model),
@@ -606,8 +578,14 @@ TrainEnsemble <- function(model_obj,
                      average = {
                        list(
                          predict_fn = function(newdata) {
-                           preds <- sapply(model_list, function(m) predict(m, newdata, type = "prob")[, 2])
-                           rowMeans(preds)
+                           preds <- sapply(model_list, function(m) {
+                             predict(m, newdata, type = "prob")[, 2]
+                           })
+                           if (is.vector(preds)) {
+                             mean(preds)
+                           } else {
+                             rowMeans(preds)
+                           }
                          },
                          object   = model_list,
                          strategy = "Average",
@@ -618,9 +596,14 @@ TrainEnsemble <- function(model_obj,
                      
                      # -- Weighted Average ------------------------------------------
                      weighted = {
+                       cv_metrics <- model_obj@process.info$cv_metrics
+                       if (is.null(cv_metrics) || nrow(cv_metrics) == 0) {
+                         stop("No CV metrics found. Run ModelTrainAnalysis() first.")
+                       }
                        aucs <- sapply(names(model_list), function(nm) {
-                         model_obj@all.results$auc[model_obj@all.results$Model == nm]
+                         cv_metrics$CV_Mean[cv_metrics$Model == nm]
                        })
+                       names(aucs) <- names(model_list)
                        if (is.null(weights)) {
                          weights <- aucs / sum(aucs, na.rm = TRUE)
                          weights[is.na(weights)] <- 0
@@ -632,7 +615,11 @@ TrainEnsemble <- function(model_obj,
                            preds <- sapply(names(model_list), function(nm) {
                              predict(model_list[[nm]], newdata, type = "prob")[, 2] * weights[nm]
                            })
-                           rowSums(preds)
+                           if (is.vector(preds)) {
+                             sum(preds)
+                           } else {
+                             rowSums(preds)
+                           }
                          },
                          object   = model_list,
                          strategy = "Weighted",
@@ -648,7 +635,12 @@ TrainEnsemble <- function(model_obj,
                            votes <- sapply(model_list, function(m) {
                              as.character(predict(m, newdata, type = "raw"))
                            })
-                           apply(votes, 1, function(x) names(which.max(table(x))))
+                           if (is.vector(votes)) {
+                             # Single row: votes is a character vector
+                             names(which.max(table(votes)))
+                           } else {
+                             apply(votes, 1, function(x) names(which.max(table(x))))
+                           }
                          },
                          object   = model_list,
                          strategy = "Voting",
@@ -685,7 +677,10 @@ TrainEnsemble <- function(model_obj,
 #'
 #' @examples
 #' \dontrun{
-#' probs <- PredictEnsemble(model_obj, newdata = test_data)
+#' # Assuming 'ens' from TrainEnsemble
+#' # newdata <- mtcars[1:5, ]
+#' # probs <- PredictEnsemble(ens, newdata)
+#' # print(probs)
 #' }
 PredictEnsemble <- function(model_obj, newdata) {
   ens <- model_obj@best.model.result$ensemble

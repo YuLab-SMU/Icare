@@ -26,6 +26,22 @@ A data frame with one row per model, or \code{NULL} if all models fail.
 }
 \description{
 Uses \code{\link[caret]{confusionMatrix}} to compute all classification
-metrics and \code{\link[pROC]{roc}} for AUC.  Automatically detects group
-levels - no hard-coded \code{"0"} / \code{"1"}.
+metrics and \code{\link[pROC]{roc}} for AUC. Automatically detects group
+levels - no hard-coded \code{"0"} / \code{"1"}. Features robust defensive 
+probability extraction and type coercion to ensure downstream stability.
+}
+\examples{
+\dontrun{
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model, methods = c("rf"), 
+control = list(method = "cv", number = 3), save_plots = FALSE)
+perf <- evaluate_model_performance(trained@filtered.set$testing,
+                                   trained@train.models$rf,
+                                   group_col = "am")
+print(perf)
+}
 }

@@ -56,8 +56,9 @@ Updated Stat object or ggplot.
 Generate Boxplot Plot for Differential Features (fixed)
 }
 \examples{
-\dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-VarFeature_boxplot(object = stat_obj)
+if (interactive()) {
+  stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+  stat <- stat_var_feature(stat, p_threshold = 0.05)
+  VarFeature_boxplot(stat, save_plots = FALSE)
 }
 }

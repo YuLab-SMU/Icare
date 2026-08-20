@@ -57,20 +57,18 @@ index and selection frequencies for each feature.
 }
 \examples{
 \dontrun{
-library(survival)
-data("veteran", package = "survival")
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 
-# Stability analysis on data frame
-stab <- surv_analyze_feature_stability(
-  object = veteran,
-  time_col = "time",
-  status_col = "status",
-  n_repeat = 20,
-  alpha = 1
-)
+stab <- surv_analyze_feature_stability(task, "time", "status", n_repeat = 5, alpha = 1)
+stab$stability_index
 
-print(paste("Stability Index:", round(stab$stability_index, 3)))
-print(stab$plot)
+abl <- surv_analyze_feature_ablation(task, "surv.coxph",
+                                     features_to_test = c("karno", "celltype", "trt"))
+abl$results
+
+sens <- surv_analyze_model_sensitivity(task, "surv.coxph", analysis_type = "sample_size")
+sens$results
 }
 
 }

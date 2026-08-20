@@ -48,7 +48,7 @@ Handles both original and converted factor levels.
 \examples{
 \dontrun{
 model_obj <- ModelTrainAnalysis(
-object       = train_obj_test,
+object       = model_obj_test,
 methods      = c("glm", "rf", "gbm"),
 control      = list(method = "repeatedcv", number = 5, repeats = 1),
 save_plots   = TRUE,

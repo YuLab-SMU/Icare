@@ -27,7 +27,7 @@ stat_miss_remove(
 Remove Missing Values from Stat Object or Data Frame
 }
 \examples{
-\dontrun{
-stat_obj<- stat_miss_remove(stat_obj_test, miss_threshold = 25)
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+stat <- stat_miss_remove(stat, miss_threshold = 20, save_data = FALSE)
+print(dim(stat@clean.data))
 }

@@ -34,8 +34,12 @@ This function applies the preprocessing steps (missing value handling, outlier h
 from an existing trained `Stat` object to a new dataset.
 }
 \examples{
-\dontrun{
-new_raw <- stat_obj_test@raw.data
-processed <- process_new_data(stat_obj_test, new_raw,save_data = FALSE)
-}
+# Train a Stat object with processing steps
+stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+stat <- stat_normalize_process(stat, method = "z_score")
+
+# Create new data (first 3 rows)
+new_data <- mtcars[1:3, ]
+processed <- process_new_data(stat, new_data, save_data = FALSE)
+head(processed)
 }

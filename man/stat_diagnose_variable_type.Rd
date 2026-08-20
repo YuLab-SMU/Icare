@@ -49,14 +49,7 @@ If the input is a data frame, it directly uses the provided data for diagnosis.
 It updates the "Stat" object with the diagnosed variable types.
 }
 \examples{
-\dontrun{
-# Example 1: Diagnose variables in a "Stat" object
-stat_obj <- stat_diagnose_variable_type(stat_obj_test, group_col = "group")
-print(stat_obj)
-
-# Example 2: Diagnose variables in a data frame
-result <- stat_diagnose_variable_type(stat_obj_test@raw.data,
-                                      treat_low_card_numeric_as_categorical = TRUE)
-print(result)
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+stat <- stat_diagnose_variable_type(stat)
+print(stat@variable.types)
 }

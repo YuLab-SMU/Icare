@@ -2,93 +2,34 @@
 % Please edit documentation in R/prognosis_02_framework.R
 \name{surv_run_algorithm_benchmark}
 \alias{surv_run_algorithm_benchmark}
-\title{Benchmark Multiple Survival Algorithms}
+\title{Run Algorithm Benchmark for Survival Analysis}
 \usage{
-surv_run_algorithm_benchmark(object, learners_list = NULL, resampling = NULL)
+surv_run_algorithm_benchmark(
+  object,
+  learners_list = NULL,
+  resampling = NULL,
+  palette = NULL
+)
 }
 \arguments{
-\item{object}{A \code{TaskSurv} or \code{PrognosiX} object. The function
-extracts the task using \code{surv_extract_task()}.}
+\item{object}{A \code{PrognosiX} object or a \code{TaskSurv}.}
 
-\item{learners_list}{A list of \code{Learner} objects to benchmark. If \code{NULL},
-defaults to four commonly used survival learners:
-\itemize{
-  \item \code{surv.coxph} (Cox Proportional Hazards)
-  \item \code{surv.cv_glmnet} (LASSO)
-  \item \code{surv.ranger} (Random Forest)
-  \item \code{surv.xgboost} (XGBoost)
-}}
+\item{learners_list}{A list of \code{mlr3} learners. If \code{NULL}, a default
+set of learners is used (CoxPH, Lasso, RandomForest, XGBoost).}
 
-\item{resampling}{A \code{\link[mlr3]{Resampling}} object. If \code{NULL},
-defaults to 5-fold cross-validation.}
+\item{resampling}{An \code{mlr3} resampling strategy. Defaults to 5-fold CV.}
+
+\item{palette}{Character or character vector. Either a ColorBrewer palette name
+(e.g. \code{"Set2"}, \code{"Dark2"}, \code{"Paired"}) or a vector of colors.
+If \code{NULL} (default), a custom clean palette is used.}
 }
 \value{
-A list with three components:
-  \describe{
-    \item{bmr}{A \code{\link[mlr3]{BenchmarkResult}} object
-      containing all benchmark results.}
-    \item{table}{A data frame of aggregated performance metrics (C-index)
-      for each learner.}
-    \item{plot}{A \code{ggplot} object showing the performance distribution
-      across CV folds for each learner.}
-  }
+A list containing:
+  \item{bmr}{The \code{BenchmarkResult} object.}
+  \item{table}{Aggregated performance table.}
+  \item{plot}{A \code{ggplot} object of the performance comparison.}
 }
 \description{
-Compares the performance of multiple survival learners using cross-validation.
-The function automatically creates a benchmarking design, runs the comparison,
-and generates a boxplot visualization of the C-index scores across folds.
-}
-\details{
-The function performs the following steps:
-\enumerate{
-  \item Extracts the survival task from \code{object}.
-  \item If no learners are provided, instantiates default learners.
-  \item Ensures all learners use the same \code{predict_type} (preferring
-    \code{"distr"} if available) for fair comparison.
-  \item Creates a benchmark design and runs the benchmark.
-  \item Aggregates performance using the concordance index (\code{surv.cindex}).
-  \item Generates a boxplot comparing the performance distribution.
-}
-}
-\note{
-The default learners require additional packages:
-\itemize{
-  \item \code{surv.coxph}: built-in to \code{mlr3proba}
-  \item \code{surv.cv_glmnet}: requires \code{mlr3learners} and \code{glmnet}
-  \item \code{surv.ranger}: requires \code{mlr3learners} and \code{ranger}
-  \item \code{surv.xgboost}: requires \code{mlr3extralearners} and \code{xgboost}
-}
-}
-\examples{
-\dontrun{
-library(mlr3proba)
-library(survival)
-
-data("veteran", package = "survival")
-task <- surv_create_surv_task(veteran, "time", "status")
-
-# Run benchmark with default learners
-bm <- surv_run_algorithm_benchmark(object = task)
-
-# View performance table
-print(bm$table)
-
-# Custom learners
-library(mlr3learners)
-custom_learners <- list(
-  lrn("surv.coxph", id = "CoxPH"),
-  lrn("surv.ranger", id = "RF", num.trees = 100)
-)
-
-bm_custom <- surv_run_algorithm_benchmark(
-  object = task,
-  learners_list = custom_learners,
-  resampling = rsmp("cv", folds = 3)
-)
-}
-
-}
-\seealso{
-\code{\link{surv_benchmark_learners}} for more detailed benchmarking with tuning support,
-\code{\link{surv_summarize_benchmark}} for summarizing results
+Compares multiple survival learners using cross-validation and visualizes
+the C-index performance with a boxplot.
 }

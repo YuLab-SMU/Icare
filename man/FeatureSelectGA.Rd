@@ -51,3 +51,13 @@ List with \code{result} (gafs object), \code{opt_vars}, \code{plot}.
 \description{
 Genetic Algorithm Feature Selection for Train_Model objects
 }
+\examples{
+\dontrun{
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  ga_res <- FeatureSelectGA(model, iters = 3, popSize = 5, method = "cv", number = 2)
+  print(ga_res$opt_vars)
+}
+}
+}

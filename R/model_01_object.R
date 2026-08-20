@@ -137,6 +137,11 @@ ExtractCleanData <- function(object) {
 #' @returns A `Train_Model` S4 object, which contains the data and grouping information for further modeling.
 #'
 #' @export
+#' @examples
+#' # Binary classification with mtcars
+#' mtcars$am <- as.factor(mtcars$am)
+#' model <- CreateModelObject(data = mtcars, group_col = "am")
+#' print(model)
 CreateModelObject <- function(
     data = NULL,
     object = NULL,
@@ -281,9 +286,9 @@ CreateModelObject <- function(
 #' @export
 #' @examples
 #' \dontrun{
-#' data(train_obj_test)
+#' data(model_obj_test)
 #' # Assuming 'train_obj_test' is a valid Train_Model object
-#' extracted <- ExtractModel(train_obj_test)
+#' extracted <- ExtractModel(model_obj_test)
 #' print(extracted$best_model)
 #' }
 ExtractModel <- function(object) {

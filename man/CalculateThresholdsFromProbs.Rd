@@ -16,7 +16,7 @@ CalculateThresholdsFromProbs(
 )
 }
 \arguments{
-\item{probs}{Numeric vector of predicted probabilities (range 0–1).}
+\item{probs}{Numeric vector of predicted probabilities (range 0-1).}
 
 \item{true}{Factor vector of true binary labels.}
 

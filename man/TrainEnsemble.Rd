@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_06_ensemble.R
 \name{TrainEnsemble}
 \alias{TrainEnsemble}
-\title{Multi-Strategy Model Ensemble}
+\title{Multi-Strategy Model Ensemble (Robust to Single-Row Input)}
 \usage{
 TrainEnsemble(
   model_obj,
@@ -15,63 +15,25 @@ TrainEnsemble(
 )
 }
 \arguments{
-\item{model_obj}{A trained \code{Train_Model} object.}
+\item{model_obj}{A trained Train_Model object.}
 
-\item{strategy}{Ensemble strategy: \code{"stacking"},
-\code{"average"}, \code{"weighted"}, or \code{"voting"}.}
+\item{strategy}{Ensemble strategy: "stacking", "average", "weighted", "voting".}
 
-\item{meta_method}{Meta-learner method for stacking (default
-\code{"glm"}).  Any caret classification method name is allowed
-(e.g., \code{"rf"}, \code{"gbm"}).  Ignored for other strategies.}
+\item{meta_method}{Meta-learner method for stacking (default "glm").}
 
-\item{top_n}{Number of top models (ranked by AUC) to include.
-\code{NULL} (default) uses all available models.}
+\item{top_n}{Number of top models (by AUC) to include. NULL uses all.}
 
-\item{cv_folds}{Number of cross-validation folds used to generate
-out-of-fold meta-features for stacking (default 5).}
+\item{cv_folds}{Number of CV folds for stacking meta-features.}
 
-\item{weights}{Named numeric vector of weights for the
-\code{"weighted"} strategy.  If \code{NULL}, weights are
-automatically set proportional to the training AUC of each model.}
+\item{weights}{Named numeric vector for weighted strategy.}
 
-\item{seed}{Random seed for reproducibility (default 123).}
+\item{seed}{Random seed.}
 }
 \value{
-The input \code{model_obj} updated with an \code{ensemble}
-  element inside \code{@best.model.result}.  The ensemble contains a
-  \code{predict_fn} that can be called via \code{\link{PredictEnsemble}}.
+Updated model_obj with ensemble stored in @best.model.result$ensemble.
 }
 \description{
-Combines multiple trained \code{caret} models stored in a
-\code{Train_Model} object using one of four strategies: stacking
-(with a user-chosen meta-learner), simple average, weighted average
-(by AUC or custom weights), or majority voting.  The function does
-not depend on \code{caretEnsemble}; all logic is implemented directly
-on top of the existing \code{@train.models} slot.
-}
-\details{
-For stacking, the meta-learner is trained on out-of-fold predictions
-obtained by re-fitting each base model on every CV fold.  Models that
-cannot be successfully re-fitted on all folds are automatically
-excluded from the ensemble to avoid imputation or data leakage.
-}
-\examples{
-\dontrun{
-# Stacking with glm meta-learner, top 4 models
-model_obj <- TrainEnsemble(model_obj, strategy = "stacking",
-                           meta_method = "glm", top_n = 4)
-
-# Simple average of all models
-model_obj <- TrainEnsemble(model_obj, strategy = "average")
-
-# Weighted average with custom weights
-model_obj <- TrainEnsemble(model_obj, strategy = "weighted",
-                           weights = c(rf = 0.5, glm = 0.3, gbm = 0.2))
-
-# Majority voting
-model_obj <- TrainEnsemble(model_obj, strategy = "voting")
-
-# Predict on new data
-probs <- PredictEnsemble(model_obj, newdata)
-}
+Combines multiple trained caret models using one of four strategies.
+All predict_fn implementations now handle both single-row and multi-row
+newdata without dimension errors.
 }

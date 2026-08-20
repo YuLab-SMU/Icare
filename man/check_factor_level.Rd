@@ -9,20 +9,11 @@ check_factor_level(data, group_col)
 \arguments{
 \item{data}{A data frame or tibble containing the dataset.}
 
-\item{group_col}{The name of the column to check, which should represent class labels.}
+\item{group_col}{The name of the column to check.}
 }
 \value{
-TRUE if the column contains at least two levels, otherwise stops with an error message.
+TRUE if the column contains at least two levels, otherwise stops.
 }
 \description{
-This function checks if the specified column in the provided dataset has at least two distinct levels. It is used to ensure that the validation data contains more than one class, which is a requirement for classification tasks.
-}
-\details{
-This function ensures that the column representing class labels (`group_col`) has at least two levels, which is essential for classification problems. If the column has fewer than two levels, the function stops and throws an error indicating that the validation data is not suitable for classification.
-}
-\examples{
-\dontrun{
-# Check if the 'group' column in the dataset 'my_data' contains at least two levels
-check_factor_level(data = my_data, group_col = "group")
-}
+Check the Number of Levels in the Factor Variable
 }

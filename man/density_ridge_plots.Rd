@@ -57,7 +57,8 @@ with optional grouping by a specified column. It handles large numbers of variab
 by splitting them into multiple plots.
 }
 \examples{
-\dontrun{
-rplots <- density_ridge_plots(stat_obj_test@clean.data, group_col = "SWAB", save_plots = FALSE)
+if (interactive()) {
+  data(iris)
+  density_ridge_plots(iris[, 1:4], group_col = NULL, save_plots = FALSE)
 }
 }

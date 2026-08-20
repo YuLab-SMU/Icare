@@ -2,14 +2,14 @@
 % Please edit documentation in R/viz_functions.R
 \name{PlotCalibration}
 \alias{PlotCalibration}
-\title{Calibration curve
-Calibration Curve and Prediction Distribution Plot}
+\title{Calibration Curve and Prediction Distribution Plot}
 \usage{
 PlotCalibration(
   object,
   model_name = NULL,
   test_data = NULL,
-  n_bins = 10,
+  n_bins = NULL,
+  bin_method = c("auto", "equal_width", "quantile"),
   hist_colors = c("#f0f0f0", "#1b9e77"),
   curve_colors = c("#1b9e77", "#c51b8a"),
   base_size = 14,
@@ -20,52 +20,88 @@ PlotCalibration(
   width = 10,
   height = 5,
   format = "pdf",
-  show_stats_on_plot = TRUE
+  show_stats_on_plot = TRUE,
+  smooth_method = c("lm", "loess", "none")
 )
 }
 \arguments{
-\item{object}{A Train_Model object.}
+\item{object}{A \code{Train_Model} object containing trained models.}
 
-\item{model_name}{Name of the model. Defaults to the first one available.}
+\item{model_name}{Character. Name of the model to evaluate. If \code{NULL},
+uses the first model in \code{object@train.models}.}
 
-\item{test_data}{Optional test dataframe. If NULL, uses object@split.data$test.}
+\item{test_data}{Data frame. Test data used for evaluation. If \code{NULL},
+uses \code{object@split.data$test}.}
 
-\item{n_bins}{Number of bins for grouping (default: 10).}
+\item{n_bins}{Integer or \code{NULL}. Number of bins for calibration curve.
+If \code{NULL}, automatically chosen based on sample size (range 4–10).}
 
-\item{hist_colors}{Vector of two colors for histogram bars. Default: c("#ffffb3", "#bebada").}
+\item{bin_method}{Character. One of \code{"auto"}, \code{"equal_width"},
+or \code{"quantile"}. If \code{"auto"}, switches to quantile binning
+when predicted probabilities are highly concentrated (spread < 0.15 or
+unique values < 10), otherwise uses equal-width bins.}
 
-\item{curve_colors}{Vector of two colors (1: point, 2: loess line).}
+\item{hist_colors}{Character vector of length 2 for histogram fill colors.
+Default \code{c("#f0f0f0", "#1b9e77")}.}
 
-\item{base_size}{Base font size for ggprism theme (default: 14).}
+\item{curve_colors}{Character vector of length 2: point color and smooth
+line color. Default \code{c("#1b9e77", "#c51b8a")}.}
 
-\item{combine_plots}{Logical. If TRUE, returns a patchwork object.}
+\item{base_size}{Numeric. Base font size for \code{ggprism::theme_prism()}.
+Default 14.}
 
-\item{save_plot}{Logical. Whether to save the plot.}
+\item{combine_plots}{Logical. If \code{TRUE}, returns a patchwork composite
+of histogram + calibration curve. Default \code{TRUE}.}
 
-\item{save_dir}{Directory to save the plot.}
+\item{save_plot}{Logical. Save the plot to a PDF file. Default \code{FALSE}.}
 
-\item{se}{Logical.Whether to display standard error on the plot.}
+\item{save_dir}{Character. Directory to save the plot. Required if
+\code{save_plot = TRUE}.}
 
-\item{width, height}{Plot dimensions in inches.}
+\item{se}{Logical. Display standard error ribbon for the smooth curve.
+Default \code{FALSE}.}
 
-\item{format}{File format ("pdf" or "png").}
+\item{width}{Numeric. Width of saved plot in inches. Default 10.}
 
-\item{show_stats_on_plot}{Logical. Whether to display metrics on the plot.}
+\item{height}{Numeric. Height of saved plot in inches. Default 5.}
+
+\item{format}{Character. File format for saved plot ("pdf", "png", etc.).
+Default "pdf".}
+
+\item{show_stats_on_plot}{Logical. Annotate the calibration curve with
+Brier score, calibration intercept, slope, and Eavg. Default \code{TRUE}.}
+
+\item{smooth_method}{Character. Method for the smooth curve:
+\code{"lm"} (linear), \code{"loess"} (local polynomial), or \code{"none"}.
+Default \code{"lm"}.}
+}
+\value{
+If \code{combine_plots = TRUE}, invisibly returns a \code{patchwork}
+  object. Otherwise, returns a list with \code{histogram} and
+  \code{calibration} ggplot objects.
 }
 \description{
-Strictly follows the diagnostic logic of 'diagnose_calibration' for calculations,
-with English labels and Prism-style formatting.
+Evaluates the calibration of a binary classifier by comparing predicted
+probabilities with observed outcomes. Produces a calibration curve
+(observed proportion vs. mean predicted probability) and a histogram
+of predicted probabilities. The smooth curve can be customized
+(linear, LOESS, or none) and binning automatically adapts to sample
+size and probability distribution.
 }
 \examples{
 \dontrun{
-model_obj <- ModelTrainAnalysis(
-object       = train_obj_test,
-methods      = c("glm", "rf", "gbm"),
-control      = list(method = "repeatedcv", number = 5, repeats = 1),
-save_plots   = TRUE,
-save_dir     = ".",
-seed         = 123
-)
-PlotCalibration(model_obj, save_plot = FALSE)
+library(caret)
+data("mtcars")
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@split.data <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+                              control = list(method = "cv", number = 3),
+                              save_plots = FALSE)
+PlotCalibration(trained, model_name = "glm", test_data = mtcars[-idx, ],
+                n_bins = 8, smooth_method = "lm", save_plot = FALSE)
 }
+
 }

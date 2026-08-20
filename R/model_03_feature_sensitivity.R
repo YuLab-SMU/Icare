@@ -97,13 +97,22 @@
   if (nrow(step_results) > 0) step_results <- step_results[order(-step_results$n_features), ]
   return(list(step_results = step_results, step_features = step_features))
 }
-
 .train_single_model <- function(sub_df, algo, metric, number) {
   ctrl <- caret::trainControl(method = "cv", number = number, classProbs = TRUE,
                               summaryFunction = caret::twoClassSummary,
                               savePredictions = TRUE, verboseIter = FALSE)
-  fit <- tryCatch(caret::train(group ~ ., data = sub_df, method = algo, trControl = ctrl,
-                               metric = metric, tuneLength = 1, verbose = FALSE), error = function(e) NULL)
+  
+  fit <- tryCatch({
+    if (algo == "glm"|algo == "glmStepAIC") {
+      caret::train(group ~ ., data = sub_df, method = algo, trControl = ctrl,
+                   metric = metric, tuneLength = 1, 
+                   family = "binomial")
+    } else {
+      caret::train(group ~ ., data = sub_df, method = algo, trControl = ctrl,
+                   metric = metric, tuneLength = 1)
+    }
+  }, error = function(e) NULL)
+  
   if (is.null(fit)) return(list(fit = NULL, auc_mean = NA, auc_se = NA))
   perf <- .extract_performance(fit, metric, number)
   return(list(fit = fit, auc_mean = perf$auc_mean, auc_se = perf$auc_se))
@@ -146,7 +155,8 @@
     if (verbose) cat("  Unable to compute feature importance\n")
     return(NULL)
   }
-  imp_vec <- imp[, 1]; names(imp_vec) <- rownames(imp)
+  imp_vec <- imp[, 1]
+  names(imp_vec) <- make.names(rownames(imp), unique = TRUE)
   common_feats <- intersect(names(imp_vec), current_features)
   if (length(common_feats) == 0) {
     if (verbose) cat("  No matching features in importance scores\n")
@@ -301,6 +311,16 @@
 #' @importFrom parallel detectCores makeCluster stopCluster
 #' @importFrom foreach registerDoSEQ
 #' @export
+#' @examples
+#' \dontrun{
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   elim <- run_feature_elimination(model, models = c("rf"), number = 3, min_features = 2)
+#'   best <- select_elbow(elim, elbow_method = "difference")
+#'   print(best$optimal_counts)
+#' }
+#' }
 run_feature_elimination <- function(object,
                                     models = c("rf", "gbm", "glmboost"),
                                     metric = "ROC",
@@ -314,7 +334,21 @@ run_feature_elimination <- function(object,
   .check_fs_packages()
   set.seed(seed)
   if (!inherits(object, c("Train_Model", "Stat"))) stop("'object' must be Train_Model or Stat")
-  if (!is.character(models) || length(models)==0) stop("'models' must be non-empty character vector")
+  if (!is.character(models) || length(models) == 0) stop("'models' must be non-empty character vector")
+  
+  # Exclude models without built-in varImp in the first step
+  support_df <- check_varImp_availability(models)
+  unsupported <- support_df$Model[!support_df$Has_BuiltIn]
+  if (length(unsupported) > 0) {
+    if (verbose) {
+      cat("Note: The following models do NOT have built-in varImp and will be skipped:\n")
+      cat(paste("  -", unsupported), sep = "\n")
+    }
+    models <- setdiff(models, unsupported)
+  }
+  if (length(models) == 0) {
+    stop("No valid models remaining after filtering out unsupported models via check_varImp_availability().")
+  }
   
   xy <- .extract_xy(object)
   full_features <- colnames(xy$x)
@@ -551,25 +585,12 @@ get_selected_features <- function(elim_obj, methods = c("difference", "ratio", "
 #' 
 #' @examples
 #' \dontrun{
-#' # Basic usage with default settings
-#' sens <- FeatureSensitivityAnalysis(
-#'   object = model_obj,
-#'   models = c("rf", "gbm")
-#' )
-#'
-#' # Custom elbow method with parallel processing
-#' sens <- FeatureSensitivityAnalysis(
-#'   object = model_obj,
-#'   models = c("rf", "gbm", "glmnet"),
-#'   elbow_method = "perf_tolerance",
-#'   tol = 0.02,
-#'   parallel = TRUE,
-#'   n_cores = 4
-#' )
-#'
-#' # Access results
-#' print(sens$results)
-#' print(sens$best_features)
+#' if (requireNamespace("caret", quietly = TRUE)) {
+#'   mtcars$am <- as.factor(mtcars$am)
+#'   model <- CreateModelObject(data = mtcars, group_col = "am")
+#'   sens <- FeatureSensitivityAnalysis(model, models = c("rf"), number = 3)
+#'   print(sens$best_features)
+#' }
 #' }
 FeatureSensitivityAnalysis <- function(object,
                                        models = c("rf", "gbm", "glmboost"),

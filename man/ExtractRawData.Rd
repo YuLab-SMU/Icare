@@ -21,9 +21,7 @@ If the object is not of class 'Stat' or does not contain a 'raw.data' slot,
 it will return NULL.
 }
 \examples{
-\dontrun{
-data("stat_obj_test")
-# Assuming 'stat_object' is a valid Stat object
-raw_data <- ExtractRawData(stat_obj_test)
-}
+stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+raw <- ExtractRawData(stat)
+head(raw)
 }

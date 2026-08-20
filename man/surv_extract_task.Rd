@@ -12,27 +12,41 @@ If \code{PrognosiX}, the function extracts the survival data, time column,
 and event column to create a \code{TaskSurv} object.}
 }
 \value{
-A \code{\link[mlr3proba]{TaskSurv}} object.
+A \code{\link[mlr3proba]{TaskSurv}} object with sanitized row roles.
 }
 \description{
 This helper function extracts or returns a \code{TaskSurv} object from either
 a \code{PrognosiX} S4 object or a \code{TaskSurv} object. It serves as a
 unified interface for downstream functions that require a survival task.
 }
-\examples{
-\dontrun{
-library(mlr3proba)
-library(survival)
-
-# From TaskSurv
-data("veteran", package = "survival")
-task <- TaskSurv$new("veteran", backend = veteran, time = "time", event = "status")
-task_out <- surv_extract_task(task)
-
-# From PrognosiX object (if available)
-data(pro_obj_test)
-task_out <- surv_extract_task(pro_obj_test)
+\details{
+When \code{object} is already a \code{TaskSurv}, this function also performs
+a defensive sanity check on \code{object$row_roles$use}. Row indices produced
+by functions such as \code{caret::createDataPartition(..., list = FALSE)} are
+returned as a single-column matrix rather than a plain integer vector. If such
+a matrix is passed directly to \code{TaskSurv$filter()}, mlr3's internal
+resampling machinery silently misnames its row-id column (e.g.
+\code{row_id.Resample1} instead of \code{row_id}), which later surfaces as an
+opaque \code{"column not found: [row_id]"} error deep inside
+\code{mlr3::Resampling$instantiate()}. To prevent this, \code{surv_extract_task}
+coerces any matrix-typed \code{row_roles$use} back to a plain integer vector
+before returning the task, so all downstream benchmarking, tuning, and
+evaluation functions receive a well-formed task.
 }
+\examples{
+veteran <- survival::veteran
+stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
+                         group_col = "status", na.action = "allow")
+prog <- Stat_to_PrognosiX(stat, "time", "status", na_action = "omit",
+                          min_events = 10, verbose = FALSE)
+
+# From a PrognosiX object:
+task <- surv_extract_task(prog)
+task$nrow
+
+# Directly from a data frame:
+task2 <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+task2$nrow
 }
 \seealso{
 \code{\link{surv_create_surv_task}} for creating tasks from data frames

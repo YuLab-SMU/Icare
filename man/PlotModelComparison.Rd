@@ -40,3 +40,20 @@ A ggplot object.
 \description{
 Multi-Metric Faceted Bar Chart
 }
+\examples{
+\dontrun{
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+set.seed(123)
+idx <- sample(1:nrow(mtcars), 20)
+model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+trained <- ModelTrainAnalysis(model, methods = c("glm", "rf"),
+                              control = list(method = "cv", number = 3),
+                              save_plots = FALSE)
+if (interactive()) {
+  PlotModelComparison(trained, top_n = 2, save_plot = FALSE)
+  PlotModelHeatmap(trained, save_plot = FALSE)
+  PlotModelParallel(trained, top_n = 2, save_plot = FALSE)
+}
+}
+}

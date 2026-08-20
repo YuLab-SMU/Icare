@@ -9,9 +9,11 @@ stat_var_feature(
   group_col = "group",
   data_type = "auto",
   p_threshold = 0.05,
+  logfc_threshold = 0.1,
   save_dir = NULL,
   save_data = FALSE,
-  csv_filename = "last_test_sig.csv"
+  csv_filename = "last_test_sig.csv",
+  use_adjusted_p = FALSE
 )
 }
 \arguments{
@@ -27,11 +29,16 @@ is determined by the scale method.}
 \item{p_threshold}{Passed through to `batch_Wilcoxon`; features with p >= p_threshold
 are excluded. Defaults to 0.05.}
 
+\item{logfc_threshold}{Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.}
+
 \item{save_dir}{Output directory.}
 
 \item{save_data}{Logical; save CSV output.}
 
 \item{csv_filename}{Output filename.}
+
+\item{use_adjusted_p}{Logical. If TRUE, uses adjusted p-values (p.adjust) 
+for determining significance; if FALSE (default), uses raw p-values.}
 }
 \value{
 Updated `Stat` object (if input is Stat) or a data frame of DEG results.
@@ -55,7 +62,11 @@ Entry point for DEG analysis. Applies the following priority logic:
 }
 \examples{
 \dontrun{
-# Recommended: let the function choose automatically
-stat_obj <- stat_var_feature(stat_obj_test, p_threshold = 0.05)
+data(iris)
+iris_sub <- iris[iris$Species != "virginica", ]
+stat <- CreateStatObject(clean.data = iris_sub, group_col = "Species")
+stat <- stat_var_feature(stat, p_threshold = 0.05)
+last <- ExtractLastTestSig(stat)
+head(last)
 }
 }

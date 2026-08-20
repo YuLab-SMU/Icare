@@ -12,10 +12,14 @@
 #' @return A processed data frame.
 #' @export
 #' @examples
-#' \dontrun{
-#' new_raw <- stat_obj_test@raw.data
-#' processed <- process_new_data(stat_obj_test, new_raw,save_data = FALSE)
-#' }
+#' # Train a Stat object with processing steps
+#' stat <- CreateStatObject(clean.data = mtcars, group_col = "cyl")
+#' stat <- stat_normalize_process(stat, method = "z_score")
+#' 
+#' # Create new data (first 3 rows)
+#' new_data <- mtcars[1:3, ]
+#' processed <- process_new_data(stat, new_data, save_data = FALSE)
+#' head(processed)
 process_new_data <- function(stat_object,
                              new_data,
                              group_col = "group",
@@ -65,59 +69,91 @@ process_new_data <- function(stat_object,
   
   # 3. Outlier Handling
   if (!is.null(process_info$outlier_handling)) {
-    cat("Applying outlier handling...\n")
+    cat("Applying outlier handling to new data using training thresholds...\n")
     method <- process_info$outlier_handling$method
-    impute_value <- process_info$outlier_handling$impute_value
+    threshold <- process_info$outlier_handling$threshold
+    stats <- process_info$outlier_handling$detection_stats
     
-    # We need to detect outliers in new data using the same threshold/method?
-    # Or apply the same bounds (e.g. winsorize limits) from training?
-    # The current implementation of handle_outliers calculates bounds on the *current* data.
-    # Ideally, we should use training bounds. 
-    # For now, we will re-run detection on new data using the same parameters if available.
-    # Note: This might not be strictly "applying model", but adapting to new data distribution.
-    
-    # If we want to strictly apply training parameters, we would need to store them (e.g. mean/sd for zscore).
-    # Assuming we re-detect:
-    outlier_detect_info <- process_info$outlier_detection # This is from training data!
-    # We can't use training indices on new data.
-    # We should probably run detect_and_mark_outliers on new data with same parameters.
-    # Since we don't have parameters stored explicitly in a clean way (only method/threshold in function call),
-    # we might skip or assume defaults. 
-    # The 'stat_handle_outliers' stored method and impute_value.
-    
-    # Let's assume we use z-score with threshold 3 (default) or infer from context?
-    # For simplicity, we skip outlier detection on new data unless we want to filter them out.
-    # If method was "winsorize", we should ideally use training bounds.
-    cat("Note: Outlier handling on new data is skipped to avoid data leakage or incorrect removal. \n")
+    if (!is.null(stats)) {
+      for (col in names(stats)) {
+        if (col %in% colnames(processed_data) && is.numeric(processed_data[[col]])) {
+          x <- processed_data[[col]]
+          if (method == "zscore") {
+            z <- (x - stats[[col]]$mean) / stats[[col]]$sd
+            outliers <- which(abs(z) > threshold)
+          } else if (method == "iqr") {
+            lower <- stats[[col]]$Q1 - threshold * stats[[col]]$IQR
+            upper <- stats[[col]]$Q3 + threshold * stats[[col]]$IQR
+            outliers <- which(x < lower | x > upper)
+          } else {
+            next
+          }
+          if (length(outliers) > 0) {
+            cat("  New outliers detected in column", col, ":", length(outliers), "values\n")
+          }
+        }
+      }
+    } else {
+      cat("No outlier statistics found in training object. Skipping outlier handling on new data.\n")
+    }
   }
   
   # 4. Normalization
   if (!is.null(process_info$normalization)) {
     cat("Applying normalization...\n")
     norm_methods <- process_info$normalization
+    # NEW: per-column fitted parameters (mean/sd/min/max/lambda/shift) learned
+    # on the training data by normalize_data(). Older Stat objects saved
+    # before this field existed will have this as NULL -- handled below.
+    norm_params  <- process_info$normalization_params
     
     for (col in names(norm_methods)) {
       if (col %in% names(processed_data) && is.numeric(processed_data[[col]])) {
         method <- norm_methods[[col]]
-        # Apply transformation. Note: Some transformations (z-score, min-max) depend on data distribution.
-        # Ideally we use training mean/sd/min/max.
-        # The current 'normalize_data' function calculates stats on input data.
-        # So this will normalize new data *independently*. This is often acceptable for batch processing,
-        # but for single prediction it might be an issue.
-        # We will proceed with independent normalization for now.
-        
         x <- processed_data[[col]]
-        processed_data[[col]] <- switch(method,
-                                        "log" = log_transform(x),
-                                        "min_max" = min_max_scale(x),
-                                        "z_score" = z_score_standardize(x),
-                                        "center" = center_data(x),
-                                        "scale" = scale_data(x),
-                                        "max_abs" = max_abs_scale(x),
-                                        "box_cox" = boxcox_transform(x),
-                                        "yeo_johnson" = yeojohnson_transform(x),
-                                        x # Default
-        )
+        params <- if (!is.null(norm_params)) norm_params[[col]] else NULL
+        
+        if (!is.null(params)) {
+          # Correct path: reproduce the exact training-time transform using
+          # the stored parameters, so new data ends up on the same scale the
+          # model was trained on. This also works for a single new
+          # observation (n = 1), where recomputing mean/sd or min/max from
+          # scratch would be undefined.
+          processed_data[[col]] <- switch(method,
+                                          "log"         = .apply_log(x, params),
+                                          "min_max"     = .apply_min_max(x, params),
+                                          "z_score"     = .apply_z_score(x, params),
+                                          "center"      = .apply_center(x, params),
+                                          "scale"       = .apply_scale(x, params),
+                                          "max_abs"     = .apply_max_abs(x, params),
+                                          "box_cox"     = .apply_box_cox(x, params),
+                                          "yeo_johnson" = .apply_yeo_johnson(x, params),
+                                          x # Default
+          )
+        } else {
+          # Backward-compatible fallback for Stat objects saved before
+          # normalization_params was introduced: recompute independently on
+          # new_data, as before. This reproduces the original inconsistency,
+          # so it is loudly flagged -- re-running stat_normalize_process() on
+          # the training Stat object (and re-saving it) removes this warning.
+          warning("No stored normalization parameters found for column '", col,
+                  "' (older Stat object, saved before this fix). Falling back ",
+                  "to recomputing '", method, "' independently on new_data -- ",
+                  "results may not be on the same scale as at training time. ",
+                  "Re-run stat_normalize_process() on the training Stat object ",
+                  "and re-save it to fix this permanently.")
+          processed_data[[col]] <- switch(method,
+                                          "log" = log_transform(x),
+                                          "min_max" = min_max_scale(x),
+                                          "z_score" = z_score_standardize(x),
+                                          "center" = center_data(x),
+                                          "scale" = scale_data(x),
+                                          "max_abs" = max_abs_scale(x),
+                                          "box_cox" = boxcox_transform(x),
+                                          "yeo_johnson" = yeojohnson_transform(x),
+                                          x # Default
+          )
+        }
       }
     }
   }

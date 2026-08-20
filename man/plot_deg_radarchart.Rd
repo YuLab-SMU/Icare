@@ -2,17 +2,23 @@
 % Please edit documentation in R/stat_06_deg.R
 \name{plot_deg_radarchart}
 \alias{plot_deg_radarchart}
-\title{Plot DEG Radar Chart}
+\title{Plot a Radar-Style Chart for Differential Expression Results}
 \usage{
 plot_deg_radarchart(
   df,
   palette_name = "Zissou1",
   x_col = "id",
-  y_cols = c("mean_x", "mean_y"),
   size_col = "logFC",
-  color_col = "logp",
   fill_col = "change",
-  p_adjust_col = "p.adjust",
+  p_col = "p.adjust",
+  point_color_palette = "viridis",
+  point_alpha = 0.5,
+  point_size_range = NULL,
+  label_size_range = c(3, 4.2),
+  label_offset_frac = 0.06,
+  sort_by = c("logFC", "pvalue"),
+  height_mode = c("rank", "value"),
+  drop_stable = FALSE,
   plot_width = 5,
   plot_height = 5,
   save_dir = NULL,
@@ -21,46 +27,91 @@ plot_deg_radarchart(
 )
 }
 \arguments{
-\item{df}{A data frame containing the DEG results with columns for ID, means, log-fold change, p-values,
-adjusted p-values, and other necessary data.}
+\item{df}{A data frame containing the columns referenced by \code{x_col},
+\code{size_col}, \code{fill_col}, and \code{p_col}.}
 
-\item{palette_name}{A string indicating the name of the color palette to use for the chart .}
+\item{palette_name}{Character. \pkg{wesanderson} palette name used for the
+categorical bar fill (Down / Stable / Up). Default \code{"Zissou1"}.}
 
-\item{x_col}{The column name to use as the x-axis (default: "id").}
+\item{x_col}{Character. Column used as the angular (category) axis and
+as the feature label text. Default \code{"id"}.}
 
-\item{y_cols}{A vector of column names to be plotted on the y-axis (default: c("mean_x", "mean_y")).}
+\item{size_col}{Character. Column used to size and color points
+(typically log fold-change). Default \code{"logFC"}.}
 
-\item{size_col}{The column name for the size of the points (default: "logFC").}
+\item{fill_col}{Character. Column indicating regulation direction
+(\code{"Down"}, \code{"Stable"}, \code{"Up"}). Default \code{"change"}.}
 
-\item{color_col}{The column name for the color of the points, typically for p-values (default: "logp").}
+\item{p_col}{Character. Column holding (adjusted) p-values. Default
+\code{"p.adjust"}.}
 
-\item{fill_col}{The column name for the fill color, which defines the grouping (default: "change").}
+\item{point_color_palette}{Character. \pkg{viridis} option used for the
+continuous point color scale (mapped to \code{abs(size_col)}).
+Default \code{"viridis"}.}
 
-\item{p_adjust_col}{The column name for the adjusted p-values (default: "p.adjust").}
+\item{point_alpha}{Numeric in [0, 1]. Transparency of points. Default
+\code{0.5}.}
 
-\item{plot_width}{The width of the plot (default: 5).}
+\item{point_size_range}{Numeric vector of length 2, or \code{NULL}.
+Min/max point size (mm). If \code{NULL} (default), computed
+automatically from the number of features.}
 
-\item{plot_height}{The height of the plot (default: 5).}
+\item{label_size_range}{Numeric vector of length 2. Min/max feature-label
+font size **in mm** (not a relative scale), applied in ascending order
+of significance rank. This is independent of \code{point_size_range}.
+Sensible values are typically in the range 2.5-6. Default
+\code{c(3, 4.2)}.}
 
-\item{save_dir}{The directory where the radar chart image will be saved (default: "here('StatObject', 'deg_info')").}
+\item{label_offset_frac}{Numeric. Distance of the feature label from the
+bar tip, expressed as a fraction of the tallest bar's height. Default
+\code{0.06}.}
 
-\item{base_size}{The base font size for the plot (default: 14).}
+\item{sort_by}{Character. Criterion used to order features around the
+circle: \code{"logFC"} or \code{"pvalue"}. Default \code{"logFC"}.}
 
-\item{title}{The title of the radar chart (default: "Radar Chart Title").}
+\item{height_mode}{Character. \code{"rank"} (default) or \code{"value"}.}
+
+\item{drop_stable}{Logical. If \code{TRUE}, features labeled
+\code{"Stable"} are excluded before plotting. Default \code{FALSE}.}
+
+\item{plot_width}{Numeric. Width in inches for \code{ggsave}. Default 5.}
+
+\item{plot_height}{Numeric. Height in inches for \code{ggsave}. Default 5.}
+
+\item{save_dir}{Character or \code{NULL}. Directory to save the plot as
+\code{"radar_chart.pdf"}. If \code{NULL}, the plot is not saved.}
+
+\item{base_size}{Numeric. Base font size for \code{ggprism::theme_prism}.
+Default 14.}
+
+\item{title}{Character. Plot title.}
 }
 \value{
-The ggplot object representing the radar chart.
+A \code{ggplot} object. If \code{save_dir} is not \code{NULL},
+  the plot is also saved as a PDF file in that directory.
 }
 \description{
-This function generates a radar chart visualizing the differential expression (DEG) results from a data frame.
-It uses a set of custom parameters to customize the appearance, such as colors, size, and grouping. The chart can be
-saved to a specified directory as a PDF file.
+Generates a circular (radar-style) bar-and-point chart summarizing
+differential expression results, typically produced by
+\code{\link{batch_Wilcoxon}} or similar DEG testing functions. Bar
+(sector) height reflects statistical significance, while point size and
+color both reflect fold-change magnitude. Feature labels are placed
+close to each bar, radially angled (slanted) for readability, with font
+size scaled by significance rank so the most significant features stand
+out slightly.
+}
+\details{
+Sector (bar) height encodes statistical significance only. Fold-change
+magnitude is encoded via point size and color. Feature name labels are
+drawn manually with \code{geom_text} at a fixed radial angle, close to
+the bar tip. Label font size uses \code{size = I(...)} internally so it
+is decoupled from the point-size scale and controlled purely by
+\code{label_size_range}.
 }
 \examples{
-\dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-last_sig <- ExtractLastTestSig(stat_obj)
-print(last_sig)
-plot_deg_radarchart(last_sig, palette_name = "Zissou1", title = "Differential Expression Radar")
+if (interactive()) {
+  data(iris)
+  res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+  plot_deg_radarchart(res, drop_stable = TRUE, save_dir = NULL)
 }
 }

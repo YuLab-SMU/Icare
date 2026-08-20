@@ -27,7 +27,8 @@ Processed data frame.
 Preprocess Data
 }
 \examples{
-\dontrun{
-proc <- preprocess_data(stat_obj_test@clean.data, method = "z_score", group_col = "SWAB")
-}
+data(iris)
+iris_num <- iris[, 1:4]
+proc <- preprocess_data(iris_num, method = "z_score")
+head(proc)
 }

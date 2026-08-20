@@ -21,37 +21,35 @@ FineTuneModel(
 )
 }
 \arguments{
-\item{model_obj}{An S4 object of class 'Train_Model' containing the data and configuration.}
+\item{model_obj}{An S4 object of class 'Train_Model'.}
 
-\item{method}{A string specifying the caret model method (e.g., "rf", "xgbTree").}
+\item{method}{Caret model method string.}
 
-\item{bounds}{A named list defining the parameter search space (e.g., \code{list(mtry = c(1L, 10L))}).}
+\item{bounds}{Named list defining parameter search boundaries.}
 
-\item{init_points}{Integer. Number of initial random points for Bayesian exploration.}
+\item{init_points}{Initial random exploration points. Default 15.}
 
-\item{n_iter}{Integer. Number of iterations for Bayesian Optimization.}
+\item{n_iter}{Iteration steps for Bayesian Optimization. Default 30.}
 
-\item{cv_folds}{Integer. Number of cross-validation folds.}
+\item{cv_folds}{Cross-validation folds. Default 5.}
 
-\item{metric}{A string specifying the optimization metric (default: "ROC").}
+\item{metric}{Optimization metric. Default "ROC".}
 
-\item{summaryFun}{Function to calculate performance metrics (default: \code{caret::twoClassSummary}).}
+\item{summaryFun}{Performance evaluation summary function.}
 
-\item{use_scaled}{Logical. Whether to use scaled training data.}
+\item{use_scaled}{Logical; whether to use scaled training dataset.}
 
-\item{sampling}{A string for sampling methods (e.g., "smote", "up", "down"), or NULL.}
+\item{sampling}{Sampling strategy for class imbalance ("smote", "up", "down").}
 
-\item{class_weights}{Logical. Whether to apply inverse class frequency weights.}
+\item{class_weights}{Logical; whether to apply class frequency weighting.}
 
-\item{seed}{Integer. Random seed for reproducibility.}
+\item{seed}{Random seed for reproducibility. Default 123.}
 
-\item{verbose}{Logical. Whether to print detailed training logs.}
+\item{verbose}{Logical; whether to print progress logs.}
 }
 \value{
-Returns the updated \code{model_obj} with fine-tuned results.
+Updated \code{model_obj} containing the fine-tuned model and optimization logs.
 }
 \description{
-This function performs hyperparameter tuning using Bayesian Optimization 
-via the \code{rBayesianOptimization} package and \code{caret}. It is specifically 
-optimized for classification tasks using the ROC metric.
+Bayesian Optimization for Model Fine-Tuning
 }

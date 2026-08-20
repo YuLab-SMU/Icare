@@ -18,6 +18,9 @@ available in the \code{mlr3} environment.
 if (requireNamespace("mlr3", quietly = TRUE)) {
   available <- surv_list_available_learners()
   print(head(available, 10))
+surv_list_available_learners()
+list_surv_feature_methods()
+print_surv_feature_methods()
 }
 }
 

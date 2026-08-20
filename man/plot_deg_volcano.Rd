@@ -45,11 +45,9 @@ The plot highlights significant and non-significant genes using different colors
 The volcano plot is saved as an image in the specified directory.
 }
 \examples{
-\dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-last_sig <- ExtractLastTestSig(stat_obj)
-print(last_sig)
-plot_deg_volcano(last_test_sig = last_sig, logFC_col = "logFC", p_adjust_col = "p.adjust")
-plot_deg_volcano(last_test_sig = last_sig, title = "Custom Volcano Plot", palette_name = "Zissou1")
+if (interactive()) {
+  data(iris)
+  res <- batch_Wilcoxon(iris[iris$Species != "virginica", ], group_col = "Species")
+  plot_deg_volcano(res, save_dir = NULL)
 }
 }

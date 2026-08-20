@@ -110,8 +110,7 @@ Subtyping <- setClass(
 #' @param clustered.data Clustered data.
 #' @param evaluation_results Evaluation results.
 #' @param object Input object (Stat, Subtyping, PrognosiX, Model_data).
-#' @param convert_factors Logical; if TRUE, automatically convert factor/character
-#'   columns to numeric. Default TRUE.
+#' @param convert_factors Logical; Default FALSE – only enable if you are certain the variable is ordinal or binary.
 #' @param na.action Character string specifying how to handle NA values. 
 #'   Options are "omit" (remove rows with NA, default for subtyping), 
 #'   "allow" (keep NA values), or "error" (stop if NA found).
@@ -134,7 +133,7 @@ CreateSubtypingObject <- function(
     clustered.data = data.frame(),
     evaluation_results = list(),
     object = NULL,
-    convert_factors = TRUE,
+    convert_factors = FALSE,
     na.action = c("omit", "allow", "error")
 ) {
   
@@ -419,12 +418,21 @@ CreateSubtypingObject <- function(
 #' @return List with $train and $test Subtyping objects.
 #' @export
 #' @examples
-#' \dontrun{
-#'   # Assuming 'subtype_obj_test' is a valid Subtyping object
-#'   split_list <- SplitSubtypingObject(subtype_obj_test, p = 0.7, seed = 123)
-#'   train_obj <- split_list$train
-#'   test_obj <- split_list$test
-#' }
+#' set.seed(1)
+#' demo_df <- data.frame(
+#'   id    = paste0("S", 1:60),
+#'   group = rep(c(0, 1), each = 30),
+#'   feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+#'   feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+#'   feat3 = rnorm(60, 10, 2)
+#' )
+#' stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+#'                              group_col = "group", na.action = "allow")
+#' sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+#'
+#' split <- SplitSubtypingObject(sub_obj, p = 0.7, stratify_by = "group")
+#' nrow(split$train@clean.data)
+#' nrow(split$test@clean.data)
 SplitSubtypingObject <- function(object, p = 0.7, stratify_by = NULL, seed = 123) {
   
   if (!inherits(object, "Subtyping"))

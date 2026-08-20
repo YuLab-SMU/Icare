@@ -102,7 +102,8 @@ if (!exists(".get_viz_output_dir")) {
 #' @param save_plot Save plot to file? Default FALSE.
 #' @param save_dir Output directory. Auto-detected if NULL.
 #' @param width,height Plot dimensions (inches). Defaults 8 x 6.
-#' @param format File format: "pdf", "png", "svg". Default "pdf".
+#' @param format File format: "pdf", "png", "svg". Default "pdf"
+#' @param y_limits y_limits.
 #' @return A ggplot object.
 #' @export
 PlotRFE <- function(rfe_result,
@@ -114,6 +115,7 @@ PlotRFE <- function(rfe_result,
                     save_dir     = NULL,
                     width        = 8,
                     height       = 6,
+                    y_limits = c(0, 1),
                     format       = "pdf") {
   
   cat("Generating RFE profile plot...\n")
@@ -199,15 +201,6 @@ PlotRFE <- function(rfe_result,
     }
   }
   
-  theme_pub <- function(base_size = 13) {
-    ggplot2::theme_bw(base_size = base_size) +
-      ggplot2::theme(
-        plot.title    = ggplot2::element_text(hjust = 0.5, face = "bold", size = base_size + 1),
-        plot.subtitle = ggplot2::element_text(hjust = 0.5, colour = "grey40"),
-        axis.title    = ggplot2::element_text(face = "bold")
-      )
-  }
-  
   p <- p +
     ggplot2::labs(
       title = "RFE Profile - Recursive Feature Elimination",
@@ -217,7 +210,15 @@ PlotRFE <- function(rfe_result,
       y = metric
     ) +
     ggplot2::scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
-    theme_pub(base_size)
+    .pub_theme(base_size)
+  
+  if (!is.null(y_limits)) {
+    if (is.numeric(y_limits) && length(y_limits) == 2) {
+      p <- p + ggplot2::scale_y_continuous(limits = y_limits)
+    } else {
+      warning("y_limits must be a numeric vector of length 2; using adaptive limits.")
+    }
+  }
   
   if (save_plot) {
     if (!dir.exists(save_dir)) dir.create(save_dir, recursive = TRUE)
@@ -407,7 +408,7 @@ PlotGA <- function(ga_result,
       x = "Generation",
       y = metric_col
     ) +
-    ggplot2::theme_bw(base_size = base_size) +
+    .pub_theme(base_size)+
     ggplot2::theme(
       plot.title    = ggplot2::element_text(hjust = 0.5, face = "bold", size = base_size + 1),
       plot.subtitle = ggplot2::element_text(hjust = 0.5, colour = "grey40"),
@@ -1043,7 +1044,7 @@ PlotFeatureConsensus <- function(multi_result,
 #' @export
 PlotFeatureStability <- function(multi_result,
                                  top_n        = NULL,
-                                 palette_name = "Darjeeling1",
+                                 palette_name = "BottleRocket2",
                                  base_size    = 13,
                                  save_plot    = FALSE,
                                  save_dir     = NULL,

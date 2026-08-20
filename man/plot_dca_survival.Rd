@@ -62,7 +62,15 @@ Supports highly flexible aesthetic configurations for colors and linetypes.
 }
 \examples{
 \dontrun{
-# Requires trained learners with distr predict_type and task
-# dca_result <- plot_dca_survival(list("Cox" = cox_learner), task, eval_time = 365)
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
+lrn <- surv_get_learner("surv.coxph", task)
+lrn$train(task)
+lrn$predict_type <- "distr"
+
+dca_res <- plot_dca_survival(
+  learners = list("Cox" = lrn), object = task,
+  eval_time = 90, clin_range = c(0.05, 0.5), print_stats = FALSE
+)
 }
 }

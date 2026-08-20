@@ -15,6 +15,31 @@ ApplyFeatureSelection(object, features)
 An updated Train_Model object.
 }
 \description{
-Subsets the Train_Model to keep only the chosen features, updating all
-relevant slots. Downstream slots (split, models) are reset.
+Subsets the Train_Model to keep only the chosen features. If a train/test
+split already exists on \code{object} (i.e. \code{object@split.data}
+already has non-empty \code{training}/\code{testing} elements), that same
+row-level split is preserved -- only its columns are subset to the
+selected features -- rather than being wiped out. This matters because
+feature selection is expected to be run \emph{on the training portion
+only} (e.g. via a separate \code{Train_Model} object built from
+\code{object@split.data$training}); silently discarding an
+already-established split here would force the caller to re-draw a new
+random split afterwards, which is easy to forget and previously caused
+downstream steps (e.g. \code{preProcess()} on
+\code{object@split.data$training}) to fail with "0 rows"/NULL errors.
+}
+\details{
+\code{split.scale.data} is subset the same way if present. Trained
+models and results are always cleared, since they were fit on the old
+feature set and are no longer valid.
+}
+\examples{
+\dontrun{
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+# Select first 3 numeric features as example
+features <- colnames(mtcars)[1:3]
+model <- ApplyFeatureSelection(model, features)
+print(dim(model@clean.df))
+}
 }

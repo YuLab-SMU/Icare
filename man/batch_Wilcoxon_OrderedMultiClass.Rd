@@ -10,10 +10,12 @@ batch_Wilcoxon_OrderedMultiClass(
   logfc_mat = NULL,
   logfc_type = "log2ratio",
   p_threshold = 0.05,
+  logfc_threshold = 0.1,
   only.pos = TRUE,
   save_dir = NULL,
   save_data = FALSE,
-  csv_filename = "deg_ordered_sequential.csv"
+  csv_filename = "deg_ordered_sequential.csv",
+  use_adjusted_p = FALSE
 )
 }
 \arguments{
@@ -27,6 +29,8 @@ batch_Wilcoxon_OrderedMultiClass(
 
 \item{p_threshold}{P-value threshold for feature significance. Default 0.05.}
 
+\item{logfc_threshold}{Numeric; only features with |log2FC| < logfc_threshold are retained. Defaults to 0.1.}
+
 \item{only.pos}{Logical; if TRUE, only keep features with logFC > 0. Default TRUE.}
 
 \item{save_dir}{Directory to save results.}
@@ -34,6 +38,8 @@ batch_Wilcoxon_OrderedMultiClass(
 \item{save_data}{Logical; whether to write CSV output.}
 
 \item{csv_filename}{Output filename.}
+
+\item{use_adjusted_p}{Logical; if TRUE, uses adjusted p-values (p.adjust) to determine significance;}
 }
 \value{
 Data frame combining results for all consecutive pairs.
@@ -43,8 +49,8 @@ Performs pairwise DEG analysis between consecutive classes (ordered comparisons)
 For k classes, performs k-1 comparisons: class_1 vs. class_2, class_2 vs. class_3, etc.
 }
 \examples{
-\dontrun{
-iris$Species=factor(iris$Species,levels = unique(iris$Species))
-result <- batch_Wilcoxon_OrderedMultiClass(mat = iris,group_col = "Species",only.pos = FALSE)
-}
+data(iris)
+iris$Species <- factor(iris$Species, levels = unique(iris$Species))
+res <- batch_Wilcoxon_OrderedMultiClass(iris, group_col = "Species")
+head(res)
 }

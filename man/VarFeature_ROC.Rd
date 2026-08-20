@@ -10,7 +10,7 @@ VarFeature_ROC(
   control = "health",
   case = "cancer",
   top_n = 5,
-  palette_name = "Royal1",
+  palette_name = "Paired",
   name_identity = "deg",
   data_type = "clean",
   save_dir = NULL,
@@ -32,7 +32,7 @@ VarFeature_ROC(
 
 \item{top_n}{Number of top features to show.}
 
-\item{palette_name}{Colour palette.}
+\item{palette_name}{Colour palette (RColorBrewer palette name). Default `"Paired"`.}
 
 \item{name_identity}{Analysis identifier.}
 
@@ -60,7 +60,10 @@ Generate ROC Curve for Variable Features
 }
 \examples{
 \dontrun{
-stat_obj <- stat_var_feature(stat_obj_test)
-VarFeature_ROC(stat_obj)
+if (requireNamespace("pROC", quietly = TRUE)) {
+  stat <- CreateStatObject(clean.data = iris[iris$Species != "virginica", ], group_col = "Species")
+  stat <- stat_var_feature(stat, p_threshold = 0.05)
+  VarFeature_ROC(stat, save_plots = FALSE)
+}
 }
 }

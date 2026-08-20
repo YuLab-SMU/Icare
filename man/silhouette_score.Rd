@@ -4,10 +4,12 @@
 \alias{silhouette_score}
 \title{Silhouette Score}
 \usage{
-silhouette_score(clustered.data)
+silhouette_score(clustered.data, label_col = "group")
 }
 \arguments{
 \item{clustered.data}{Clustered data.}
+
+\item{label_col}{Column for label.}
 }
 \value{
 Numeric average silhouette score.

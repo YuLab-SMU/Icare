@@ -44,9 +44,9 @@ as determined by the `diagnose_variable_type` function. It skips encoding the `g
 and moves it to the last column of the resulting data frame if provided.
 }
 \examples{
-\dontrun{
-one_hot_encode(iris, group_col = "Species", max_unique_values = 2,save_dir = ".")
-}
+data(iris)
+encoded <- one_hot_encode(iris, group_col = "Species", save_data = FALSE)
+head(encoded)
 \dontrun{
 encoded <- one_hot_encode(stat_obj_test@clean.data, group_col = "SWAB", save_data = FALSE)
 }

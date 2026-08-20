@@ -2,7 +2,7 @@
 % Please edit documentation in R/model_08_clinical_analysis.R
 \name{PlotSubgroupForest}
 \alias{PlotSubgroupForest}
-\title{Subgroup Performance Forest Plot}
+\title{Subgroup Performance Forest Plot (table style, via forestploter)}
 \usage{
 PlotSubgroupForest(
   model_obj,
@@ -10,20 +10,134 @@ PlotSubgroupForest(
   subgroup_var,
   newdata = NULL,
   model_name = NULL,
+  var_labels = NULL,
+  level_order = NULL,
+  indent = "    ",
+  ref_line = 0.5,
+  dataset_type = c("testing", "training", "external"),
+  xlim = c(0.4, 1),
+  ticks_at = c(0.5, 0.6, 0.7, 0.8, 0.9, 1),
+  min_n = 5,
+  digits = 3,
+  p_digits = 3,
+  box_col = "#377eb8",
+  ci_col = "black",
+  overall_row = TRUE,
+  overall_label = "Overall",
+  compare_method = c("none", "delong_vs_rest", "bootstrap_vs_rest"),
+  n_boot = 2000,
+  theme_args = list(),
+  arrow_labels = NULL,
   save_plot = FALSE,
   save_dir = NULL,
-  palette_name = "Darjeeling1"
+  file_name = NULL,
+  width = 8,
+  height = 6
 )
 }
 \arguments{
-\item{model_obj, clinical_data, subgroup_var, newdata, model_name}{As above.}
+\item{model_obj}{Fitted model object (\code{Train_Model} or caret \code{train}).}
 
-\item{save_plot, save_dir, palette_name}{Output options.}
+\item{clinical_data}{Data frame with clinical/subgroup variables.}
+
+\item{subgroup_var}{Character vector defining subgroup column names.}
+
+\item{newdata}{Data frame used for model prediction.}
+
+\item{model_name}{Optional model name within \code{Train_Model}.}
+
+\item{var_labels}{Optional named character vector to relabel section headers.}
+
+\item{level_order}{Optional named list specifying the display order of factor levels.}
+
+\item{indent}{Character prefix used to indent subgroup levels. Default four spaces.}
+
+\item{ref_line}{Reference vertical line position on graphic (default 0.5).}
+
+\item{dataset_type}{Dataset origin label (\code{"testing"}, \code{"training"}, or \code{"external"}).}
+
+\item{xlim}{Numeric length-2 vector for x-axis limits of forest column.}
+
+\item{ticks_at}{Axis tick positions for forest plot.}
+
+\item{min_n}{Minimum subgroup size required for evaluation. Default 5.}
+
+\item{digits}{Number of decimal places for AUC/CI display.}
+
+\item{p_digits}{Number of decimal places for p-value display.}
+
+\item{box_col}{Color for point estimate box in forest graphic.}
+
+\item{ci_col}{Color for CI whiskers.}
+
+\item{overall_row}{Logical; whether to prepend an "Overall" dataset row. Default \code{TRUE}.}
+
+\item{overall_label}{Character label for the overall row.}
+
+\item{compare_method}{Statistical test for subgroup comparison (\code{"none"}, \code{"delong_vs_rest"}, or \code{"bootstrap_vs_rest"}).}
+
+\item{n_boot}{Number of bootstrap replicates for bootstrap comparison method.}
+
+\item{theme_args}{List of visual theme overrides for \code{forestploter::forest_theme()}.}
+
+\item{arrow_labels}{Length-2 character vector for axis arrows, or \code{NULL}.}
+
+\item{save_plot}{Logical; whether to save plot as a PDF file.}
+
+\item{save_dir}{Directory path where plot PDF will be saved.}
+
+\item{file_name}{Output file name for saved plot.}
+
+\item{width}{Saved plot width in inches.}
+
+\item{height}{Saved plot height in inches.}
 }
 \value{
-A ggplot object.
+An invisible list containing the \code{forestploter} graphic and summary \code{data.frame}.
 }
 \description{
-Computes AUC with 95\% CI within each subgroup defined by a categorical
-clinical variable.
+Computes AUC with 95% CI within each subgroup defined by one or more
+categorical clinical variables, and renders a single publication-style
+forest table (variable | N | forest graphic | estimate (95% CI) | p)
+similar to clinical hazard-ratio tables, using the \pkg{forestploter}
+package. When \code{subgroup_var} has length > 1, all variables are
+stacked into ONE figure, each with its own bold section header row.
+}
+\section{Statistical validity of the p-value column}{
+
+Comparing a subgroup's AUC to the AUC of the *entire* sample (which
+necessarily contains that subgroup) violates the independence assumption
+underlying both DeLong's test and the naive paired/unpaired bootstrap
+comparison implemented by \code{pROC::roc.test()}: the two ROC curves
+are computed on overlapping, non-independent data. The resulting p-value
+is not statistically valid and tends to be anti-conservative (spuriously
+significant).
+
+To keep the p-value meaningful, this function instead compares each
+subgroup's AUC against the AUC of the complementary set of subjects
+(\emph{everyone not in that subgroup}) when \code{compare_method} is
+\code{"delong_vs_rest"} or \code{"bootstrap_vs_rest"}. These two sets are
+disjoint, so the independence assumption holds and the test answers a
+well-posed question: "does the model discriminate differently in this
+subgroup than in the rest of the sample?"
+
+By default (\code{compare_method = "none"}), no p-value is computed and
+the column is left blank.
+}
+
+\examples{
+\dontrun{
+if (requireNamespace("forestploter", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  set.seed(123)
+  idx <- sample(1:nrow(mtcars), 20)
+  model@filtered.set <- list(training = mtcars[idx, ], testing = mtcars[-idx, ])
+  trained <- ModelTrainAnalysis(model, methods = c("glm"), 
+  control = list(method = "cv", number = 3), save_plots = FALSE)
+  clin <- data.frame(row.names = rownames(mtcars), cyl = mtcars$cyl)
+  PlotSubgroupForest(trained, clinical_data = clin, 
+  subgroup_var = "cyl", newdata = mtcars, save_plot = FALSE)
+}
+}
 }

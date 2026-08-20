@@ -22,10 +22,19 @@ List with $train and $test Subtyping objects.
 Split Subtyping object into training and test sets
 }
 \examples{
-\dontrun{
-  # Assuming 'subtype_obj_test' is a valid Subtyping object
-  split_list <- SplitSubtypingObject(subtype_obj_test, p = 0.7, seed = 123)
-  train_obj <- split_list$train
-  test_obj <- split_list$test
-}
+set.seed(1)
+demo_df <- data.frame(
+  id    = paste0("S", 1:60),
+  group = rep(c(0, 1), each = 30),
+  feat1 = c(rnorm(30, 5, 1), rnorm(30, 8, 1)),
+  feat2 = c(rnorm(30, 2, 0.5), rnorm(30, 4, 0.5)),
+  feat3 = rnorm(60, 10, 2)
+)
+stat_obj <- CreateStatObject(raw.data = demo_df, clean.data = demo_df,
+                             group_col = "group", na.action = "allow")
+sub_obj <- ConvertObject(stat_obj, to = "Subtyping")
+
+split <- SplitSubtypingObject(sub_obj, p = 0.7, stratify_by = "group")
+nrow(split$train@clean.data)
+nrow(split$test@clean.data)
 }

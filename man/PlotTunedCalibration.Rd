@@ -2,51 +2,69 @@
 % Please edit documentation in R/model_06_hyperparameter_tuning.R
 \name{PlotTunedCalibration}
 \alias{PlotTunedCalibration}
-\title{Plot Calibration Curve for Tuned Model}
+\title{Plot Calibration Curve for a Tuned Caret Model (Enhanced Binning & Smoothing)}
 \usage{
 PlotTunedCalibration(
   tuned_model,
   test_data,
   group_col,
-  n_bins = 10,
-  palette = "#006d2c",
+  n_bins = NULL,
+  bin_method = c("auto", "quantile", "equal_width"),
+  palette = "#969696",
   base_size = 13,
   se = FALSE,
   show_stats = TRUE,
+  boot_ci = TRUE,
+  boot_n = 1000,
+  ci_level = 0.95,
+  seed = 1,
   save_plot = FALSE,
   save_dir = NULL,
   width = 6,
-  height = 5.5
+  height = 5.5,
+  smooth_method = c("lm", "loess", "none")
 )
 }
 \arguments{
-\item{tuned_model}{A caret \code{train} object (the fine-tuned model).}
+\item{tuned_model}{A caret \code{train} object for a binary classifier.}
 
-\item{test_data}{A data frame containing the test set.}
+\item{test_data}{Data frame containing the test set.}
 
-\item{group_col}{Character. Name of the grouping column.}
+\item{group_col}{Name of the column in \code{test_data} with true class labels.}
 
-\item{n_bins}{Integer. Number of probability bins. Default 10.}
+\item{n_bins}{Number of bins for calibration. If \code{NULL}, determined automatically.}
 
-\item{palette}{Character. Color for the points and smooth line.}
+\item{bin_method}{Binning strategy: \code{"auto"} (default, chooses best based on data),
+\code{"quantile"} (equal sample size per bin), or \code{"equal_width"} (equal width).}
 
-\item{base_size}{Numeric. Base font size for the plot.}
+\item{palette}{Color for calibration points and smooth curve.}
 
-\item{se}{Logical. Show standard error on the smoother.}
+\item{base_size}{Base font size for plot.}
 
-\item{show_stats}{Logical. Whether to display calibration metrics on the plot.}
+\item{se}{Logical; if \code{TRUE}, show confidence band around smooth.}
 
-\item{save_plot}{Logical. Save the plot to a file.}
+\item{show_stats}{Logical; display metrics on plot.}
 
-\item{save_dir}{Character. Directory to save the plot.}
+\item{boot_ci}{Logical; compute bootstrap confidence intervals for metrics.}
 
-\item{width, height}{Numeric. Plot dimensions in inches.}
+\item{boot_n}{Number of bootstrap replicates.}
+
+\item{ci_level}{Confidence level for bootstrap intervals.}
+
+\item{seed}{Random seed for reproducibility.}
+
+\item{save_plot}{Logical; save plot to file.}
+
+\item{save_dir}{Directory to save plot.}
+
+\item{width, height}{Dimensions of saved plot.}
+
+\item{smooth_method}{Method for smoothing curve: \code{"lm"} (linear logit),
+\code{"loess"} (local regression), or \code{"none"} (no smooth line).}
 }
 \value{
-A \code{ggplot} object.
+Invisibly returns a list with plot, metrics, and binned summary.
 }
 \description{
-Comprehensive calibration analysis for the fine-tuned model. 
-Includes binned observations, a LOESS smoother, and key statistics (Brier score, 
-Slope, Intercept, and Eavg).
+Plot Calibration Curve for a Tuned Caret Model (Enhanced Binning & Smoothing)
 }

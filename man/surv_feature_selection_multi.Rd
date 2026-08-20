@@ -31,7 +31,6 @@ surv_feature_selection_multi(
   \item{\code{"boruta"}}{Boruta wrapper algorithm (requires \code{Boruta} package; disabled by default).}
   \item{\code{"stepwise"}}{Stepwise Cox regression (both directions, AIC). Only for low-dimensional data (p < 30).}
   \item{\code{"stab_sel"}}{Stability selection using \code{c060::stabpath} with Lasso.}
-  \item{\code{"mrmr"}}{Minimum Redundancy Maximum Relevance using Cox risk score as proxy (approximate).}
 }}
 
 \item{p_threshold}{Numeric. P-value threshold for univariate Cox (default 0.05).}
@@ -63,28 +62,17 @@ A list with three components:
 Applies multiple feature selection methods to a survival task and returns a
 consensus set of features. Supports 12+ algorithms including univariate Cox,
 penalized Cox (LASSO, Ridge, Elastic Net), random forest importance,
-XGBoost importance, VIMP, stepwise, stability selection, mRMR, and Boruta.
+XGBoost importance, VIMP, stepwise, stability selection,  and Boruta.
 }
 \examples{
 \dontrun{
-# Load veteran data and create PrognosiX object
-data("veteran", package = "survival")
-stat <- CreateStatObject(raw.data = veteran, clean.data = veteran, group_col = "status")
-prog <- Stat_to_PrognosiX(stat, time_col = "time", status_col = "status")
+veteran <- survival::veteran
+task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 
-# Run feature selection with 4 robust methods
-fs <- surv_feature_selection_multi(
-  object = prog,
-  methods = c("uni_cox", "lasso", "rf_imp", "vimp"),
-  p_threshold = 0.1,
-  top_ratio = 0.5,
-  combine = "freq",
-  freq_cutoff = 2
+feat_sel <- surv_feature_selection_multi(
+  object = task, methods = c("uni_cox", "lasso"),
+  p_threshold = 0.1, combine = "union", verbose = FALSE
 )
-
-# View selected features
-print(fs$selected)
-# View which methods selected each feature
-head(fs$method_table)
+feat_sel$selected
 }
 }

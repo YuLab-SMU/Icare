@@ -36,11 +36,6 @@ of numeric variables and computes normality tests (Shapiro-Wilk or Anderson-Darl
 values and sample size.
 }
 \examples{
-my_data=stat_obj_test@clean.data
-my_data=my_data[,-9]
-# Example 1: Compute descriptive statistics for a data frame
-result <- compute_descriptive_stats(data = my_data, count_feature = TRUE, group_col = "SWAB")
-
-# Example 2: Compute overall descriptive statistics without considering group
-result <- compute_descriptive_stats(data = my_data, count_feature = FALSE)
+data(iris)
+compute_descriptive_stats(iris, group_col = "Species")
 }

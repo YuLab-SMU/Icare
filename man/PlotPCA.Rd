@@ -2,7 +2,7 @@
 % Please edit documentation in R/viz_functions.R
 \name{PlotPCA}
 \alias{PlotPCA}
-\title{PCA scatter plot coloured by metadata (zero-variance safe, colour-named, enhanced)}
+\title{PCA Plot with Custom Group Colors}
 \usage{
 PlotPCA(
   object,
@@ -17,47 +17,61 @@ PlotPCA(
   save_dir = NULL,
   width = 7,
   height = 6,
-  format = "pdf"
+  format = "pdf",
+  group_colors = NULL
 )
 }
 \arguments{
-\item{object}{A \code{Stat} object or numeric data frame.}
+\item{object}{A `Stat` object (from the package) or a data frame.}
 
-\item{color_by}{Column in \code{info.data} (or the data frame) used for
-point colour. Defaults to \code{group_col}.}
+\item{color_by}{Name of the column in `info.data` (or the data frame) used
+to color the points. If NULL and `object` is a `Stat` object, the
+`group_col` slot is used.}
 
-\item{shape_by}{Optional second metadata column for point shape.}
+\item{shape_by}{Optional column name for shaping points. Default is NULL.}
 
-\item{pcs}{Integer vector length 2 selecting PCs. Default \code{c(1,2)}.}
+\item{pcs}{Integer vector of length 2 indicating which principal components
+to plot. Default is c(1, 2).}
 
-\item{ellipse}{Draw group ellipses (95 \% CI). Default \code{TRUE}.}
+\item{ellipse}{Logical; if TRUE, draws a 95% confidence ellipse for each group.
+Default is TRUE.}
 
-\item{label_points}{Logical. Label sample names. Default \code{FALSE}.}
+\item{label_points}{Logical; if TRUE, labels each point with its row name.
+Default is FALSE.}
 
-\item{palette_name}{Palette.}
+\item{palette_name}{Name of the palette to use when `group_colors` is not
+provided. Supports RColorBrewer (e.g., "Set1") or wesanderson (e.g.,
+"Darjeeling1"). Default is "Darjeeling1".}
 
-\item{base_size}{Base font size.}
+\item{base_size}{Base font size for the plot theme. Default is 13.}
 
-\item{save_plot}{Logical. Save the plot? Default \code{FALSE}.}
+\item{save_plot}{Logical; if TRUE, saves the plot to disk. Default is FALSE.}
 
-\item{save_dir}{Output directory. When \code{NULL} and \code{save_plot=TRUE}
-the default Stat figure directory is used.}
+\item{save_dir}{Directory to save the plot. If NULL and save_plot is TRUE,
+a default directory is used.}
 
-\item{width, height}{Inches.}
+\item{width}{Width of the saved plot (inches). Default is 7.}
 
-\item{format}{File format.}
+\item{height}{Height of the saved plot (inches). Default is 6.}
+
+\item{format}{Output format ("pdf" or "png"). Default is "pdf".}
+
+\item{group_colors}{An optional named character vector specifying custom
+colors for the groups. Names must match the levels of the `color_by`
+variable. If provided, it overrides `palette_name`. Default is NULL.}
 }
 \value{
-A \code{ggplot} object.
+A `ggplot` object. The plot is also saved if `save_plot = TRUE`.
 }
 \description{
-PCA scatter plot coloured by metadata (zero-variance safe, colour-named, enhanced)
+This function performs Principal Component Analysis (PCA) on numeric columns
+of a dataset and generates a scatter plot of the first two principal components.
+Points can be colored and shaped by categorical variables. Custom colors
+for the grouping variable can be specified via `group_colors`.
 }
 \examples{
 \dontrun{
-#must have info.data
-stat_obj_test@info.data=stat_obj_test@clean.data
-PlotPCA(stat_obj_test,save_plot = FALSE)
-PlotPCA(stat_obj_test, shape_by='SWAB',save_plot = FALSE)
+p <- PlotPCA(stat_obj, color_by = "group",
+             group_colors = c("0" = "#404040", "1" = "#ca0020"))
 }
 }

@@ -8,10 +8,11 @@
 #' @export
 #' 
 #' @examples
-#' \dontrun{
-#' clean_list <- remove_high_missing(stat_obj_test@raw.data, miss_threshold = 25, save_data = FALSE)
-#' clean_data <- clean_list$cleaned_data
-#' }
+#' data(iris)
+#' iris_na <- iris
+#' iris_na[1:5, 1] <- NA
+#' clean <- remove_high_missing(iris_na, miss_threshold = 20, save_data = FALSE)
+#' print(dim(clean$cleaned_data))
 remove_high_missing <- function(data, 
                                 miss_threshold = 25,
                                 save_dir = NULL,
@@ -49,7 +50,7 @@ remove_high_missing <- function(data,
       dir.create(save_dir, recursive = TRUE)
     }
     full_path <- file.path(save_dir, csv_filename)
-    write.csv(data, file = full_path, row.names = FALSE)
+    write.csv(data, file = full_path, row.names = TRUE)
     cat("Cleaned data saved to:", full_path, "\n")
   }
   
@@ -81,9 +82,9 @@ remove_high_missing <- function(data,
 #' @export
 #' 
 #' @examples
-#' \dontrun{
-#' stat_obj<- stat_miss_remove(stat_obj_test, miss_threshold = 25)
-#' }
+#' stat <- CreateStatObject(raw.data = mtcars, group_col = "cyl")
+#' stat <- stat_miss_remove(stat, miss_threshold = 20, save_data = FALSE)
+#' print(dim(stat@clean.data))
 stat_miss_remove <- function(object, 
                              miss_threshold = 25,
                              save_dir = NULL,

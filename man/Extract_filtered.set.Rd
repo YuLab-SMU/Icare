@@ -22,11 +22,9 @@ not available or there is an error in accessing it, the function returns NULL fo
 both training and testing datasets.
 }
 \examples{
-\dontrun{
-# Example usage of Extract_filtered.set
-# Assuming 'model_data' is an existing Train_Model object with a 'filtered.set' slot
-data_sets <- Extract_filtered.set(object = model_data)
-training_data <- data_sets$training
-testing_data <- data_sets$testing
-}
+mtcars$am <- as.factor(mtcars$am)
+model <- CreateModelObject(data = mtcars, group_col = "am")
+# Normally split later; for demo, we just show extraction (empty)
+extracted <- Extract_filtered.set(model)
+str(extracted)
 }

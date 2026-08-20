@@ -48,3 +48,13 @@ A list with elements: \code{result} (rfe object),
 \description{
 Recursive Feature Elimination (RFE) for Train_Model objects
 }
+\examples{
+\dontrun{
+if (requireNamespace("caret", quietly = TRUE)) {
+  mtcars$am <- as.factor(mtcars$am)
+  model <- CreateModelObject(data = mtcars, group_col = "am")
+  rfe_res <- FeatureSelectRFE(model, sizes = c(2,4,6), method = "cv", number = 2)
+  print(rfe_res$opt_vars)
+}
+}
+}
