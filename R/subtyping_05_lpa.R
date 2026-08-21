@@ -69,8 +69,7 @@
 #' @param color_palette    wesanderson palette for cluster fill colours.
 #' @importFrom mclust Mclust mclust.options
 #' @importFrom cluster silhouette
-#' @importFrom ggplot2 ggplot aes geom_line geom_point geom_bar geom_tile
-#'   geom_errorbar labs scale_fill_manual scale_colour_manual ggsave
+#' @importFrom ggplot2 ggplot aes geom_line geom_point geom_bar geom_tile geom_errorbar labs scale_fill_manual scale_colour_manual ggsave
 #' @importFrom reshape2 melt
 #' @examples
 #' \dontrun{

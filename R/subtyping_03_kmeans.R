@@ -53,8 +53,7 @@ kmeans_clustering <- function(data, k, nstart = 50) {
 #' @importFrom NbClust NbClust
 #' @importFrom cluster silhouette
 #' @importFrom wesanderson wes_palette
-#' @importFrom ggplot2 ggplot aes geom_line geom_point geom_vline labs
-#'   scale_x_continuous ggsave theme element_blank element_text
+#' @importFrom ggplot2 ggplot aes geom_line geom_point geom_vline labs scale_x_continuous ggsave theme element_blank element_text
 #' @export
 #' @examples
 #' \dontrun{

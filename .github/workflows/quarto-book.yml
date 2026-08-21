@@ -1,0 +1,56 @@
+name: Publish Quarto Book
+
+on:
+  push:
+    branches:
+      - docs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quarto-book-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-book:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout docs branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs
+          fetch-depth: 0
+
+      - name: Checkout main branch package source
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: icare-main
+          fetch-depth: 0
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install Quarto R dependencies and icare from main
+        shell: Rscript {0}
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          install.packages(c("remotes", "knitr", "rmarkdown"), repos = "https://cloud.r-project.org")
+          remotes::install_local("icare-main", dependencies = TRUE, upgrade = "never")
+
+      - name: Publish book to gh-pages
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+          path: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

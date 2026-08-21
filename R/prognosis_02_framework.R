@@ -205,6 +205,11 @@ surv_keys <- if (requireNamespace("mlr3", quietly = TRUE)) {
 #' }
 surv_get_search_space <- function(learner_id, object = NULL) {
   .check_prognosis_packages()
+  ps <- paradox::ps
+  p_int <- paradox::p_int
+  p_dbl <- paradox::p_dbl
+  p_fct <- paradox::p_fct
+  p_lgl <- paradox::p_lgl
   task <- if (!is.null(object)) surv_extract_task(object) else NULL
   
   # Get the number of features for dynamic scaling of parameters like mtry
@@ -260,7 +265,9 @@ surv_get_search_space <- function(learner_id, object = NULL) {
     return(search_spaces[[learner_id]])
   } else {
     # Attempt to fetch from mlr3tuningspaces (Expert Default) if not in the list
-    t_space <- tryCatch({lts(learner_id)$values}, error = function(e) NULL)
+    t_space <- tryCatch({
+      mlr3tuningspaces::lts(learner_id)$values
+    }, error = function(e) NULL)
     if (!is.null(t_space)) return(t_space)
     
     message(sprintf("[-] Info: No predefined space for '%s', returning empty ParamSet.", learner_id))
@@ -306,6 +313,8 @@ surv_get_search_space <- function(learner_id, object = NULL) {
 #' @export
 surv_get_tuning_config <- function(learner_id, tuning_budget = 50) {
   .check_prognosis_packages()
+  tnr <- mlr3tuning::tnr
+  trm <- bbotk::trm
   # Select appropriate tuning strategy based on algorithm characteristics
   complex_learners <- c("surv.ranger", "surv.xgboost", "surv.gbm", "surv.cforest")
   
@@ -627,6 +636,7 @@ surv_train_and_tune <- function(object,
 #' @seealso \code{\link{surv_train_and_tune}}, \code{\link{surv_benchmark_learners}}
 #' @export
 surv_evaluate_model <- function(learner, object, measures = NULL) {
+  msr <- mlr3::msr
   task <- surv_extract_task(object)
   
   # Smart measure selection based on learner capabilities
@@ -718,6 +728,9 @@ surv_benchmark_learners <- function(object,
                                     resampling = NULL,
                                     measures = NULL,
                                     tuning_budget = 50) {
+  rsmp <- mlr3::rsmp
+  msr <- mlr3::msr
+  resample <- mlr3::resample
   task <- surv_extract_task(object)
   
   # Default resampling: 5-fold CV
@@ -1582,8 +1595,7 @@ surv_explain_shap <- function(
 #'
 #' @importFrom dplyr group_by summarise arrange desc slice rename left_join
 #' @importFrom tidyr pivot_longer
-#' @importFrom ggplot2 ggplot aes geom_vline theme element_text
-#'   labs scale_color_gradient geom_violin
+#' @importFrom ggplot2 ggplot aes geom_vline theme element_text labs scale_color_gradient geom_violin
 #' @importFrom ggbeeswarm geom_beeswarm geom_quasirandom
 #' @importFrom ggprism theme_prism
 #' @export
@@ -2442,6 +2454,24 @@ surv_analyze_feature_stability <- function(object,
 #'   }
 #'
 #' @export
+#' 
+#' @examples
+#' \dontrun{
+#' library(mlr3proba)
+#' library(survival)
+#' 
+#' data("veteran", package = "survival")
+#' task <- surv_create_surv_task(veteran, "time", "status")
+#' 
+#' # Sample size sensitivity
+#' sens <- surv_analyze_model_sensitivity(
+#'   object = task,
+#'   learner_id = "surv.coxph",
+#'   analysis_type = "sample_size",
+#'   param_values = c(0.3, 0.5, 0.7, 0.9)
+#' )
+#' print(sens$plot)
+#' }
 surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c("sample_size", "censoring"),
                                            param_values = NULL, palette_name = "AsteroidCity1") {
 
@@ -2579,6 +2609,9 @@ surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c
 #'
 #' @export
 surv_analyze_feature_ablation <- function(object, learner_id, features_to_test = NULL) {
+  rsmp <- mlr3::rsmp
+  msr <- mlr3::msr
+  resample <- mlr3::resample
   task <- surv_extract_task(object)
   
   if (is.null(features_to_test)) {

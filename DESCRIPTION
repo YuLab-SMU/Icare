@@ -15,6 +15,7 @@ LazyData: TRUE
 Encoding: UTF-8
 Imports:
     autoReg,
+    bbotk,
     bslib,
     c060,
     caret,
@@ -64,6 +65,7 @@ Imports:
     nricens,
     officer,
     parallel,
+    paradox,
     patchwork,
     pheatmap,
     plotly,
@@ -101,6 +103,7 @@ Imports:
 Suggests:
     mlr3learners,
     mlr3extralearners,
+    mlr3tuningspaces,
     Boruta,
     tidyverse,
     mlbench,
@@ -118,9 +121,11 @@ Suggests:
     mlr3mbo
 Remotes:
     mdbrown/rmda,
-    mlr-org/mlr3extralearners
-RoxygenNote: 7.3.3
+    mlr-org/mlr3extralearners,
+    mlr-org/mlr3proba,
+    mlr-org/mlr3tuningspaces
 Depends: R (>= 3.5.0)
+Config/roxygen2/version: 8.0.0
 LazyDataCompression: xz
 Collate:
   'stat_01_object.R'

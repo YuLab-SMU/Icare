@@ -18,7 +18,7 @@ A \code{Stat} S4 object with slots:
 \url{https://zenodo.org/records/7554815}
 }
 \usage{
-stat_obj_test
+data(stat_obj_test)
 }
 \description{
 A \code{Stat} S4 object created from the Bacteremia public dataset.
