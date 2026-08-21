@@ -338,10 +338,10 @@ the Shiny deployment apps).
 ## Citation
 
 ```
-Luo H, Yu G, Long F, Lin H. icare: Intelligent ClinlAbomics Research
+Luo H,Long F,Lin H,Jian H,Yu G. icare: Intelligent ClinlAbomics Research
 Expedition. R package version 1.0.0.
 ```
 
 ## License
 
-GPL-3 © Huaichao Luo, Guangchuang Yu, Fei Long, Hongyan Lin
+GPL-3 © Huaichao Luo,Fei Long, Hongyan Lin,Jian Huang,Guangchuang Yu
