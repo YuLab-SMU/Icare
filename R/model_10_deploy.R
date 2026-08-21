@@ -377,9 +377,11 @@ ModelDeployment <- function(object,
 #' @param deployment A ModelDeployment object.
 #' @param title Character string for the application window title.
 #'
-#' @import shiny bslib
 #' @export
 deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
+  for (pkg in c("shiny", "bslib"))
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' is required for app deployment. Install with: install.packages('%s')", pkg, pkg))
   
   train_data <- deployment$ref_data
   feat_cols <- setdiff(colnames(train_data), c(".outcome", "group", "Group", deployment$group_col))
@@ -398,7 +400,7 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
     title = title, theme = tech_theme, bg = "#1a1d23", # Dark Tech Header
     
     # Custom CSS for Cyber-Clinical Aesthetics
-    header = tags$style(HTML("
+    header = shiny::tags$style(shiny::HTML("
       body { background-color: #f7f7f7 !important; }
       .sidebar { background-color: #1a1d23 !important; color: white !important; }
       .sidebar h6 { color: #00dfc0 !important; font-weight: 800; letter-spacing: 1px; }
@@ -413,24 +415,24 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
                      bslib::layout_sidebar(
                        sidebar = bslib::sidebar(
                          title = "CORE CONFIG", width = 350,
-                         h6("ALGORITHM SELECT"),
-                         selectInput("model_choice", NULL, choices = deployment$model_list),
+                         shiny::h6("ALGORITHM SELECT"),
+                         shiny::selectInput("model_choice", NULL, choices = deployment$model_list),
                          
-                         h6("SENSITIVITY THRESHOLD"),
-                         sliderInput("threshold", NULL, min = 0, max = 1, value = 0.5, step = 0.01),
+                         shiny::h6("SENSITIVITY THRESHOLD"),
+                         shiny::sliderInput("threshold", NULL, min = 0, max = 1, value = 0.5, step = 0.01),
                          
-                         hr(style = "border-top: 1px solid #444;"),
-                         h6("BIOMARKER INPUTS"),
+                         shiny::hr(style = "border-top: 1px solid #444;"),
+                         shiny::h6("BIOMARKER INPUTS"),
                          lapply(feat_cols, function(f) {
                            val <- train_data[[f]]
                            if (is.numeric(val)) {
-                             numericInput(paste0("in_", f), f, value = signif(stats::median(val, na.rm = TRUE), 4))
+                             shiny::numericInput(paste0("in_", f), f, value = signif(stats::median(val, na.rm = TRUE), 4))
                            } else {
-                             selectInput(paste0("in_", f), f, choices = levels(as.factor(val)))
+                             shiny::selectInput(paste0("in_", f), f, choices = levels(as.factor(val)))
                            }
                          }),
-                         actionButton("go", "INITIATE ANALYSIS", class = "btn-primary w-100"),
-                         downloadButton("download_json", "GENERATE DATA PACK", class = "btn-outline-light w-100 mt-2")
+                         shiny::actionButton("go", "INITIATE ANALYSIS", class = "btn-primary w-100"),
+                         shiny::downloadButton("download_json", "GENERATE DATA PACK", class = "btn-outline-light w-100 mt-2")
                        ),
                        
                        bslib::layout_column_wrap(
@@ -439,14 +441,14 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
                            bslib::card_header("ANALYTICAL ENGINE STATUS"),
                            bslib::layout_column_wrap(
                              width = 1/2,
-                             uiOutput("res_ui"),
+                             shiny::uiOutput("res_ui"),
                              plotly::plotlyOutput("plot", height = "300px")
                            )
                          ),
                          bslib::card(
                            bslib::card_header("METADATA & SPECIFICATIONS"),
-                           p(deployment$model_desc, style = "font-style: italic;"),
-                           markdown(paste0(
+                           shiny::p(deployment$model_desc, style = "font-style: italic;"),
+                           shiny::markdown(paste0(
                              "**Target:** ", deployment$group_col, "  \n",
                              "**System:** Clinlabomics-X v2.1  \n",
                              "**Status:** Synchronized with Training Set"
@@ -458,7 +460,7 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
   )
   
   server <- function(input, output, session) {
-    report_data <- eventReactive(input$go, {
+    report_data <- shiny::eventReactive(input$go, {
       
       input_list <- lapply(feat_cols, function(f) {
         raw_val  <- input[[paste0("in_", f)]]
@@ -487,23 +489,23 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
       )
     })
     
-    output$res_ui <- renderUI({
-      req(res <- report_data())
+    output$res_ui <- shiny::renderUI({
+      shiny::req(res <- report_data())
       pos_prob <- res$probabilities[[2]]
       is_high  <- pos_prob >= res$threshold
       label    <- if (is_high) names(res$probabilities)[2] else names(res$probabilities)[1]
       
       text_color <- if (is_high) "#ff2d55" else "#00dfc0" 
       
-      div(style = "text-align:center; padding: 40px;",
-          h4("PREDICTION RESULT", style = "color: #888; font-size: 0.9rem; letter-spacing: 2px;"),
-          h1(label, style = paste0("color: ", text_color, "; font-weight: 900; font-size: 3.5rem; text-shadow: 0 0 10px ", text_color, "44;")),
-          h5(sprintf("PREDICTED RISK: %.2f%%", pos_prob * 100), style = "color: #555; margin-top: 10px;")
+      shiny::div(style = "text-align:center; padding: 40px;",
+          shiny::h4("PREDICTION RESULT", style = "color: #888; font-size: 0.9rem; letter-spacing: 2px;"),
+          shiny::h1(label, style = paste0("color: ", text_color, "; font-weight: 900; font-size: 3.5rem; text-shadow: 0 0 10px ", text_color, "44;")),
+          shiny::h5(sprintf("PREDICTED RISK: %.2f%%", pos_prob * 100), style = "color: #555; margin-top: 10px;")
       )
     })
     
     output$plot <- plotly::renderPlotly({
-      req(res <- report_data())
+      shiny::req(res <- report_data())
       p_vals <- unlist(res$probabilities)
       plotly::plot_ly(x = names(p_vals), y = as.numeric(p_vals), type = "bar", 
                       marker = list(color = c('#e0e0e0', '#00dfc0'))) %>%
@@ -514,11 +516,11 @@ deploy_clinlab_app <- function(deployment, title = "Clinlabomics Terminal") {
         )
     })
     
-    output$download_json <- downloadHandler(
+    output$download_json <- shiny::downloadHandler(
       filename = function() { paste0("Clinlab_Export_", format(Sys.time(), "%Y%m%d_%H%M"), ".json") },
       content  = function(file) { writeLines(jsonlite::toJSON(report_data(), auto_unbox = TRUE, pretty = TRUE), file) }
     )
   }
   
-  shinyApp(ui, server)
+  shiny::shinyApp(ui, server)
 }

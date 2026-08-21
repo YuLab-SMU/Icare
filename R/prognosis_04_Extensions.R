@@ -112,6 +112,7 @@ plot_tdROC_comparison <- function(learner1, learner2 = NULL,
                                   n_boot = 100,
                                   seed = 123,
                                   save_plot = TRUE) {
+  .require_pkgs("timeROC")
   if (!requireNamespace("timeROC", quietly = TRUE)) {
     stop("Package 'timeROC' is required. Install with: install.packages('timeROC')")
   }
@@ -295,6 +296,7 @@ repeated_cv_evaluation <- function(object, learner_id,
                                    parallel = FALSE,
                                    n_cores = NULL,
                                    seed = 123) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   if (!requireNamespace("mlr3", quietly = TRUE)) {
     stop("Package 'mlr3' is required. Install with: install.packages('mlr3')")
   }
@@ -371,11 +373,12 @@ repeated_cv_evaluation <- function(object, learner_id,
 #' @param task A `TaskSurv` object (validation set recommended).
 #' @param n_boot Bootstrap iterations (default 1000).
 #' @param seed Random seed for reproducibility.
-#' @importFrom survcomp cindex.comp concordance.index
 #' @return A list with p value, C indices, difference, and bootstrap CI.
 #' @export
 compare_models_delong <- function(model1, model2, task,
                                   n_boot = 1000, seed = 123) {
+  .require_pkgs(c("survcomp", "timeROC"))
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   if (!requireNamespace("survcomp", quietly = TRUE)) {
     stop("Package 'survcomp' is required. Install with: install.packages('survcomp')")
   }
@@ -436,6 +439,7 @@ compare_models_delong <- function(model1, model2, task,
 #' @return Same structure as `surv_train_and_tune`.
 #' @export
 tune_with_bayes <- function(object, learner_id, tuning_budget = 30, ...) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   if (!requireNamespace("mlr3tuning", quietly = TRUE)) {
     stop("Package 'mlr3tuning' is required. Install with: install.packages('mlr3tuning')")
   }

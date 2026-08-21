@@ -34,6 +34,7 @@ before returning the task, so all downstream benchmarking, tuning, and
 evaluation functions receive a well-formed task.
 }
 \examples{
+\dontrun{
 veteran <- survival::veteran
 stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
                          group_col = "status", na.action = "allow")
@@ -47,6 +48,7 @@ task$nrow
 # Directly from a data frame:
 task2 <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 task2$nrow
+}
 }
 \seealso{
 \code{\link{surv_create_surv_task}} for creating tasks from data frames

@@ -1526,6 +1526,7 @@ PlotThresholdROC <- function(thresh_result,
                              compare_label = "Clinician",
                              save_plot = FALSE,
                              save_dir  = NULL) {
+  .require_pkgs(c("nricens", "timeROC"))
   # Validate required packages
   .check_clinical_pkgs()
   
@@ -1668,6 +1669,7 @@ CalculateNRI <- function(thresh_result1,
                          cutoffs = c(0.5),
                          save_plot = FALSE,
                          save_dir  = NULL) {
+  .require_pkgs("nricens")
   # Ensure required packages are available (assumes .check_clinical_pkgs exists)
   .check_clinical_pkgs()
   

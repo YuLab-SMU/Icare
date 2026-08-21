@@ -5,7 +5,6 @@
 #' @param n_neighbors Neighbors.
 #' @param min_dist Min dist.
 #' @param metric Metric.
-#' @importFrom umap umap
 #' @examples
 #' \dontrun{
 #'   df <- data.frame(x = rnorm(50), y = rnorm(50), z = rnorm(50))
@@ -18,6 +17,7 @@ perform_umap <- function(data,
                          n_neighbors = 15,
                          min_dist = 0.1,
                          metric = "euclidean") {
+  .require_pkgs("umap")
   cat("Starting UMAP...\n")
   
   if (!is.data.frame(data)) {

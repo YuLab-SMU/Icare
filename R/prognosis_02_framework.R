@@ -28,6 +28,7 @@
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' veteran <- survival::veteran
 #' stat <- CreateStatObject(raw.data = veteran, clean.data = veteran,
 #'                          group_col = "status", na.action = "allow")
@@ -41,6 +42,7 @@
 #' # Directly from a data frame:
 #' task2 <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 #' task2$nrow
+#' }
 surv_extract_task <- function(object) {
   .check_prognosis_packages()
   if (inherits(object, 'PrognosiX')) {
@@ -187,8 +189,6 @@ surv_keys <- if (requireNamespace("mlr3", quietly = TRUE)) {
 #'
 #' @seealso \code{\link{surv_get_tuning_config}} for tuning strategy
 #' @export
-#' @importFrom paradox ps p_int p_dbl p_fct p_lgl
-#' @importFrom mlr3tuningspaces lts
 #' @examples
 #' \dontrun{
 #' data(pro_obj_test)
@@ -204,6 +204,7 @@ surv_keys <- if (requireNamespace("mlr3", quietly = TRUE)) {
 #' ps_dynamic <- surv_get_search_space("surv.rfsrc", object = task)
 #' }
 surv_get_search_space <- function(learner_id, object = NULL) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   .check_prognosis_packages()
   ps <- paradox::ps
   p_int <- paradox::p_int
@@ -218,46 +219,46 @@ surv_get_search_space <- function(learner_id, object = NULL) {
   search_spaces <- list(
     
     # === 1. Random Forests & Ensemble Trees ===
-    "surv.ranger"      = ps(num.trees = p_int(100, 1000), mtry.ratio = p_dbl(0.1, 0.8), min.node.size = p_int(1, 20), splitrule = p_fct(c("logrank", "extratrees"))),
-    "surv.rfsrc"       = ps(ntree = p_int(100, 1000), mtry = p_int(1, max(2, floor(sqrt(p)*2))), nodesize = p_int(1, 20), splitrule = p_fct(c("logrank", "random"))),
-    "surv.aorsf"       = ps(n_tree = p_int(100, 500), leaf_min_events = p_int(1, 10), split_min_events = p_int(5, 20)),
-    "surv.blockforest" = ps(n_trees = p_int(100, 500), block.weights = p_fct(c("proportional", "equal"))),
-    "surv.cforest"     = ps(ntree = p_int(100, 500), mtry = p_int(1, max(2, floor(sqrt(p)))), mincriterion = p_dbl(0.5, 0.99)),
-    "surv.bart"        = ps(num_trees = p_int(20, 200), k = p_dbl(1, 3), power = p_dbl(1, 3)),
+    "surv.ranger"      = paradox::ps(num.trees = paradox::p_int(100, 1000), mtry.ratio = paradox::p_dbl(0.1, 0.8), min.node.size = paradox::p_int(1, 20), splitrule = paradox::p_fct(c("logrank", "extratrees"))),
+    "surv.rfsrc"       = paradox::ps(ntree = paradox::p_int(100, 1000), mtry = paradox::p_int(1, max(2, floor(sqrt(p)*2))), nodesize = paradox::p_int(1, 20), splitrule = paradox::p_fct(c("logrank", "random"))),
+    "surv.aorsf"       = paradox::ps(n_tree = paradox::p_int(100, 500), leaf_min_events = paradox::p_int(1, 10), split_min_events = paradox::p_int(5, 20)),
+    "surv.blockforest" = paradox::ps(n_trees = paradox::p_int(100, 500), block.weights = paradox::p_fct(c("proportional", "equal"))),
+    "surv.cforest"     = paradox::ps(ntree = paradox::p_int(100, 500), mtry = paradox::p_int(1, max(2, floor(sqrt(p)))), mincriterion = paradox::p_dbl(0.5, 0.99)),
+    "surv.bart"        = paradox::ps(num_trees = paradox::p_int(20, 200), k = paradox::p_dbl(1, 3), power = paradox::p_dbl(1, 3)),
     
     # === 2. Gradient Boosting Machines (GBM) ===
-    "surv.xgboost.cox" = ps(nrounds = p_int(50, 500), eta = p_dbl(1e-3, 0.3, logscale = TRUE), max_depth = p_int(2, 8), subsample = p_dbl(0.5, 1)),
-    "surv.xgboost.aft" = ps(nrounds = p_int(50, 500), eta = p_dbl(1e-3, 0.3, logscale = TRUE), aft_loss_distribution = p_fct(c("normal", "logistic")), max_depth = p_int(2, 8)),
-    "surv.gbm"         = ps(n.trees = p_int(100, 1000), interaction.depth = p_int(1, 5), shrinkage = p_dbl(1e-3, 0.1, logscale = TRUE), n.minobsinnode = p_int(2, 15)),
-    "surv.mboost"      = ps(mstop = p_int(50, 500), nu = p_dbl(0.01, 0.2), baselearner = p_fct(c("bbs", "bols", "btree"))),
-    "surv.blackboost"  = ps(mstop = p_int(50, 500), maxdepth = p_int(2, 8), nu = p_dbl(0.01, 0.2)),
-    "surv.gamboost"    = ps(mstop = p_int(50, 500), nu = p_dbl(0.01, 0.2)),
-    "surv.glmboost"    = ps(mstop = p_int(50, 500), nu = p_dbl(0.01, 0.2)),
-    "surv.coxboost"    = ps(stepno = p_int(10, 200), penalty = p_dbl(1, 100, logscale = TRUE)),
-    "surv.cv_coxboost" = ps(maxstepno = p_int(50, 200), penalty = p_dbl(1, 100, logscale = TRUE)),
+    "surv.xgboost.cox" = paradox::ps(nrounds = paradox::p_int(50, 500), eta = paradox::p_dbl(1e-3, 0.3, logscale = TRUE), max_depth = paradox::p_int(2, 8), subsample = paradox::p_dbl(0.5, 1)),
+    "surv.xgboost.aft" = paradox::ps(nrounds = paradox::p_int(50, 500), eta = paradox::p_dbl(1e-3, 0.3, logscale = TRUE), aft_loss_distribution = paradox::p_fct(c("normal", "logistic")), max_depth = paradox::p_int(2, 8)),
+    "surv.gbm"         = paradox::ps(n.trees = paradox::p_int(100, 1000), interaction.depth = paradox::p_int(1, 5), shrinkage = paradox::p_dbl(1e-3, 0.1, logscale = TRUE), n.minobsinnode = paradox::p_int(2, 15)),
+    "surv.mboost"      = paradox::ps(mstop = paradox::p_int(50, 500), nu = paradox::p_dbl(0.01, 0.2), baselearner = paradox::p_fct(c("bbs", "bols", "btree"))),
+    "surv.blackboost"  = paradox::ps(mstop = paradox::p_int(50, 500), maxdepth = paradox::p_int(2, 8), nu = paradox::p_dbl(0.01, 0.2)),
+    "surv.gamboost"    = paradox::ps(mstop = paradox::p_int(50, 500), nu = paradox::p_dbl(0.01, 0.2)),
+    "surv.glmboost"    = paradox::ps(mstop = paradox::p_int(50, 500), nu = paradox::p_dbl(0.01, 0.2)),
+    "surv.coxboost"    = paradox::ps(stepno = paradox::p_int(10, 200), penalty = paradox::p_dbl(1, 100, logscale = TRUE)),
+    "surv.cv_coxboost" = paradox::ps(maxstepno = paradox::p_int(50, 200), penalty = paradox::p_dbl(1, 100, logscale = TRUE)),
     
     # === 3. Regularized & Penalized Regression ===
-    "surv.glmnet"      = ps(alpha = p_dbl(0, 1), lambda = p_dbl(1e-4, 1, logscale = TRUE)),
-    "surv.cv_glmnet"   = ps(alpha = p_dbl(0, 1)), 
-    "surv.penalized"   = ps(lambda1 = p_dbl(0, 20), lambda2 = p_dbl(0, 20)),
-    "surv.priority_lasso" = ps(block1.penalization = p_dbl(0, 1), lambda.type = p_fct(c("lambda.min", "lambda.1se"))),
-    "surv.cv_ncvsurv"  = ps(penalty = p_fct(c("MCP", "SCAD", "lasso")), alpha = p_dbl(0.1, 1)),
-    "surv.coxph"       = ps(ties = p_fct(c("efron", "breslow"))),
+    "surv.glmnet"      = paradox::ps(alpha = paradox::p_dbl(0, 1), lambda = paradox::p_dbl(1e-4, 1, logscale = TRUE)),
+    "surv.cv_glmnet"   = paradox::ps(alpha = paradox::p_dbl(0, 1)), 
+    "surv.penalized"   = paradox::ps(lambda1 = paradox::p_dbl(0, 20), lambda2 = paradox::p_dbl(0, 20)),
+    "surv.priority_lasso" = paradox::ps(block1.penalization = paradox::p_dbl(0, 1), lambda.type = paradox::p_fct(c("lambda.min", "lambda.1se"))),
+    "surv.cv_ncvsurv"  = paradox::ps(penalty = paradox::p_fct(c("MCP", "SCAD", "lasso")), alpha = paradox::p_dbl(0.1, 1)),
+    "surv.coxph"       = paradox::ps(ties = paradox::p_fct(c("efron", "breslow"))),
     
     # === 4. Decision Trees & Support Vector Machines ===
-    "surv.rpart"       = ps(cp = p_dbl(1e-4, 0.1, logscale = TRUE), maxdepth = p_int(1, 30)),
-    "surv.ctree"       = ps(mincriterion = p_dbl(0.5, 0.99), minsplit = p_int(2, 30), minbucket = p_int(1, 20)),
-    "surv.svm"         = ps(type = p_fct(c("regression", "vanbelle1", "vanbelle2")), kernel = p_fct(c("lin_kernel", "rbf_kernel", "poly_kernel")), mu = p_dbl(0, 1)),
+    "surv.rpart"       = paradox::ps(cp = paradox::p_dbl(1e-4, 0.1, logscale = TRUE), maxdepth = paradox::p_int(1, 30)),
+    "surv.ctree"       = paradox::ps(mincriterion = paradox::p_dbl(0.5, 0.99), minsplit = paradox::p_int(2, 30), minbucket = paradox::p_int(1, 20)),
+    "surv.svm"         = paradox::ps(type = paradox::p_fct(c("regression", "vanbelle1", "vanbelle2")), kernel = paradox::p_fct(c("lin_kernel", "rbf_kernel", "poly_kernel")), mu = paradox::p_dbl(0, 1)),
     
     # === 5. Splines & Flexible Parametric Models ===
-    "surv.flexreg"     = ps(dist = p_fct(c("weibull", "gengamma", "genf", "gompertz"))),
-    "surv.flexspline"  = ps(k = p_int(1, 10), scale = p_fct(c("hazard", "odds", "normal"))),
-    "surv.gam.cox"     = ps(select = p_lgl()), 
+    "surv.flexreg"     = paradox::ps(dist = paradox::p_fct(c("weibull", "gengamma", "genf", "gompertz"))),
+    "surv.flexspline"  = paradox::ps(k = paradox::p_int(1, 10), scale = paradox::p_fct(c("hazard", "odds", "normal"))),
+    "surv.gam.cox"     = paradox::ps(select = paradox::p_lgl()), 
     
     # === 6. Neural Networks & Baseline Estimators ===
-    "surv.survdnn"     = ps(epochs = p_int(10, 100), lr = p_dbl(1e-4, 1e-2, logscale = TRUE), batch_size = p_int(16, 128)),
-    "surv.kaplan"      = ps(), # Non-parametric (No Tuning)
-    "surv.nelson"      = ps()  # Non-parametric (No Tuning)
+    "surv.survdnn"     = paradox::ps(epochs = paradox::p_int(10, 100), lr = paradox::p_dbl(1e-4, 1e-2, logscale = TRUE), batch_size = paradox::p_int(16, 128)),
+    "surv.kaplan"      = paradox::ps(), # Non-parametric (No Tuning)
+    "surv.nelson"      = paradox::ps()  # Non-parametric (No Tuning)
   )
   
   # --- Selection Logic ---
@@ -271,7 +272,7 @@ surv_get_search_space <- function(learner_id, object = NULL) {
     if (!is.null(t_space)) return(t_space)
     
     message(sprintf("[-] Info: No predefined space for '%s', returning empty ParamSet.", learner_id))
-    return(ps())
+    return(paradox::ps())
   }
 }
 
@@ -284,7 +285,6 @@ surv_get_search_space <- function(learner_id, object = NULL) {
 #' @param learner_id A character string specifying the learner ID (e.g., \code{"surv.coxph"}).
 #' @param tuning_budget An integer specifying the number of evaluations allowed
 #'   during tuning. Default is \code{50}.
-#' @importFrom mlr3tuning tnr trm
 #' @return A list 
 #' @details
 #' The function distinguishes between complex learners (requiring more
@@ -312,6 +312,7 @@ surv_get_search_space <- function(learner_id, object = NULL) {
 #' @seealso \code{\link{surv_get_search_space}} for available search spaces
 #' @export
 surv_get_tuning_config <- function(learner_id, tuning_budget = 50) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   .check_prognosis_packages()
   tnr <- mlr3tuning::tnr
   trm <- bbotk::trm
@@ -320,8 +321,8 @@ surv_get_tuning_config <- function(learner_id, tuning_budget = 50) {
   
   if (learner_id %in% complex_learners) {
     # Complex models use random search or Bayesian optimization
-    tuner <- tnr("random_search")
-    terminator <- trm("evals", n_evals = tuning_budget)
+    tuner <- mlr3tuning::tnr("random_search")
+    terminator <- mlr3tuning::trm("evals", n_evals = tuning_budget)
   } else {
     # Simple models use grid search
     search_space <- surv_get_search_space(learner_id)
@@ -332,8 +333,8 @@ surv_get_tuning_config <- function(learner_id, tuning_budget = 50) {
       terminator <- NULL
     } else {
       resolution <- ceiling(tuning_budget^(1/n_params))
-      tuner <- tnr("grid_search", resolution = resolution)
-      terminator <- trm("evals", n_evals = tuning_budget)
+      tuner <- mlr3tuning::tnr("grid_search", resolution = resolution)
+      terminator <- mlr3tuning::trm("evals", n_evals = tuning_budget)
     }
   }
   
@@ -382,7 +383,7 @@ surv_create_surv_task <- function(data, time_col, event_col, id = "survival_task
   .check_prognosis_packages()
   # Coerce to data.table for optimized performance in mlr3
   data <- as.data.table(data)
-  task <- TaskSurv$new(
+  task <- mlr3proba::TaskSurv$new(
     id = id,
     backend = data,
     time = time_col,
@@ -416,16 +417,18 @@ surv_create_surv_task <- function(data, time_col, event_col, id = "survival_task
 #'   \item Checks if the task contains factor/character features and if the
 #'     learner supports them. If not, adds a \code{po("encode")} pipeline.
 #' }
-#' @import mlr3pipelines
 #' @export
 #' @examples
+#' \dontrun{
 #' veteran <- survival::veteran
 #' task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 #'
 #' lrn_cox <- surv_get_learner("surv.coxph", task)
 #' lrn_cox$id
+#' }
 surv_get_learner <- function(learner_id, task) {
-  lrn_obj <- lrn(learner_id)
+  .require_pkgs(c("mlr3", "mlr3pipelines", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
+  lrn_obj <- mlr3::lrn(learner_id)
   
   if ("distr" %in% lrn_obj$predict_types) {
     lrn_obj$predict_type <- "distr"
@@ -438,7 +441,10 @@ surv_get_learner <- function(learner_id, task) {
                          !("factor" %in% lrn_obj$feature_types)
   
   if (unsupported_factors) {
-    lrn_obj <- po("encode", method = "treatment") %>>% lrn_obj
+    lrn_obj <- mlr3pipelines::`%>>%`(
+      mlr3pipelines::po("encode", method = "treatment"),
+      lrn_obj
+    )
     lrn_obj <- mlr3::as_learner(lrn_obj)
     
     if ("distr" %in% lrn_obj$predict_types) {
@@ -477,9 +483,6 @@ surv_get_learner <- function(learner_id, task) {
 #'   \item{cv_performance}{Numeric cross-validated performance score.}
 #' }
 #'
-#' @importFrom mlr3 lrn rsmp msr
-#' @importFrom mlr3tuning tnr trm TuningInstanceSingleCrit
-#' @importFrom paradox ps
 #' @export
 #'
 #' @examples
@@ -504,6 +507,7 @@ surv_train_and_tune <- function(object,
                                 tuning_budget = 50,
                                 tuner = NULL,
                                 seed = 123) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   # ---- Package checks ----
   .check_prognosis_packages()
   
@@ -636,13 +640,14 @@ surv_train_and_tune <- function(object,
 #' @seealso \code{\link{surv_train_and_tune}}, \code{\link{surv_benchmark_learners}}
 #' @export
 surv_evaluate_model <- function(learner, object, measures = NULL) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   msr <- mlr3::msr
   task <- surv_extract_task(object)
   
   # Smart measure selection based on learner capabilities
   if (is.null(measures)) {
     if (learner$predict_type == "distr") {
-      measures <- list(msr("surv.cindex"), msr("surv.graf")) # C-index & Brier Score
+      measures <- list(mlr3::msr("surv.cindex"), mlr3::msr("surv.graf")) # C-index & Brier Score
     } else {
       measures <- list(mlr3::msr("surv.cindex")) # Fallback to C-index only
     }
@@ -692,7 +697,6 @@ surv_evaluate_model <- function(learner, object, measures = NULL) {
 #'     \item{cv_performance}{A numeric cross-validated C-index.}
 #'     \item{performance}{A data frame of training set metrics.}
 #'   }
-#' @importFrom mlr3 rsmp msr resample 
 #' @examples
 #' \dontrun{
 #' library(mlr3proba)
@@ -728,6 +732,7 @@ surv_benchmark_learners <- function(object,
                                     resampling = NULL,
                                     measures = NULL,
                                     tuning_budget = 50) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   rsmp <- mlr3::rsmp
   msr <- mlr3::msr
   resample <- mlr3::resample
@@ -740,7 +745,7 @@ surv_benchmark_learners <- function(object,
   
   # Default measure for tuning and CV
   if (is.null(measures)) {
-    measures <- list(msr("surv.cindex"))
+    measures <- list(mlr3::msr("surv.cindex"))
   }
   cv_measure <- measures[[1]]   # Use first measure for CV
   
@@ -767,7 +772,7 @@ surv_benchmark_learners <- function(object,
         # reused for CV, as it has already seen all data -- that would invalidate
         # the CV estimate).
         learner_for_cv <- surv_get_learner(learner_id, task)
-        rr <- resample(task, learner_for_cv, resampling, store_models = FALSE)
+        rr <- mlr3::resample(task, learner_for_cv, resampling, store_models = FALSE)
         cv_perf <- rr$aggregate(cv_measure)
         # Now train the final model on the full dataset for downstream use
         learner <- surv_get_learner(learner_id, task)
@@ -934,7 +939,6 @@ surv_list_available_learners <- function() {
 #' @param title Custom plot title.
 #' @param group_col Optional character; name of a clinical variable in
 #'   \code{info.data} to use instead of risk scores.
-#' @importFrom maxstat maxstat.test
 #' @return A \code{ggsurvplot} object (with cutoffs stored as attribute).
 #' @export
 surv_plot_risk_km <- function(learner, object,
@@ -950,6 +954,7 @@ surv_plot_risk_km <- function(learner, object,
                               show_cutoff = TRUE,
                               title = NULL,
                               group_col = NULL) {
+  .require_pkgs(c("maxstat", "survminer", "survival"))
   
   cutoff_method <- match.arg(cutoff_method)
   
@@ -1188,6 +1193,7 @@ surv_generate_nomogram <- function(object,
                                    selected_features = NULL,
                                    time_points = NULL,
                                    time_unit = NULL) {
+  .require_pkgs(c("rms", "survival"))
   
   if (!requireNamespace("rms", quietly = TRUE)) {
     stop("Package 'rms' is required for nomogram generation.")
@@ -1401,6 +1407,8 @@ surv_explain_shap <- function(
     bar_color          = "#2980b9",
     seed               = 123L,
     verbose            = TRUE) {
+  .require_pkgs(c("survex", "shapviz"))
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   
   type <- match.arg(type)
   set.seed(seed)
@@ -2474,6 +2482,7 @@ surv_analyze_feature_stability <- function(object,
 #' }
 surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c("sample_size", "censoring"),
                                            param_values = NULL, palette_name = "AsteroidCity1") {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
 
   `%>%` <- magrittr::`%>%`  
   
@@ -2574,7 +2583,6 @@ surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c
 #'     \item{plot}{A \code{ggplot} object showing the performance drop for each feature.}
 #'     \item{baseline}{The baseline C-index with all features.}
 #'   }
-#' @importFrom mlr3 rsmp msr resample 
 #' @details
 #' The function:
 #' \enumerate{
@@ -2609,6 +2617,7 @@ surv_analyze_model_sensitivity <- function(object, learner_id, analysis_type = c
 #'
 #' @export
 surv_analyze_feature_ablation <- function(object, learner_id, features_to_test = NULL) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   rsmp <- mlr3::rsmp
   msr <- mlr3::msr
   resample <- mlr3::resample
@@ -2625,8 +2634,8 @@ surv_analyze_feature_ablation <- function(object, learner_id, features_to_test =
   
   # Use a small 3-fold CV to get a stable baseline
   resampling <- mlr3::rsmp("cv", folds = 3)
-  baseline_rr <- resample(task, learner, resampling, store_models = FALSE)
-  baseline_cindex <- baseline_rr$aggregate(msr("surv.cindex"))
+  baseline_rr <- mlr3::resample(task, learner, resampling, store_models = FALSE)
+  baseline_cindex <- baseline_rr$aggregate(mlr3::msr("surv.cindex"))
   
   results <- list()
   
@@ -2638,11 +2647,11 @@ surv_analyze_feature_ablation <- function(object, learner_id, features_to_test =
     
     # Evaluate model performance without this feature
     temp_rr <- tryCatch({
-      resample(temp_task, learner, resampling, store_models = FALSE)
+      mlr3::resample(temp_task, learner, resampling, store_models = FALSE)
     }, error = function(e) NULL)
     
     if (!is.null(temp_rr)) {
-      new_cindex <- temp_rr$aggregate(msr("surv.cindex"))
+      new_cindex <- temp_rr$aggregate(mlr3::msr("surv.cindex"))
       drop <- baseline_cindex - new_cindex
       
       results[[feat]] <- data.frame(
@@ -2894,6 +2903,7 @@ surv_plot_comparison_calibration <- function(learner, train_task, val_task,
 #' auc_cmp <- surv_plot_comparison_auc(lrn2, train_task, val_task)
 #' }
 surv_plot_time_dependent_auc <- function(learner, object) {
+  .require_pkgs("risksetROC")
   task <- surv_extract_task(object)
   if (!requireNamespace("risksetROC", quietly = TRUE)) stop("Please install 'risksetROC'")
   
@@ -3100,7 +3110,6 @@ surv_filter_features_clinical <- function(object,
 #'   (e.g. \code{"Set2"}, \code{"Dark2"}, \code{"Paired"}) or a vector of colors.
 #'   If \code{NULL} (default), a custom clean palette is used.
 #'
-#' @importFrom mlr3 benchmark_grid benchmark
 #' @return A list containing:
 #'   \item{bmr}{The \code{BenchmarkResult} object.}
 #'   \item{table}{Aggregated performance table.}
@@ -3111,6 +3120,7 @@ surv_run_algorithm_benchmark <- function(object,
                                          learners_list = NULL,
                                          resampling = NULL,
                                          palette = NULL) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   task <- surv_extract_task(object)
   requireNamespace("mlr3viz", quietly = TRUE)
   requireNamespace("ggplot2", quietly = TRUE)
@@ -3118,10 +3128,10 @@ surv_run_algorithm_benchmark <- function(object,
   
   if (is.null(learners_list)) {
     learners_list <- list(
-      lrn("surv.coxph",     id = "CoxPH"),
-      lrn("surv.cv_glmnet", id = "Lasso"),
-      lrn("surv.ranger",    id = "RandomForest"),
-      lrn("surv.xgboost",   id = "XGBoost")
+      mlr3::lrn("surv.coxph",     id = "CoxPH"),
+      mlr3::lrn("surv.cv_glmnet", id = "Lasso"),
+      mlr3::lrn("surv.ranger",    id = "RandomForest"),
+      mlr3::lrn("surv.xgboost",   id = "XGBoost")
     )
   }
   
@@ -3134,11 +3144,11 @@ surv_run_algorithm_benchmark <- function(object,
   
   message("[*] Running Benchmark: Comparing Algorithms via 5-fold CV...")
   
-  design <- benchmark_grid(task, learners_list, resampling)
-  bmr    <- benchmark(design)
+  design <- mlr3::benchmark_grid(task, learners_list, resampling)
+  bmr    <- mlr3::benchmark(design)
   
   # Measure performance
-  measures <- list(msr("surv.cindex"))
+  measures <- list(mlr3::msr("surv.cindex"))
   perf_tab <- bmr$aggregate(measures)
   
   # ---------- Color handling ----------
@@ -3165,7 +3175,7 @@ surv_run_algorithm_benchmark <- function(object,
   }
   
   # Visualization
-  p <- autoplot(bmr, measure = msr("surv.cindex")) +
+  p <- autoplot(bmr, measure = mlr3::msr("surv.cindex")) +
     ggplot2::scale_fill_manual(values = cols) +
     ggplot2::scale_color_manual(values = cols) +
     ggplot2::labs(
@@ -3265,6 +3275,7 @@ check_data_quality <- function(data, time_col, event_col) {
 #' @return Full path to created directory
 #' @keywords internal
 create_step_dir <- function(base_dir, step_num, step_name) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   dir_name <- sprintf("Step%02d_%s", step_num, step_name)
   full_path <- file.path(base_dir, dir_name)
   if (!dir.exists(full_path)) {
@@ -3322,6 +3333,7 @@ surv_predict_on_validation <- function(learner, test_data, task_ref) {
 #' @return ggplot object
 #' @export
 surv_plot_comparison_auc <- function(learner, train_task, val_task) {
+  .require_pkgs(c("risksetROC", "randomForestSRC", "c060"))
   if (!requireNamespace("risksetROC", quietly = TRUE)) stop("Please install 'risksetROC'")
   
   # Calculate for Training
@@ -3405,10 +3417,6 @@ surv_plot_comparison_auc <- function(learner, train_task, val_task) {
 #' @importFrom utils head
 #' @importFrom survival Surv coxph
 #' @importFrom MASS stepAIC
-#' @importFrom mlr3 lrn
-#' @importFrom mlr3proba TaskSurv
-#' @importFrom randomForestSRC vimp
-#' @importFrom c060 stabpath
 #' @export
 #' @examples
 #' \dontrun{
@@ -3429,6 +3437,8 @@ surv_feature_selection_multi <- function(object,
                                          freq_cutoff = 2,
                                          verbose = TRUE,
                                          use_boruta = FALSE) {
+  .require_pkgs(c("randomForestSRC", "c060"))
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   
   combine <- match.arg(combine)
   
@@ -3507,19 +3517,19 @@ surv_feature_selection_multi <- function(object,
     }
     
     if ("lasso" %in% methods) {
-      lasso_lrn <- tryCatch(lrn("surv.cv_glmnet", alpha = 1, s = "lambda.min")$train(task), error = function(e) NULL)
+      lasso_lrn <- tryCatch(mlr3::lrn("surv.cv_glmnet", alpha = 1, s = "lambda.min")$train(task), error = function(e) NULL)
       selection_list$lasso <- extract_glmnet_features(lasso_lrn, 1)
       raw_results$lasso <- lasso_lrn
     }
     
     if ("ridge" %in% methods) {
-      ridge_lrn <- tryCatch(lrn("surv.cv_glmnet", alpha = 0, s = "lambda.min")$train(task), error = function(e) NULL)
+      ridge_lrn <- tryCatch(mlr3::lrn("surv.cv_glmnet", alpha = 0, s = "lambda.min")$train(task), error = function(e) NULL)
       selection_list$ridge <- extract_glmnet_features(ridge_lrn, 0)
       raw_results$ridge <- ridge_lrn
     }
     
     if ("enet" %in% methods) {
-      enet_lrn <- tryCatch(lrn("surv.cv_glmnet", alpha = 0.5, s = "lambda.min")$train(task), error = function(e) NULL)
+      enet_lrn <- tryCatch(mlr3::lrn("surv.cv_glmnet", alpha = 0.5, s = "lambda.min")$train(task), error = function(e) NULL)
       selection_list$enet <- extract_glmnet_features(enet_lrn, 0.5)
       raw_results$enet <- enet_lrn
     }
@@ -3531,7 +3541,7 @@ surv_feature_selection_multi <- function(object,
   if ("rf_imp" %in% methods) {
     if (verbose) cat("  - Running Random Forest (ranger) importance...\n")
     rf_lrn <- tryCatch({
-      lrn("surv.ranger", importance = "permutation")$train(task)
+      mlr3::lrn("surv.ranger", importance = "permutation")$train(task)
     }, error = function(e) NULL)
     selected <- character(0)
     if (!is.null(rf_lrn) && !is.null(rf_lrn$importance())) {
@@ -3551,7 +3561,7 @@ surv_feature_selection_multi <- function(object,
       warning("Package 'randomForestSRC' not installed. Skipping rfsrc_imp.")
     } else {
       rfsrc_lrn <- tryCatch({
-        lrn("surv.rfsrc", importance = "permute")$train(task)
+        mlr3::lrn("surv.rfsrc", importance = "permute")$train(task)
       }, error = function(e) NULL)
       selected <- character(0)
       if (!is.null(rfsrc_lrn) && !is.null(rfsrc_lrn$importance())) {
@@ -3569,7 +3579,7 @@ surv_feature_selection_multi <- function(object,
   if ("xgb_imp" %in% methods) {
     if (verbose) cat("  - Running XGBoost importance (gain)...\n")
     xgb_lrn <- tryCatch({
-      lrn("surv.xgboost.cox", nrounds = 50)$train(task)
+      mlr3::lrn("surv.xgboost.cox", nrounds = 50)$train(task)
     }, error = function(e) NULL)
     selected <- character(0)
     if (!is.null(xgb_lrn) && !is.null(xgb_lrn$importance())) {
@@ -3618,7 +3628,7 @@ surv_feature_selection_multi <- function(object,
     } else {
       selected <- character(0)
       tryCatch({
-        cox_lrn <- lrn("surv.coxph")$train(task)
+        cox_lrn <- mlr3::lrn("surv.coxph")$train(task)
         risk <- cox_lrn$predict(task)$crank
         boruta_data <- data[, all_features, drop = FALSE]
         boruta_data$.risk <- risk
@@ -3751,7 +3761,6 @@ surv_feature_selection_multi <- function(object,
 #' @return A list with three components: `plot`, `table`, and `summary`.
 #'
 #' @importFrom survival Surv
-#' @importFrom dcurves dca
 #' @importFrom tibble as_tibble
 #' @importFrom ggplot2 ggplot aes geom_line labs scale_color_manual scale_linetype_manual coord_cartesian theme_minimal
 #' @importFrom tidyr pivot_wider
@@ -3781,6 +3790,7 @@ plot_dca_survival <- function(learners,
                                 subtitle = NULL,
                                 print_stats = TRUE,
                                 clin_range = c(0.05, 0.5)) {
+  .require_pkgs("dcurves")
     
     # ---- 1. Input validation and Task extraction  ------------------------------
     if (!is.list(learners) || is.null(names(learners))) {
@@ -3986,6 +3996,7 @@ plot_dca_survival <- function(learners,
 #' list_surv_feature_methods()
 #' }
 list_surv_feature_methods <- function(verbose = TRUE) {
+  .require_pkgs(c("randomForestSRC", "c060"))
   methods_df <- data.frame(
     Method = c(
       "uni_cox", "lasso", "ridge", "enet", "rf_imp", "rfsrc_imp",

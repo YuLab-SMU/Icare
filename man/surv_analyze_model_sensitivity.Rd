@@ -39,3 +39,21 @@ Evaluates how model performance (C-index) changes under varying conditions
 such as sample size or censoring rate. This helps assess the robustness of
 the model to data perturbations.
 }
+\examples{
+\dontrun{
+library(mlr3proba)
+library(survival)
+
+data("veteran", package = "survival")
+task <- surv_create_surv_task(veteran, "time", "status")
+
+# Sample size sensitivity
+sens <- surv_analyze_model_sensitivity(
+  object = task,
+  learner_id = "surv.coxph",
+  analysis_type = "sample_size",
+  param_values = c(0.3, 0.5, 0.7, 0.9)
+)
+print(sens$plot)
+}
+}

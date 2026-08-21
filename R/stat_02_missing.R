@@ -485,11 +485,8 @@ stat_diagnose_variable_type <- function(object,
 #' are available to customize the output.
 #'
 #' @import here
-#' @import officer
-#' @import flextable
 #' @importFrom stats quantile var sd median shapiro.test p.adjust
 #' @import methods
-#' @import autoReg
 #' @param data A data frame containing the data to analyze.
 #' @param formula A formula specifying the model to fit. If NULL, the formula is automatically created
 #' based on the provided group columns (default is NULL).
@@ -519,7 +516,8 @@ gaze_analysis <- function(data,
                           gaze_method = 3,
                           save_word = TRUE,
                           save_dir = NULL) {
-
+  .require_pkgs(c("autoReg", "officer", "flextable"),
+                hint = "needed for gaze table and Word export")
   if (!is.data.frame(data)) stop("The input 'data' must be a data frame.")
 
   if (is.null(formula)) {
@@ -560,10 +558,10 @@ gaze_analysis <- function(data,
       cat("Gaze analysis completed successfully.\n")
 
       if (save_word) {
-        doc <- read_docx()
+        doc <- officer::read_docx()
         doc <- doc %>%
-          body_add_flextable(result) %>%
-          body_add_par("Gaze Analysis Results", style = "heading 1")
+          flextable::body_add_flextable(result) %>%
+          officer::body_add_par("Gaze Analysis Results", style = "heading 1")
 
         if (!dir.exists(save_dir)) {
           dir.create(save_dir, recursive = TRUE)

@@ -67,7 +67,6 @@
 #' @param show_profile     Whether to draw variable-profile plot.
 #' @param show_class_prob  Whether to draw classification-probability heatmap.
 #' @param color_palette    wesanderson palette for cluster fill colours.
-#' @importFrom mclust Mclust mclust.options
 #' @importFrom cluster silhouette
 #' @importFrom ggplot2 ggplot aes geom_line geom_point geom_bar geom_tile geom_errorbar labs scale_fill_manual scale_colour_manual ggsave
 #' @importFrom reshape2 melt
@@ -124,7 +123,7 @@ lpa_with_optimal_k <- function(data,
     stop("All columns must be numeric. Non-numeric: ", paste(bad, collapse = ", "))
   }
   if (nrow(data) < 2) stop("Data must have at least 2 observations.")
-  requireNamespace("mclust", quietly = TRUE)
+  .require_pkgs("mclust")
   if (save_plots && !dir.exists(save_dir)) {
     dir.create(save_dir, recursive = TRUE)
     if (verbose) cat("Created output directory:", save_dir, "\n")

@@ -49,8 +49,6 @@ kmeans_clustering <- function(data, k, nstart = 50) {
 #' @param nstart       Number of K-means random starts.
 #' @param k.max        Maximum K to search.
 #' @param seed         Random seed.
-#' @importFrom factoextra fviz_nbclust fviz_cluster fviz_silhouette
-#' @importFrom NbClust NbClust
 #' @importFrom cluster silhouette
 #' @importFrom wesanderson wes_palette
 #' @importFrom ggplot2 ggplot aes geom_line geom_point geom_vline labs scale_x_continuous ggsave theme element_blank element_text
@@ -72,7 +70,7 @@ kmeans_with_optimal_k <- function(data,
                                   nstart       = 50,
                                   k.max        = 15,
                                   seed         = 123) {
-
+  .require_pkgs(c("NbClust", "factoextra"))
   set.seed(seed)
 
   if (!is.data.frame(data) || !all(sapply(data, is.numeric)))

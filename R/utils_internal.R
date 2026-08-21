@@ -1,9 +1,17 @@
-
 # ============================================================================
 # Internal Utility Functions
 # These are helper functions used across modules
 # All start with dot (.) to indicate they are internal
 # ============================================================================
+
+#' @importFrom stats aggregate approx ave binomial complete.cases confint cor
+#'   density glm IQR kmeans kruskal.test lm loess model.matrix pchisq prcomp
+#'   reorder setNames
+#' @importFrom utils capture.output install.packages packageVersion read.csv
+#' @keywords internal
+NULL
+
+utils::globalVariables(c("BIC", "time"))
 #' All Available caret Models Metadata
 #'
 #' A data frame containing metadata for all classification and regression models
@@ -34,6 +42,22 @@
   if (!inherits(object, allowed))
     stop("Object must be one of: ", paste(allowed, collapse = ", "),
          ". Got: ", class(object)[1])
+}
+
+#' @keywords internal
+.require_pkgs <- function(pkgs, hint = NULL) {
+  miss <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
+  if (length(miss)) {
+    inst <- sprintf("install.packages('%s')", miss)
+    stop(sprintf(
+      "This functionality requires the package%s: %s. Please install %s%s",
+      if (length(miss) > 1) "s" else "",
+      paste(sprintf("'%s'", miss), collapse = ", "),
+      paste(inst, collapse = " and "),
+      if (!is.null(hint)) sprintf(" (%s)", hint) else ""
+    ), call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 #' @keywords internal

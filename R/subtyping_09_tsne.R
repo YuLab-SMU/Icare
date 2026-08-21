@@ -4,7 +4,6 @@
 #' @param perplexity Perplexity.
 #' @param dims Dims.
 #' @param iterations Iterations.
-#' @importFrom Rtsne Rtsne
 #' @examples
 #' \dontrun{
 #'   df <- data.frame(x = rnorm(50), y = rnorm(50), z = rnorm(50))
@@ -16,6 +15,7 @@ perform_tsne <- function(data,
                          perplexity = 30,
                          dims = 2,
                          iterations = 1000) {
+  .require_pkgs("Rtsne")
   cat("Starting t-SNE with perplexity:", perplexity, "\n")
   
   if (!is.data.frame(data)) {

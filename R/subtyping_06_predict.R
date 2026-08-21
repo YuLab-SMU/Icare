@@ -368,7 +368,7 @@ Sub_predict_subtypes <- function(object,
 
   # ---------------------------- LPA (mclust) -------------------------------
   else if (method == "lpa") {
-
+    .require_pkgs("mclust")
     lpa_res <- train_object@cluster.results[["lpa.result"]]
     if (is.null(lpa_res))
       stop("No lpa.result found in train_object. Run Sub_lpa_with_optimal_k first.")
@@ -403,7 +403,7 @@ Sub_predict_subtypes <- function(object,
 
   # ---------------------------- NMF (NNLS projection) ----------------------
   else if (method == "nmf") {
-
+    .require_pkgs(c("NMF", "nnls"))
     fit <- train_object@cluster.results[["nmf.result"]][["best_estimate"]]
     if (is.null(fit))
       stop("No nmf best_estimate found in train_object. Run Sub_nmf_best_rank first.")
