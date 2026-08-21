@@ -60,6 +60,7 @@ Imports:
 Suggests:
     Boruta,
     DALEX,
+    DMwR,
     DT,
     Hmisc,
     NMF,
@@ -116,6 +117,7 @@ Suggests:
     timeROC,
     umap
 Remotes:
+    cran/DMwR,
     mlr-org/mlr3extralearners,
     mlr-org/mlr3proba,
     mlr-org/mlr3tuningspaces

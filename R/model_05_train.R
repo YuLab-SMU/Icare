@@ -215,7 +215,8 @@ Extract_filtered.set <- function(object) {
 #'   AND the task is binary; for multiclass tasks "auto" is not supported by
 #'   caret's `trainControl(sampling = ...)` and is downgraded to "none" with
 #'   a warning.
-#'   NOTE: "smote" requires the (CRAN-archived) 'DMwR' package and "rose"
+#'   NOTE: "smote" requires the 'DMwR' package (archived on CRAN; install
+#'   from GitHub via `remotes::install_github("cran/DMwR")`) and "rose"
 #'   requires the 'ROSE' package; both are checked explicitly and a clear
 #'   error (with install instructions) is raised if missing, rather than
 #'   letting caret fail with an opaque internal error.
@@ -279,19 +280,19 @@ train_and_evaluate_models <- function(data,
   
   # ---- Dependency check for imbalance-handling sampling methods (conditional) ----
   # caret::trainControl(sampling = ...) silently delegates "smote" to the
-  # 'DMwR' package and "rose" to the 'ROSE' package. Neither is a hard
-  # dependency of this function, so we check for them only when actually
-  # requested, and fail with an actionable message instead of letting
-  # caret::train() error out deep inside its internals.
+  # 'DMwR' package (declared in Suggests, installed from GitHub:
+  # cran/DMwR, since it is archived on CRAN) and "rose" to the 'ROSE'
+  # package. Neither is a hard dependency of this function, so we check
+  # for them only when actually requested, and fail with an actionable
+  # message instead of letting caret::train() error out deep inside its
+  # internals.
   .check_sampling_pkg <- function(sampling_method) {
     if (is.null(sampling_method)) return(invisible(TRUE))
     if (sampling_method == "smote" && !requireNamespace("DMwR", quietly = TRUE)) {
       stop(
         "imbalance_handling = 'smote' requires the 'DMwR' package, which is not installed.\n",
-        "'DMwR' was archived on CRAN. Install an archived source build, e.g.:\n",
-        "  install.packages(\n",
-        "    'https://cran.r-project.org/src/contrib/Archive/DMwR/DMwR_0.4.1.tar.gz',\n",
-        "    repos = NULL, type = 'source')\n",
+        "'DMwR' is archived on CRAN. Install it from GitHub, e.g.:\n",
+        "  remotes::install_github('cran/DMwR')\n",
         "Or avoid the dependency entirely with imbalance_handling = 'up', 'down', or 'weights'."
       )
     }

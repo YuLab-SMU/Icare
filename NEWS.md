@@ -5,7 +5,7 @@
 *   **Lazy Dependency Checks**: Added internal `.require_pkgs()` helper that validates optional packages at function entry and raises actionable `install.packages()` hints; applied across the model, prognosis, subtyping, stat, and viz modules.
 *   **Namespaced Calls**: Removed blanket `@import` / `@importFrom` directives for optional packages and switched to explicit `pkg::fun()` calls (e.g. `shiny::`, `shinydashboard::`, `mlr3::`, `mlr3proba::`, `mlr3pipelines::`, `mlr3tuning::`, `paradox::`) in deployment apps and mlr3-based functions.
 *   **Roxygen & Docs**: Upgraded `roxygen2` to 8.1.0 and regenerated `NAMESPACE` and man pages; wrapped runnable examples in `\dontrun{}`; declared `utils::globalVariables(c("BIC", "time"))`; dropped `mdbrown/rmda` from `Remotes`.
-*   **Drop CRAN-archived `DMwR` from `Suggests`**: `DMwR` is archived on CRAN and cannot be installed, which broke the GitHub Actions dependency step (`setup-r-dependencies` installs all `Suggests` packages). It is only referenced at runtime via `requireNamespace()` with an actionable install hint in `R/model_05_train.R`; the SMOTE path there still works when users install the archived build manually.
+*   **`DMwR` via GitHub Remotes**: `DMwR` is archived on CRAN, so it is installed from the official CRAN read-only mirror `cran/DMwR` (added to `Remotes`, kept in `Suggests`). This fixes the GitHub Actions dependency step, which failed because `setup-r-dependencies` could not resolve `DMwR` from CRAN. `R/model_05_train.R`'s SMOTE path now prints `remotes::install_github("cran/DMwR")` when the package is missing.
 *   **Housekeeping**: Added `.reasonix` / `reasonix.toml` to both `.Rbuildignore` and `.gitignore`.
 
 # Icare 1.0.0

@@ -53,7 +53,8 @@ sequentially now; see Details.}
 AND the task is binary; for multiclass tasks "auto" is not supported by
 caret's `trainControl(sampling = ...)` and is downgraded to "none" with
 a warning.
-NOTE: "smote" requires the (CRAN-archived) 'DMwR' package and "rose"
+NOTE: "smote" requires the 'DMwR' package (archived on CRAN; install
+from GitHub via `remotes::install_github("cran/DMwR")`) and "rose"
 requires the 'ROSE' package; both are checked explicitly and a clear
 error (with install instructions) is raised if missing, rather than
 letting caret fail with an opaque internal error.}
