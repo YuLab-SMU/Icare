@@ -2,3 +2,5 @@
 local-test
 docs
 .github
+^\.reasonix$
+reasonix.toml

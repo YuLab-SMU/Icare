@@ -110,7 +110,6 @@ generate_nmf_rank_plots <- function(estimate,
 #' @param method     NMF algorithm (default \code{"brunet"}).
 #' @param save_dir   Output directory.
 #' @param base_size  Base font size for plots.
-#' @importFrom NMF nmf
 #' @export
 #' @examples
 #' \dontrun{
@@ -145,7 +144,7 @@ Sub_nmf_estimate <- function(object,
                              method     = "brunet",
                              save_dir   = file.path(get_output_dir("m3", "cluster_results"), "nmf_results"),
                              base_size  = 14) {
-
+  .require_pkgs("NMF")
   data <- .extract_data(object, scaled = TRUE)
 
   if (any(data < 0)) {
@@ -194,7 +193,6 @@ Sub_nmf_estimate <- function(object,
 #' @param height   PDF height.
 #' @param k        Rank (used for filename/title).
 #' @importFrom pheatmap pheatmap
-#' @importFrom NMF consensus
 #' @export
 #' @examples
 #' \dontrun{
@@ -250,7 +248,6 @@ nmf_consensus_heatmap <- function(fit,
 #' @param height        PDF height.
 #' @param base_size     Base font size.
 #' @param k             Rank.
-#' @importFrom NMF basis
 #' @importFrom pheatmap pheatmap
 #' @importFrom wesanderson wes_palette
 #' @examples
@@ -429,7 +426,6 @@ nmf_coef_heatmap <- function(fit,
 #' @param base_size   Base font size.
 #' @param k           Rank.
 #' @importFrom cluster silhouette
-#' @importFrom NMF consensus
 #' @importFrom ggplot2 ggplot aes geom_bar geom_hline geom_text labs ylim ggsave
 #' @examples
 #' \dontrun{
@@ -505,7 +501,6 @@ nmf_silhouette_plot <- function(fit,
 #' @param method        NMF algorithm.
 #' @param palette_name  wesanderson palette.
 #' @param save_dir      Output directory.
-#' @importFrom NMF nmf
 #' @examples
 #' \dontrun{
 #'   # Assuming 'obj' is a Subtyping object with nmf.result already computed
@@ -632,7 +627,6 @@ Sub_nmf_assign_subtypes <- function(object) {
 #' @param method     NMF algorithm.
 #' @param model_name File stem for the saved model (.rds).
 #' @param save_dir   Output directory.
-#' @importFrom NMF nmf basis consensus 
 #' @examples
 #' \dontrun{
 #'   # Assuming 'obj' is a Subtyping object with best_k already determined
@@ -754,7 +748,6 @@ Sub_nmf_train_model <- function(object,
 #' @param model_path Path to .rds model saved by \code{Sub_nmf_train_model}.
 #' @param new_data   New data matrix: samples x features (rows = samples).
 #' @return Data frame with predicted subtypes and membership probabilities.
-#' @importFrom nnls nnls
 #' @examples
 #' \dontrun{
 #'   # Assuming 'new_data' is a data frame with same features as training data
@@ -929,7 +922,6 @@ Sub_nmf_plot_eval <- function(object,
 #' @return Invisibly returns \code{NULL}. The function is called for its
 #'   side effects: generating and saving consensus maps.
 #'
-#' @importFrom NMF consensusmap
 #' @importFrom grDevices pdf dev.off
 #' @export
 #'

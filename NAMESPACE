@@ -291,186 +291,194 @@ exportClasses(PrognosiX)
 exportClasses(Stat)
 exportClasses(Subtyping)
 exportClasses(Train_Model)
-import(autoReg)
-import(bslib)
-import(flextable)
 import(ggplot2)
 import(here)
 import(methods)
-import(mlr3pipelines)
-import(officer)
-import(shiny)
-import(shinydashboard)
 import(wesanderson)
-importFrom(ComplexHeatmap,Heatmap)
-importFrom(ComplexHeatmap,HeatmapAnnotation)
-importFrom(ComplexHeatmap,anno_mark)
-importFrom(ComplexHeatmap,draw)
-importFrom(ComplexHeatmap,ht_opt)
-importFrom(ComplexHeatmap,max_text_width)
-importFrom(ComplexHeatmap,rowAnnotation)
-importFrom(DT,datatable)
-importFrom(DT,formatStyle)
+importFrom(ComplexHeatmap,
+  Heatmap,
+  HeatmapAnnotation,
+  anno_mark,
+  draw,
+  ht_opt,
+  max_text_width,
+  rowAnnotation
+)
 importFrom(MASS,stepAIC)
-importFrom(NMF,basis)
-importFrom(NMF,consensus)
-importFrom(NMF,consensusmap)
-importFrom(NMF,nmf)
-importFrom(NbClust,NbClust)
 importFrom(RColorBrewer,brewer.pal)
-importFrom(Rtsne,Rtsne)
-importFrom(c060,stabpath)
-importFrom(caret,confusionMatrix)
-importFrom(caret,createFolds)
-importFrom(caret,createMultiFolds)
-importFrom(caret,defaultSummary)
-importFrom(caret,getModelInfo)
-importFrom(caret,modelLookup)
-importFrom(caret,postResample)
-importFrom(caret,preProcess)
-importFrom(caret,train)
-importFrom(caret,trainControl)
-importFrom(caret,twoClassSummary)
-importFrom(caret,varImp)
+importFrom(caret,
+  confusionMatrix,
+  createFolds,
+  createMultiFolds,
+  defaultSummary,
+  getModelInfo,
+  modelLookup,
+  postResample,
+  preProcess,
+  train,
+  trainControl,
+  twoClassSummary,
+  varImp
+)
 importFrom(circlize,colorRamp2)
 importFrom(cluster,silhouette)
 importFrom(data.table,as.data.table)
-importFrom(dcurves,dca)
 importFrom(doParallel,registerDoParallel)
-importFrom(dplyr,"%>%")
-importFrom(dplyr,across)
-importFrom(dplyr,all_of)
-importFrom(dplyr,arrange)
-importFrom(dplyr,case_when)
-importFrom(dplyr,desc)
-importFrom(dplyr,group_by)
-importFrom(dplyr,left_join)
-importFrom(dplyr,mutate)
-importFrom(dplyr,n)
-importFrom(dplyr,rename)
-importFrom(dplyr,slice)
-importFrom(dplyr,slice_head)
-importFrom(dplyr,summarise)
-importFrom(dplyr,top_n)
-importFrom(dplyr,ungroup)
-importFrom(factoextra,fviz_cluster)
-importFrom(factoextra,fviz_nbclust)
-importFrom(factoextra,fviz_silhouette)
-importFrom(foreach,"%dopar%")
-importFrom(foreach,foreach)
-importFrom(foreach,registerDoSEQ)
-importFrom(ggbeeswarm,geom_beeswarm)
-importFrom(ggbeeswarm,geom_quasirandom)
-importFrom(ggplot2,aes)
-importFrom(ggplot2,coord_cartesian)
-importFrom(ggplot2,coord_equal)
-importFrom(ggplot2,coord_polar)
-importFrom(ggplot2,element_blank)
-importFrom(ggplot2,element_rect)
-importFrom(ggplot2,element_text)
-importFrom(ggplot2,expansion)
-importFrom(ggplot2,geom_abline)
-importFrom(ggplot2,geom_bar)
-importFrom(ggplot2,geom_boxplot)
-importFrom(ggplot2,geom_col)
-importFrom(ggplot2,geom_errorbar)
-importFrom(ggplot2,geom_histogram)
-importFrom(ggplot2,geom_hline)
-importFrom(ggplot2,geom_jitter)
-importFrom(ggplot2,geom_line)
-importFrom(ggplot2,geom_point)
-importFrom(ggplot2,geom_smooth)
-importFrom(ggplot2,geom_text)
-importFrom(ggplot2,geom_tile)
-importFrom(ggplot2,geom_violin)
-importFrom(ggplot2,geom_vline)
-importFrom(ggplot2,ggplot)
-importFrom(ggplot2,ggsave)
-importFrom(ggplot2,labs)
-importFrom(ggplot2,margin)
-importFrom(ggplot2,scale_color_gradient)
-importFrom(ggplot2,scale_color_manual)
-importFrom(ggplot2,scale_color_viridis_c)
-importFrom(ggplot2,scale_colour_manual)
-importFrom(ggplot2,scale_fill_gradient)
-importFrom(ggplot2,scale_fill_manual)
-importFrom(ggplot2,scale_fill_viridis_c)
-importFrom(ggplot2,scale_linetype_manual)
-importFrom(ggplot2,scale_size_continuous)
-importFrom(ggplot2,scale_x_continuous)
-importFrom(ggplot2,scale_y_continuous)
-importFrom(ggplot2,theme)
-importFrom(ggplot2,theme_minimal)
-importFrom(ggplot2,unit)
-importFrom(ggplot2,xlim)
-importFrom(ggplot2,ylim)
+importFrom(dplyr,
+  "%>%",
+  across,
+  all_of,
+  arrange,
+  case_when,
+  desc,
+  group_by,
+  left_join,
+  mutate,
+  n,
+  rename,
+  slice,
+  slice_head,
+  summarise,
+  top_n,
+  ungroup
+)
+importFrom(foreach,
+  "%dopar%",
+  foreach,
+  registerDoSEQ
+)
+importFrom(ggbeeswarm,
+  geom_beeswarm,
+  geom_quasirandom
+)
+importFrom(ggplot2,
+  aes,
+  coord_cartesian,
+  coord_equal,
+  coord_polar,
+  element_blank,
+  element_rect,
+  element_text,
+  expansion,
+  geom_abline,
+  geom_bar,
+  geom_boxplot,
+  geom_col,
+  geom_errorbar,
+  geom_histogram,
+  geom_hline,
+  geom_jitter,
+  geom_line,
+  geom_point,
+  geom_smooth,
+  geom_text,
+  geom_tile,
+  geom_violin,
+  geom_vline,
+  ggplot,
+  ggsave,
+  labs,
+  margin,
+  scale_color_gradient,
+  scale_color_manual,
+  scale_color_viridis_c,
+  scale_colour_manual,
+  scale_fill_gradient,
+  scale_fill_manual,
+  scale_fill_viridis_c,
+  scale_linetype_manual,
+  scale_size_continuous,
+  scale_x_continuous,
+  scale_y_continuous,
+  theme,
+  theme_minimal,
+  unit,
+  xlim,
+  ylim
+)
 importFrom(ggprism,theme_prism)
-importFrom(grDevices,colorRampPalette)
-importFrom(grDevices,dev.off)
-importFrom(grDevices,pdf)
-importFrom(grid,gpar)
-importFrom(grid,grid.rect)
-importFrom(grid,unit)
+importFrom(grDevices,
+  colorRampPalette,
+  dev.off,
+  pdf
+)
+importFrom(grid,
+  gpar,
+  grid.rect,
+  unit
+)
 importFrom(gridExtra,grid.arrange)
 importFrom(gtools,mixedsort)
-importFrom(maxstat,maxstat.test)
-importFrom(mclust,Mclust)
-importFrom(mclust,mclust.options)
 importFrom(methods,slot)
-importFrom(mlr3,benchmark)
-importFrom(mlr3,benchmark_grid)
-importFrom(mlr3,lrn)
-importFrom(mlr3,msr)
-importFrom(mlr3,resample)
-importFrom(mlr3,rsmp)
-importFrom(mlr3proba,TaskSurv)
-importFrom(mlr3tuning,TuningInstanceSingleCrit)
-importFrom(mlr3tuning,tnr)
-importFrom(mlr3tuning,trm)
-importFrom(mlr3tuningspaces,lts)
-importFrom(nnls,nnls)
 importFrom(nortest,ad.test)
-importFrom(pROC,auc)
-importFrom(pROC,ci.auc)
-importFrom(pROC,coords)
-importFrom(pROC,ggroc)
-importFrom(pROC,roc)
-importFrom(paradox,p_dbl)
-importFrom(paradox,p_fct)
-importFrom(paradox,p_int)
-importFrom(paradox,p_lgl)
-importFrom(paradox,ps)
-importFrom(parallel,detectCores)
-importFrom(parallel,makeCluster)
-importFrom(parallel,stopCluster)
-importFrom(patchwork,plot_layout)
-importFrom(patchwork,wrap_plots)
+importFrom(pROC,
+  auc,
+  ci.auc,
+  coords,
+  ggroc,
+  roc
+)
+importFrom(parallel,
+  detectCores,
+  makeCluster,
+  stopCluster
+)
+importFrom(patchwork,
+  plot_layout,
+  wrap_plots
+)
 importFrom(pheatmap,pheatmap)
-importFrom(randomForestSRC,vimp)
 importFrom(reshape2,melt)
 importFrom(scales,hue_pal)
-importFrom(stats,as.formula)
-importFrom(stats,binomial)
-importFrom(stats,coef)
-importFrom(stats,dist)
-importFrom(stats,median)
-importFrom(stats,na.omit)
-importFrom(stats,p.adjust)
-importFrom(stats,predict)
-importFrom(stats,quantile)
-importFrom(stats,sd)
-importFrom(stats,shapiro.test)
-importFrom(stats,var)
-importFrom(stats,wilcox.test)
-importFrom(survcomp,cindex.comp)
-importFrom(survcomp,concordance.index)
-importFrom(survival,Surv)
-importFrom(survival,coxph)
+importFrom(stats,
+  IQR,
+  aggregate,
+  approx,
+  as.formula,
+  ave,
+  binomial,
+  coef,
+  complete.cases,
+  confint,
+  cor,
+  density,
+  dist,
+  glm,
+  kmeans,
+  kruskal.test,
+  lm,
+  loess,
+  median,
+  model.matrix,
+  na.omit,
+  p.adjust,
+  pchisq,
+  prcomp,
+  predict,
+  quantile,
+  reorder,
+  sd,
+  setNames,
+  shapiro.test,
+  var,
+  wilcox.test
+)
+importFrom(survival,
+  Surv,
+  coxph
+)
 importFrom(tibble,as_tibble)
-importFrom(tidyr,pivot_longer)
-importFrom(tidyr,pivot_wider)
-importFrom(umap,umap)
-importFrom(utils,head)
-importFrom(utils,write.csv)
+importFrom(tidyr,
+  pivot_longer,
+  pivot_wider
+)
+importFrom(utils,
+  capture.output,
+  head,
+  install.packages,
+  packageVersion,
+  read.csv,
+  write.csv
+)
 importFrom(viridis,viridis)
 importFrom(wesanderson,wes_palette)

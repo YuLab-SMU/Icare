@@ -145,10 +145,6 @@ New_Sub_Manager <- function(sub_train_obj) {
 #'
 #' @return This function starts a Shiny app instance and does not return a value.
 #'
-#' @import shiny
-#' @import shinydashboard
-#' @importFrom DT datatable formatStyle
-#' 
 #' @details 
 #' The app uses a dark theme optimized for clinical environments. Batch 
 #' uploads require a CSV file where the first column contains unique Sample IDs.
@@ -165,6 +161,9 @@ New_Sub_Manager <- function(sub_train_obj) {
 #' @export
 launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal", 
                                   var_dict = NULL, project_info = NULL) {
+  for (pkg in c("shiny", "shinydashboard", "DT"))
+    if (!requireNamespace(pkg, quietly = TRUE))
+      stop(sprintf("Package '%s' is required for app deployment. Install with: install.packages('%s')", pkg, pkg))
   # --- Data Extraction ---
   # Safely get training features and their medians for default inputs
   train_data <- sub_manager$trained_obj@clean.data
@@ -172,17 +171,17 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
   default_vals <- sapply(train_data, median, na.rm = TRUE)
   
   # --- UI Definition ---
-  ui <- dashboardPage(
+  ui <- shinydashboard::dashboardPage(
     skin = "black",
-    dashboardHeader(title = span(icon("dna"), title)),
-    dashboardSidebar(
-      sidebarMenu(
-        menuItem("Analysis Portal", tabName = "portal", icon = icon("desktop")),
-        menuItem("Documentation", tabName = "docs", icon = icon("info-circle"))
+    shinydashboard::dashboardHeader(title = shiny::span(shiny::icon("dna"), title)),
+    shinydashboard::dashboardSidebar(
+      shinydashboard::sidebarMenu(
+        shinydashboard::menuItem("Analysis Portal", tabName = "portal", icon = shiny::icon("desktop")),
+        shinydashboard::menuItem("Documentation", tabName = "docs", icon = shiny::icon("info-circle"))
       )
     ),
-    dashboardBody(
-      tags$head(tags$style(HTML("
+    shinydashboard::dashboardBody(
+      shiny::tags$head(shiny::tags$style(shiny::HTML("
         .content-wrapper { background-color: #121212 !important; }
         .box { background-color: #1e1e1e !important; color: white !important; border-top: 3px solid #00dfc0 !important; }
         label { color: #00dfc0 !important; font-weight: bold; }
@@ -203,49 +202,49 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
         h4 { color: #00dfc0; font-weight: bold; border-left: 4px solid #00dfc0; padding-left: 12px; }
       "))),
       
-      tabItems(
-        tabItem(tabName = "portal",
-                fluidRow(
-                  box(width = 12, title = "Project Overview", status = "primary", solidHeader = TRUE,
-                      column(8, h4("Abstract"), p(project_info$abstract %||% "Clinical laboratory-based stratification terminal.")),
-                      column(4, h4("Citation"), p(project_info$citation %||% "Luo et al. 2026"))
+      shinydashboard::tabItems(
+        shinydashboard::tabItem(tabName = "portal",
+                shiny::fluidRow(
+                  shinydashboard::box(width = 12, title = "Project Overview", status = "primary", solidHeader = TRUE,
+                      shiny::column(8, shiny::h4("Abstract"), shiny::p(project_info$abstract %||% "Clinical laboratory-based stratification terminal.")),
+                      shiny::column(4, shiny::h4("Citation"), shiny::p(project_info$citation %||% "Luo et al. 2026"))
                   )
                 ),
-                fluidRow(
-                  box(title = "1. Configuration & Input", width = 12,
-                      column(3, 
-                             selectInput("meth", "Algorithm:", choices = c("NMF"="nmf", "LPA"="lpa", "K-means"="kmeans")),
-                             hr(),
-                             helpText("Batch: First column must be SampleID.")
+                shiny::fluidRow(
+                  shinydashboard::box(title = "1. Configuration & Input", width = 12,
+                      shiny::column(3, 
+                             shiny::selectInput("meth", "Algorithm:", choices = c("NMF"="nmf", "LPA"="lpa", "K-means"="kmeans")),
+                             shiny::hr(),
+                             shiny::helpText("Batch: First column must be SampleID.")
                       ),
-                      column(9, tabsetPanel(id = "input_mode",
-                                            tabPanel("Batch (CSV)", br(), 
-                                                     fileInput("up", "Upload Sample Data", accept = ".csv"),
-                                                     downloadButton("dl_tpl", "Download Template", class="btn-xs")),
-                                            tabPanel("Single Sample", br(), 
-                                                     fluidRow(
-                                                       column(4, textInput("sid", "ID:", "SAMPLE_001")),
+                      shiny::column(9, shiny::tabsetPanel(id = "input_mode",
+                                            shiny::tabPanel("Batch (CSV)", shiny::br(), 
+                                                     shiny::fileInput("up", "Upload Sample Data", accept = ".csv"),
+                                                     shiny::downloadButton("dl_tpl", "Download Template", class="btn-xs")),
+                                            shiny::tabPanel("Single Sample", shiny::br(), 
+                                                     shiny::fluidRow(
+                                                       shiny::column(4, shiny::textInput("sid", "ID:", "SAMPLE_001")),
                                                        lapply(required_vars, function(v) {
-                                                         column(4, numericInput(paste0("in_", v), v, value = round(default_vals[[v]], 2)))
+                                                         shiny::column(4, shiny::numericInput(paste0("in_", v), v, value = round(default_vals[[v]], 2)))
                                                        })
                                                      ))
                       ))
                   )
                 ),
-                fluidRow(column(12, align="center", actionButton("go", "EXECUTE PREDICTION", icon=icon("play"), class="btn-run"))),
-                fluidRow(
-                  box(title = "2. Stratification Results", width = 12,
-                      column(4, align="center", uiOutput("main_res_ui")),
-                      column(8, 
-                             div(style="display: flex; justify-content: space-between; align-items: center;",
-                                 h4("ID-Linked Data Table"),
-                                 downloadButton("dl_res", "Export CSV", class="btn-success btn-xs")
+                shiny::fluidRow(shiny::column(12, align="center", shiny::actionButton("go", "EXECUTE PREDICTION", icon=shiny::icon("play"), class="btn-run"))),
+                shiny::fluidRow(
+                  shinydashboard::box(title = "2. Stratification Results", width = 12,
+                      shiny::column(4, align="center", shiny::uiOutput("main_res_ui")),
+                      shiny::column(8, 
+                             shiny::div(style="display: flex; justify-content: space-between; align-items: center;",
+                                 shiny::h4("ID-Linked Data Table"),
+                                 shiny::downloadButton("dl_res", "Export CSV", class="btn-success btn-xs")
                              ),
                              DT::dataTableOutput("res_table"))
                   )
                 )
         ),
-        tabItem(tabName = "docs", box(title = "Glossary", width = 12, DT::dataTableOutput("doc_table")))
+        shinydashboard::tabItem(tabName = "docs", shinydashboard::box(title = "Glossary", width = 12, DT::dataTableOutput("doc_table")))
       )
     )
   )
@@ -254,9 +253,9 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
   server <- function(input, output, session) {
     
     # Process inputs into a data frame with IDs as row names
-    input_data <- eventReactive(input$go, {
+    input_data <- shiny::eventReactive(input$go, {
       if (input$input_mode == "Batch (CSV)") {
-        req(input$up)
+        shiny::req(input$up)
         # Force the first column to be SampleID/RowNames
         df <- read.csv(input$up$datapath, row.names = 1, check.names = FALSE)
         return(df)
@@ -269,36 +268,36 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
     })
     
     # Core Prediction - Validated against the dispatcher
-    results <- reactive({
-      req(input_data())
+    results <- shiny::reactive({
+      shiny::req(input_data())
       sub_manager$sub_predict(input_data(), method = input$meth)
     })
     
     # Result Summary Display
-    output$main_res_ui <- renderUI({
+    output$main_res_ui <- shiny::renderUI({
       # Guard against switching methods before result is updated
-      validate(need(results(), "Calculating..."))
+      shiny::validate(shiny::need(results(), "Calculating..."))
       res_df <- results()@info.data
       target_col <- paste0("cluster_", input$meth)
       
-      if (!target_col %in% colnames(res_df)) return(div("Processing..."))
+      if (!target_col %in% colnames(res_df)) return(shiny::div("Processing..."))
       
       if (nrow(res_df) == 1) {
-        tagList(
-          div(class="id-label", paste("ID:", rownames(res_df)[1])),
-          div(class="result-text", res_df[[target_col]][1])
+        shiny::tagList(
+          shiny::div(class="id-label", paste("ID:", rownames(res_df)[1])),
+          shiny::div(class="result-text", res_df[[target_col]][1])
         )
       } else {
-        tagList(
-          div(class="id-label", paste("Processed:", nrow(res_df), "Samples")),
-          div(class="result-text", style="font-size:32px;", "Batch Completed")
+        shiny::tagList(
+          shiny::div(class="id-label", paste("Processed:", nrow(res_df), "Samples")),
+          shiny::div(class="result-text", style="font-size:32px;", "Batch Completed")
         )
       }
     })
     
     # Data Table Rendering
     output$res_table <- DT::renderDataTable({
-      validate(need(results(), "No data."))
+      shiny::validate(shiny::need(results(), "No data."))
       res_df <- results()@info.data
       target_col <- paste0("cluster_", input$meth)
       
@@ -311,21 +310,21 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
         stringsAsFactors = FALSE
       )
       
-      datatable(display_df, rownames = FALSE, options = list(
+      DT::datatable(display_df, rownames = FALSE, options = list(
         dom = 'tp',
         pageLength = 5,
         # Using backticks for reserved keyword 'next'
         language = list(paginate = list(previous = "Prev", `next` = "Next"))
       )) %>%
-        formatStyle('Subtype', color = '#00dfc0', fontWeight = 'bold')
+        DT::formatStyle('Subtype', color = '#00dfc0', fontWeight = 'bold')
     })
     
     # --- Export Results (Fixed) ---
-    output$dl_res <- downloadHandler(
+    output$dl_res <- shiny::downloadHandler(
       filename = function() { paste0("Prediction_Results_", Sys.Date(), ".csv") },
       content = function(file) {
         # Retrieve the most recent info.data
-        req(results())
+        shiny::req(results())
         final_df <- results()@info.data
         # Ensure SampleID is included in the CSV file
         write.csv(final_df, file, row.names = TRUE)
@@ -333,7 +332,7 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
     )
     
     # Template Download
-    output$dl_tpl <- downloadHandler(
+    output$dl_tpl <- shiny::downloadHandler(
       filename = "Input_Template.csv",
       content = function(file) { write.csv(head(train_data, 5), file, row.names = TRUE) }
     )
@@ -341,10 +340,10 @@ launch_sub_deploy_app <- function(sub_manager, title = "Subtyping Terminal",
     # Documentation Table
     output$doc_table <- DT::renderDataTable({
       df <- if(is.null(var_dict)) data.frame(Feature=required_vars, Desc="Parameter") else var_dict
-      datatable(df, rownames = FALSE, options = list(dom = 't')) %>% 
-        formatStyle(columns = colnames(df), color = 'white')
+      DT::datatable(df, rownames = FALSE, options = list(dom = 't')) %>% 
+        DT::formatStyle(columns = colnames(df), color = 'white')
     })
   }
   
-  shinyApp(ui, server)
+  shiny::shinyApp(ui, server)
 }

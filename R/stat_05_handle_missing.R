@@ -25,6 +25,7 @@ impute_missing_values <- function(data,
                                   save_dir = NULL,
                                   save_data = TRUE,
                                   csv_filename = "clean_data.csv") {
+  .require_pkgs("mice")
   if (!is.data.frame(data)) stop("Input must be a data frame.")
   if (is.null(save_dir)) save_dir <- get_output_dir("StatObject", "Data")
   impute_method <- match.arg(impute_method, choices = c("mice", "median_mode"))

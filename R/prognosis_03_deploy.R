@@ -248,6 +248,7 @@ run_prognosis_pipeline <- function(
     run_nomogram  = TRUE,
     val_data      = NULL,
     subgroup_vars = NULL) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   
   cutoff_method <- match.arg(cutoff_method)
   set.seed(seed)
@@ -312,7 +313,7 @@ run_prognosis_pipeline <- function(
   
   # Step 2: algorithm benchmark
   d2 <- .sdir(2, "Algorithm_Benchmark")
-  message("\n[Step 2] Algorithm benchmark (", paste(learner_ids, collapse = ", "), ")...")
+  message("\n[Step 2] Algorithm mlr3::benchmark (", paste(learner_ids, collapse = ", "), ")...")
   lrn_list <- Filter(Negate(is.null), lapply(learner_ids, function(lid) {
     tryCatch(surv_get_learner(lid, task_filtered),
              error = function(e) { warning("Skipping ", lid, ": ", e$message); NULL })
@@ -425,7 +426,7 @@ run_prognosis_pipeline <- function(
     )
     val_task <- surv_extract_task(val_prog)
     
-    val_cindex <- best_learner$predict(val_task)$score(msr("surv.cindex"))
+    val_cindex <- best_learner$predict(val_task)$score(mlr3::msr("surv.cindex"))
     message(sprintf("  Validation C-index = %.4f", val_cindex))
     
     med_time <- median(prog_obj@survival.data[[time_col]], na.rm = TRUE)
@@ -743,7 +744,6 @@ get_prog_app_text <- function(key = NULL) {
 #' head(risk)
 #' }
 #'
-#' @importFrom mlr3proba TaskSurv
 #' @importFrom data.table as.data.table
 #' @export
 #' @examples
@@ -777,6 +777,7 @@ get_prog_app_text <- function(key = NULL) {
 #' manager <- New_Prog_Manager(prog)
 #' }
 predict_prognosix <- function(prog_obj, newdata, impute = TRUE) {
+  .require_pkgs(c("mlr3", "mlr3proba", "mlr3tuning", "mlr3tuningspaces", "paradox"))
   if (!inherits(prog_obj, "PrognosiX")) {
     stop("prog_obj must be a PrognosiX object.")
   }
@@ -1012,80 +1013,80 @@ launch_prog_deploy_app <- function(prog_manager,
   default_vals <- sapply(train_data[, req_vars, drop = FALSE],
                          function(x) round(median(as.numeric(x), na.rm = TRUE), 3))
   
-  ui <- dashboardPage(
+  ui <- shinydashboard::dashboardPage(
     skin = "black",
-    dashboardHeader(title = span(icon("heartbeat"), " ", title)),
-    dashboardSidebar(sidebarMenu(
-      menuItem(.get_text("prediction_portal", "Prediction Portal"), tabName = "portal", icon = icon("desktop")),
-      menuItem(.get_text("model_info", "Model Info"), tabName = "model", icon = icon("chart-bar")),
-      menuItem(.get_text("documentation", "Documentation"), tabName = "docs", icon = icon("info-circle"))
+    shinydashboard::dashboardHeader(title = shiny::span(shiny::icon("heartbeat"), " ", title)),
+    shinydashboard::dashboardSidebar(shinydashboard::sidebarMenu(
+      shinydashboard::menuItem(.get_text("prediction_portal", "Prediction Portal"), tabName = "portal", icon = shiny::icon("desktop")),
+      shinydashboard::menuItem(.get_text("model_info", "Model Info"), tabName = "model", icon = shiny::icon("chart-bar")),
+      shinydashboard::menuItem(.get_text("documentation", "Documentation"), tabName = "docs", icon = shiny::icon("info-circle"))
     )),
-    dashboardBody(
-      tags$head(tags$style(HTML(getOption("prog_app_theme_css")))),
-      tabItems(
-        tabItem(tabName = "portal",
-                fluidRow(box(width = 12, title = .get_text("overview_title", "Project Overview"),
-                             column(8, h4(.get_text("abstract", "Abstract")),
-                                    p(project_info$abstract %||% .get_text("abstract_text", "Prognostic risk stratification from a validated survival model."))),
-                             column(4, h4(.get_text("reference", "Reference")),
-                                    p(project_info$citation %||% .get_text("citation_text", "Icare R package - PrognosiX framework")))
+    shinydashboard::dashboardBody(
+      shiny::tags$head(shiny::tags$style(shiny::HTML(getOption("prog_app_theme_css")))),
+      shinydashboard::tabItems(
+        shinydashboard::tabItem(tabName = "portal",
+                shiny::fluidRow(shinydashboard::box(width = 12, title = .get_text("overview_title", "Project Overview"),
+                             shiny::column(8, shiny::h4(.get_text("abstract", "Abstract")),
+                                    shiny::p(project_info$abstract %||% .get_text("abstract_text", "Prognostic risk stratification from a validated survival model."))),
+                             shiny::column(4, shiny::h4(.get_text("reference", "Reference")),
+                                    shiny::p(project_info$citation %||% .get_text("citation_text", "Icare R package - PrognosiX framework")))
                 )),
-                fluidRow(box(title = .get_text("input_box_title", "1. Input Samples"), width = 12,
-                             column(3,
-                                    selectInput("cutoff_m", .get_text("risk_strat_label", "Risk Stratification"),
+                shiny::fluidRow(shinydashboard::box(title = .get_text("input_box_title", "1. Input Samples"), width = 12,
+                             shiny::column(3,
+                                    shiny::selectInput("cutoff_m", .get_text("risk_strat_label", "Risk Stratification"),
                                                 choices = {
                                                   lbl_med <- .get_text("median_choice", "Median -- High/Low (2 groups)")
                                                   lbl_ter <- .get_text("tertile_choice", "Tertile -- Low/Med/High (3 groups)")
                                                   lbl_cus <- .get_text("custom_choice", "Custom thresholds (e.g., 0.3, 0.6)")
                                                   setNames(c("median", "tertile", "custom"), c(lbl_med, lbl_ter, lbl_cus))
                                                 }),
-                                    conditionalPanel(condition = "input.cutoff_m == 'custom'",
-                                                     textInput("custom_thresholds", .get_text("custom_thresholds_label", "Thresholds (comma-separated)"),
+                                    shiny::conditionalPanel(condition = "input.cutoff_m == 'custom'",
+                                                     shiny::textInput("custom_thresholds", .get_text("custom_thresholds_label", "Thresholds (comma-separated)"),
                                                                value = "0.3, 0.6", placeholder = "e.g., 0.2, 0.5, 0.8")),
-                                    checkboxInput("show_sc", .get_text("show_scores_check", "Show raw risk scores"), TRUE),
-                                    hr(),
-                                    helpText(.get_text("batch_help", "Batch CSV: first column = SampleID; remaining columns = features."))
+                                    shiny::checkboxInput("show_sc", .get_text("show_scores_check", "Show raw risk scores"), TRUE),
+                                    shiny::hr(),
+                                    shiny::helpText(.get_text("batch_help", "Batch CSV: first column = SampleID; remaining columns = features."))
                              ),
-                             column(9,
-                                    tabsetPanel(id = "input_mode",
-                                                tabPanel(.get_text("batch_tab", "Batch Upload (CSV)"), br(),
-                                                         fileInput("up_file", .get_text("upload_button_label", "Upload .csv"), accept = ".csv"),
-                                                         downloadButton("dl_tpl", .get_text("download_template_label", "Download Template"), class = "btn-xs btn-info")),
-                                                tabPanel(.get_text("single_tab", "Single Sample"), br(),
-                                                         fluidRow(column(4, textInput("sid", .get_text("sample_id_label", "Sample ID:"), "SAMPLE_001")),
+                             shiny::column(9,
+                                    shiny::tabsetPanel(id = "input_mode",
+                                                shiny::tabPanel(.get_text("batch_tab", "Batch Upload (CSV)"), shiny::br(),
+                                                         shiny::fileInput("up_file", .get_text("upload_button_label", "Upload .csv"), accept = ".csv"),
+                                                         shiny::downloadButton("dl_tpl", .get_text("download_template_label", "Download Template"), class = "btn-xs btn-info")),
+                                                shiny::tabPanel(.get_text("single_tab", "Single Sample"), shiny::br(),
+                                                         shiny::fluidRow(shiny::column(4, shiny::textInput("sid", .get_text("sample_id_label", "Sample ID:"), "SAMPLE_001")),
                                                                   lapply(seq_along(req_vars), function(i)
-                                                                    column(4, numericInput(paste0("f_", req_vars[i]), req_vars[i],
+                                                                    shiny::column(4, shiny::numericInput(paste0("f_", req_vars[i]), req_vars[i],
                                                                                            value = default_vals[[i]], step = 0.01))))
                                                 )
                                     )
                              )
                 )),
-                fluidRow(column(12, align = "center",
-                                actionButton("go", .get_text("calculate_button", "CALCULATE RISK"), icon = icon("play-circle"), class = "btn-run"))),
-                fluidRow(box(title = .get_text("results_title", "2. Results"), width = 12,
-                             column(4, align = "center", h4(.get_text("risk_group_heading", "Risk Group")),
-                                    uiOutput("risk_ui"), hr(), uiOutput("score_ui")),
-                             column(8,
-                                    div(style = "display:flex;justify-content:space-between;align-items:center",
-                                        h4(.get_text("sample_table_heading", "Sample Table")),
-                                        downloadButton("dl_res", .get_text("export_csv_button", "Export CSV"), class = "btn-success btn-xs")),
+                shiny::fluidRow(shiny::column(12, align = "center",
+                                shiny::actionButton("go", .get_text("calculate_button", "CALCULATE RISK"), icon = shiny::icon("play-circle"), class = "btn-run"))),
+                shiny::fluidRow(shinydashboard::box(title = .get_text("results_title", "2. Results"), width = 12,
+                             shiny::column(4, align = "center", shiny::h4(.get_text("risk_group_heading", "Risk Group")),
+                                    shiny::uiOutput("risk_ui"), shiny::hr(), shiny::uiOutput("score_ui")),
+                             shiny::column(8,
+                                    shiny::div(style = "display:flex;justify-content:space-between;align-items:center",
+                                        shiny::h4(.get_text("sample_table_heading", "Sample Table")),
+                                        shiny::downloadButton("dl_res", .get_text("export_csv_button", "Export CSV"), class = "btn-success btn-xs")),
                                     DT::dataTableOutput("res_tbl"))
                 ))
         ),
-        tabItem(tabName = "model",
-                fluidRow(box(title = .get_text("model_summary_title", "Model Summary"), width = 12,
-                             fluidRow(
-                               column(3, div(class="badge-box", icon("brain"), " ", .get_text("algorithm_label", "Algorithm"), br(), tags$b(info$algorithm))),
-                               column(3, div(class="badge-box", icon("chart-line"), " ", .get_text("cv_cindex_label", "CV C-index"), br(), tags$b(round(info$cv_cindex %||% NA, 4)))),
-                               column(3, div(class="badge-box", icon("users"), " ", .get_text("training_n_label", "Training N"), br(), tags$b(info$n_train))),
-                               column(3, div(class="badge-box", icon("flag"), " ", .get_text("events_label", "Events"), br(), tags$b(info$n_events)))
+        shinydashboard::tabItem(tabName = "model",
+                shiny::fluidRow(shinydashboard::box(title = .get_text("model_summary_title", "Model Summary"), width = 12,
+                             shiny::fluidRow(
+                               shiny::column(3, shiny::div(class="badge-box", shiny::icon("brain"), " ", .get_text("algorithm_label", "Algorithm"), shiny::br(), shiny::tags$b(info$algorithm))),
+                               shiny::column(3, shiny::div(class="badge-box", shiny::icon("chart-line"), " ", .get_text("cv_cindex_label", "CV C-index"), shiny::br(), shiny::tags$b(round(info$cv_cindex %||% NA, 4)))),
+                               shiny::column(3, shiny::div(class="badge-box", shiny::icon("users"), " ", .get_text("training_n_label", "Training N"), shiny::br(), shiny::tags$b(info$n_train))),
+                               shiny::column(3, shiny::div(class="badge-box", shiny::icon("flag"), " ", .get_text("events_label", "Events"), shiny::br(), shiny::tags$b(info$n_events)))
                              ),
-                             br(), h4(.get_text("selected_features_title", "Selected Features")),
+                             shiny::br(), shiny::h4(.get_text("selected_features_title", "Selected Features")),
                              DT::dataTableOutput("feat_tbl")
                 ))
         ),
-        tabItem(tabName = "docs",
-                fluidRow(box(title = .get_text("variable_glossary_title", "Variable Glossary"), width = 12,
+        shinydashboard::tabItem(tabName = "docs",
+                shiny::fluidRow(shinydashboard::box(title = .get_text("variable_glossary_title", "Variable Glossary"), width = 12,
                              DT::dataTableOutput("doc_tbl")))
         )
       )
@@ -1093,61 +1094,61 @@ launch_prog_deploy_app <- function(prog_manager,
   )
   
   server <- function(input, output, session) {
-    parsed_data <- eventReactive(input$go, {
+    parsed_data <- shiny::eventReactive(input$go, {
       if (input$input_mode == "Batch Upload (CSV)") {
-        req(input$up_file)
+        shiny::req(input$up_file)
         read.csv(input$up_file$datapath, row.names = 1, check.names = FALSE)
       } else {
         vals <- setNames(sapply(req_vars, function(v) input[[paste0("f_", v)]]), req_vars)
         df <- as.data.frame(t(vals)); rownames(df) <- input$sid; df
       }
     })
-    preds <- reactive({
-      req(parsed_data())
+    preds <- shiny::reactive({
+      shiny::req(parsed_data())
       custom_cutoffs <- NULL
       if (input$cutoff_m == "custom") {
         thr_str <- gsub(" ", "", input$custom_thresholds)
         custom_cutoffs <- as.numeric(strsplit(thr_str, ",")[[1]])
-        if (any(is.na(custom_cutoffs))) showNotification("Invalid custom thresholds", type = "error")
+        if (any(is.na(custom_cutoffs))) shiny::showNotification("Invalid custom thresholds", type = "error")
       }
       prog_manager$prog_predict(parsed_data(),
                                 cutoff_method = input$cutoff_m,
                                 custom_cutoffs = custom_cutoffs,
                                 return_scores = input$show_sc)
     })
-    output$risk_ui <- renderUI({
-      validate(need(preds(), "Awaiting input..."))
+    output$risk_ui <- shiny::renderUI({
+      shiny::validate(shiny::need(preds(), "Awaiting input..."))
       df <- preds()
       if (nrow(df) == 1) {
         g <- df$risk_group[1]
         cl <- if (grepl("High", g)) "risk-high" else if (grepl("Med", g)) "risk-med" else "risk-low"
-        tagList(div(class = "score-lbl", "Sample: ", df$SampleID[1]), div(class = cl, g))
+        shiny::tagList(shiny::div(class = "score-lbl", "Sample: ", df$SampleID[1]), shiny::div(class = cl, g))
       } else {
         tbl <- table(df$risk_group)
-        tagList(div(class = "score-lbl", sprintf("Batch: %d samples processed", nrow(df))), br(),
+        shiny::tagList(shiny::div(class = "score-lbl", sprintf("Batch: %d samples processed", nrow(df))), shiny::br(),
                 lapply(names(tbl), function(g) {
                   cl <- if (grepl("High", g)) "risk-high" else if (grepl("Med", g)) "risk-med" else "risk-low"
-                  div(span(class = cl, style = "font-size:28px", g),
-                      span(style = "color:#8b949e;font-size:13px;margin-left:8px", paste0("n=", tbl[[g]])))
+                  shiny::div(shiny::span(class = cl, style = "font-size:28px", g),
+                      shiny::span(style = "color:#8b949e;font-size:13px;margin-left:8px", paste0("n=", tbl[[g]])))
                 }))
       }
     })
-    output$score_ui <- renderUI({
-      validate(need(preds(), ""))
+    output$score_ui <- shiny::renderUI({
+      shiny::validate(shiny::need(preds(), ""))
       df <- preds()
       if (nrow(df) == 1 && "risk_score" %in% names(df))
-        div(class = "score-lbl", sprintf("Risk Score: %.4f", df$risk_score[1]))
+        shiny::div(class = "score-lbl", sprintf("Risk Score: %.4f", df$risk_score[1]))
     })
     output$res_tbl <- DT::renderDataTable({
-      req(preds())
+      shiny::req(preds())
       DT::datatable(preds(), rownames = FALSE, options = list(dom = "tp", pageLength = 10)) %>%
         DT::formatStyle("risk_group",
                         color = DT::styleEqual(c("High Risk","Medium Risk","Low Risk"),
                                                c("#f85149","#d29922","#3fb950")), fontWeight = "bold")
     })
-    output$dl_res <- downloadHandler(filename = function() paste0("Prognosis_Results_", Sys.Date(), ".csv"),
+    output$dl_res <- shiny::downloadHandler(filename = function() paste0("Prognosis_Results_", Sys.Date(), ".csv"),
                                      content = function(f) write.csv(preds(), f, row.names = FALSE))
-    output$dl_tpl <- downloadHandler(filename = "Input_Template.csv",
+    output$dl_tpl <- shiny::downloadHandler(filename = "Input_Template.csv",
                                      content = function(f) write.csv(head(train_data[, req_vars, drop = FALSE], 5), f))
     output$feat_tbl <- DT::renderDataTable(
       DT::datatable(data.frame(`#` = seq_along(req_vars), Feature = req_vars,
@@ -1162,5 +1163,5 @@ launch_prog_deploy_app <- function(prog_manager,
       DT::datatable(df, rownames = FALSE, options = list(dom = "t", pageLength = 30))
     })
   }
-  shinyApp(ui, server)
+  shiny::shinyApp(ui, server)
 }

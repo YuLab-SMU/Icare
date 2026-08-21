@@ -4,3 +4,5 @@ StatObject
 PrognosiX
 .DS_Store
 .Rhistory
+.reasonix
+reasonix.toml

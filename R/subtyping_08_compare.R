@@ -38,7 +38,7 @@ compare_clusterings <- function(object,
   if (is.null(object@info.data) || nrow(object@info.data) == 0) {
     stop("info.data is empty. Please run clustering methods first.")
   }
-  requireNamespace("mclust", quietly = TRUE)
+  .require_pkgs("mclust")
   present <- methods[methods %in% colnames(object@info.data)]
   if (length(present) == 0) stop("None of the specified clustering columns found in info.data.")
   

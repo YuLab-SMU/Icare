@@ -32,9 +32,11 @@ The function performs the following steps:
 }
 }
 \examples{
+\dontrun{
 veteran <- survival::veteran
 task <- surv_create_surv_task(veteran, time_col = "time", event_col = "status")
 
 lrn_cox <- surv_get_learner("surv.coxph", task)
 lrn_cox$id
+}
 }

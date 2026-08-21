@@ -2909,6 +2909,7 @@ PlotKaplanMeier <- function(object,
                             width        = 7,
                             height       = 8,
                             format       = "pdf") {
+  .require_pkgs(c("survminer", "survival"))
   
   if (is.null(save_dir) && save_plot) save_dir <- .get_viz_output_dir("PrognosiX")
   
@@ -3097,6 +3098,7 @@ PlotTimeROC <- function(object,
                         width        = 6,
                         height       = 5.5,
                         format       = "pdf") {
+  .require_pkgs("timeROC")
   if (is.null(save_dir)) save_dir <- .get_viz_output_dir("PrognosiX")
 
 
@@ -3187,6 +3189,7 @@ PlotRCS <- function(object,
                     width        = 6,
                     height       = 5,
                     format       = "pdf") {
+  .require_pkgs(c("rms", "survival"))
   if (is.null(save_dir)) save_dir <- .get_viz_output_dir("PrognosiX")
 
   method  <- match.arg(method)

@@ -34,6 +34,7 @@
 #'   InspectHyperParams("rf")
 #' }
 InspectHyperParams <- function(method) {
+  .require_pkgs("rBayesianOptimization")
   .check_tune_pkgs()
   
   info <- caret::getModelInfo(method, regex = FALSE)[[1]]
@@ -145,6 +146,7 @@ FineTuneModel <- function(model_obj,
                           class_weights   = FALSE,
                           seed            = 123,
                           verbose         = TRUE) {
+  .require_pkgs("rBayesianOptimization")
   
   .check_tune_pkgs()
   set.seed(seed)
