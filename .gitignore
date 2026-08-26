@@ -1,4 +1,18 @@
-.trae
-PrognosiX
-local-test/
-StatObject/
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+.quarto/
+_book/
+_freeze/
+*_cache/
+*_files/
+*.knit.md
+*.utf8.md
+
+# Objects and chapter output generated during execution
+*.rds
+Figures/
+Module*_Output/
+PrognosiX*_Output/
+NRIDI_Manual_Results/

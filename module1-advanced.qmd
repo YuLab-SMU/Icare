@@ -1,0 +1,596 @@
+# Module 1: Data Cleaning and Exploration — Advanced
+
+The advanced `Stat` workflow covers raw-data diagnostics, automatic and manual type handling, missing-value imputation, outlier treatment, one-hot encoding, normalization, grouped plots, correlation heatmaps, PCA, differential features, ROC analysis, radar plots, and Table 1. Together, these steps implement the package's clinical-statistics and exploratory-analysis layer before downstream prediction or subtyping.
+
+## Key Configuration
+
+Set `GROUP_COL`, `OUTPUT_DIR`, and `N_TOP_FEATURES` in the `CONFIG` section. Review every inferred data type and retain a record of imputation and scaling decisions. Outputs are organized into subdirectories so that quality-control results, statistical summaries, and publication figures can be audited separately.
+
+## Step-by-step Workflow
+
+<!-- split-into-step-chunks -->
+
+The workflow is divided into short stages. Each note explains the purpose, key checks, and interpretation limits. Generated plots and tables appear directly below their code chunk.
+
+### Environment and Global Setup
+
+This section performs the core analysis for this stage. Review the output immediately below the code and confirm that data ranges, assumptions, and results match the study design.
+
+````{r}
+#| label: module1-advanced-01
+#| cache: false
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# =============================================================================
+# icare Package Vignette — Module 1: Data Cleaning & Exploratory Analysis
+# ADVANCED / PUBLICATION EDITION
+# =============================================================================
+# Audience : Advanced users preparing figures/tables for a manuscript, or
+#            anyone who wants to see every configurable option in the
+#            Module 1 pipeline.
+# What this script does, end to end:
+````
+
+### 1 Load raw data and take a demonstration subset
+
+This section imports and organizes the data. Check dimensions and variable coding before continuing.
+
+````{r}
+#| label: module1-advanced-02
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   1) Load raw data and take a demonstration subset
+````
+
+### 2 Wrap the data in a `StatObject` (icare's container for the whole
+
+This section performs the core analysis for this stage. Review the output immediately below the code and confirm that data ranges, assumptions, and results match the study design.
+
+````{r}
+#| label: module1-advanced-03
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   2) Wrap the data in a `StatObject` (icare's container for the whole
+#      cleaning/analysis history)
+````
+
+### 3 Explore the raw data (missingness, variable types, descriptives)
+
+This section performs the core analysis for this stage. Review the output immediately below the code and confirm that data ranges, assumptions, and results match the study design.
+
+````{r}
+#| label: module1-advanced-04
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   3) Explore the raw data (missingness, variable types, descriptives)
+````
+
+### 4 Clean it (type conversion -> imputation -> outlier handling ->
+
+This section preprocesses the data. Review missingness, outlier handling, and normalization before accepting the defaults.
+
+````{r}
+#| label: module1-advanced-05
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   4) Clean it (type conversion -> imputation -> outlier handling ->
+#      one-hot encoding -> normalization)
+````
+
+### 5 Produce publication-style figures (grouped distributions, correlation
+
+This section performs the core analysis for this stage. Review the output immediately below the code and confirm that data ranges, assumptions, and results match the study design.
+
+````{r}
+#| label: module1-advanced-06
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   5) Produce publication-style figures (grouped distributions, correlation
+#      heatmap, PCA)
+````
+
+### 6 Run a differential-feature test between groups and visualize the
+
+This section selects candidate features. Consider effect size, stability, and biological plausibility rather than a single significance measure.
+
+````{r}
+#| label: module1-advanced-07
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   6) Run a differential-feature test between groups and visualize the
+#      results (AUC/p plot, heatmap, ROC, radar, boxplots)
+````
+
+### 7 Build a baseline characteristics ("Table 1") and export everything
+
+This section saves model objects, tables, and figures for reproducibility, review, and reuse.
+
+````{r}
+#| label: module1-advanced-08
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+#   7) Build a baseline characteristics ("Table 1") and export everything
+#
+# All `save_dir` arguments below point into sub-folders of OUTPUT_DIR so a
+# reviewer can find every figure the script produces without hunting through
+# the working directory.
+options(warn = -1)
+# =============================================================================
+rm(list = ls())
+library(icare)
+#devtools::document("../../../../icare-git/")
+#devtools::check("../../../../icare-git/")
+#devtools::install("../../../../icare-git/")
+# ---------------------------------------------------------------------------
+````
+
+### 0 CONFIG — the only section you should need to edit for a new dataset
+
+This section defines seeds, output paths, and dependencies. Update these paths and key parameters first when using new data.
+
+````{r}
+#| label: module1-advanced-09
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 0. CONFIG — the only section you should need to edit for a new dataset
+# ---------------------------------------------------------------------------
+GROUP_COL  <- "group"                              # outcome / group column
+OUTPUT_DIR <- "./Module1_Advanced_Output"                  # all figures/tables go here
+N_TOP_FEATURES <- 10                                       # how many DEGs to carry into plots
+
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+sub_dir <- function(...) {
+  d <- file.path(OUTPUT_DIR, ...)
+  dir.create(d, showWarnings = FALSE, recursive = TRUE)
+  d
+}
+
+# =============================================================================
+````
+
+### 1 Load Data
+
+This section imports and organizes the data. Check dimensions and variable coding before continuing.
+
+````{r}
+#| label: module1-advanced-10
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 1. Load Data
+# =============================================================================
+# stringsAsFactors = FALSE keeps everything as character/numeric for now;
+library(readxl)
+raw_dis=as.data.frame(read_excel("data/PMID37633276_DIA_plasmaproomic.xlsx",sheet = 3))
+raw_dis=raw_dis[!grepl(x = raw_dis$`Case ID`,pattern = "^KC"),]
+dput(colnames(raw_dis))
+mat=raw_dis[,c( "White blood cell count", 
+                "Lymphocytes%", "Monocytes%", "Neutrophilic granulocyte%", "Eosinophil%", 
+                "Basophil%", "Lymphocytes count", "Monocytes count", "Neutrophilic granulocyte count", 
+                "Eosinophil count", "Basophil count", "Red blood cell count", 
+                "Hemoglobin", "Hematocrit", "Mean red blood cell volume", "Mean cell hemoglobin", 
+                "Mean corpuscular hemoglobin concentration", "Red blood cell distribution width CV", 
+                "Red blood cell distribution width SD", "Platelet count", "Mean platelet volume", 
+                "PCT", "Platelet volume distribution width")]
+index=grepl(x = raw_dis$`Case ID`,pattern = "^HC")
+inf=raw_dis[,c("Case ID", "Sample type", "Plasma proteome ID", "Tissue proteome ID", 
+               "Gender", "Age at diagnosis", "Tobacco smoking history", "Drinking history", 
+               "Vital status", "Days to last followup", "Days until death", 
+               "Combined days to last followup or death", "Progressive-free survival_Status", 
+               "Progressive-free survival_Months", "Tumor location", "Tumor size (cm)", 
+               "T-category", "Lymph node involvement", "Distant metastasis", 
+               "TNM Stage", "Grade", "Morphology")]
+inf$group=ifelse(index,'0','1')
+mat$group=inf$group
+mat=as.matrix(mat)
+storage.mode(mat) <- "numeric"
+
+rownames(mat)=inf$`Case ID`
+rownames(inf)=inf$`Case ID`
+mat=as.data.frame(mat)
+mat$age=inf$`Age at diagnosis`
+mat$sex=inf$Gender
+# =============================================================================
+````
+
+### 2 Create the Stat Object
+
+This section creates the icare analysis object that stores data, metadata, and workflow state for all later steps.
+
+````{r}
+#| label: module1-advanced-11
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 2. Create the Stat Object
+# =============================================================================
+# CreateStatObject() is the entry point of icare: it stores the raw data,
+# remembers which column is the grouping/outcome variable, and will
+# accumulate every cleaning step you apply to it (accessible via
+# stat_obj@clean.data once cleaning is done).
+# na.action = "allow" means missing values are kept for now; we handle them
+# explicitly in the cleaning section (step 4.2) rather than dropping rows here.
+stat_obj <- CreateStatObject(
+  raw.data  = mat,info.data = inf,
+  group_col = "group",
+  na.action = "allow"
+)
+cat("Stat object created.\n")
+
+# =============================================================================
+````
+
+### 3 Pre-cleaning Exploratory Analysis
+
+This section preprocesses the data. Review missingness, outlier handling, and normalization before accepting the defaults.
+
+````{r}
+#| label: module1-advanced-12
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 3. Pre-cleaning Exploratory Analysis
+# =============================================================================
+## 3.1 Missing-data visualization — shows which variables/rows are most
+##     affected, which should guide your imputation strategy in step 4.2
+stat_obj <- state_plot_missing_data(
+  stat_obj,
+  save_plots = TRUE,
+  save_data  = TRUE,
+  save_dir   = sub_dir("01_exploration", "missing_data")
+)
+
+## 3.2 Variable type diagnosis — auto-detects numeric vs. categorical columns.
+## max_unique_values = 5 means any column with <= 5 unique values is treated
+## as categorical even if it is stored as numbers (e.g. a 0/1/2 coded score).
+stat_obj <- stat_diagnose_variable_type(stat_obj, max_unique_values = 5)
+cat("Detected variable types:\n"); print(stat_obj@variable.types)
+
+## 3.3 Descriptive statistics on the RAW data, before any cleaning.
+## Keeping a "before" summary alongside the "after" one (produced later) is
+## good practice for a methods section: it lets you report what changed.
+stat_obj <- stat_compute_descriptive(stat_obj, count_feature = TRUE)
+
+# =============================================================================
+````
+
+### 4 Data Cleaning Pipeline
+
+This section preprocesses the data. Review missingness, outlier handling, and normalization before accepting the defaults.
+
+````{r}
+#| label: module1-advanced-13
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 4. Data Cleaning Pipeline
+# =============================================================================
+## 4.1 Convert columns to their diagnosed types (numeric / factor)
+stat_obj <- stat_convert_variables(stat_obj, save_data = FALSE)
+
+## 4.2 Impute missing values.
+## "median_mode" = median for numeric columns, mode for categorical ones —
+## a simple, fast, and reasonably robust default. For datasets with more
+## complex/structured missingness, consider impute_method = "mice" instead
+## (see the alternative Module 1 script for a worked example).
+stat_obj <- stat_miss_processed(
+  stat_obj,
+  impute_method = "mice",
+  return_imputation_info = TRUE,
+  save_data = FALSE
+)
+
+## 4.3 Detect outliers using the IQR rule (values beyond 1.5x the
+## interquartile range from Q1/Q3 are flagged, the usual Tukey convention).
+stat_obj <- stat_detect_and_mark_outliers(
+  stat_obj,
+  method    = "iqr",
+  threshold = 1.5,
+  save_data = FALSE
+)
+
+## 4.4 Handle the flagged outliers by replacing them with the column median
+## rather than deleting rows, so no samples are lost.
+stat_obj <- stat_handle_outliers(
+  stat_obj,
+  method       = "impute",
+  impute_value = "median",
+  save_data    = FALSE
+)
+
+## 4.5 One-hot encode categorical variables that have more than 2 levels
+## (binary variables are left as single 0/1 columns to avoid redundancy).
+stat_obj <- stat_onehot_encode(stat_obj, save_data = FALSE)
+
+## 4.6 Normalize numeric features. method = "auto" lets icare pick an
+## appropriate transform per-column (e.g. z-score vs. a skew-correcting
+## transform) based on each variable's distribution.
+stat_obj <- stat_normalize_process(stat_obj, method = "auto", save_data = FALSE)
+
+cat("\nCleaning completed. Clean data dimensions:",
+    nrow(stat_obj@clean.data), "x", ncol(stat_obj@clean.data), "\n")
+
+# =============================================================================
+````
+
+### 5 Publication-Quality Visualizations
+
+This section creates exploratory and reporting figures. Plots appear below the code and are also saved as vector PDFs for publication.
+
+````{r}
+#| label: module1-advanced-14
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 5. Publication-Quality Visualizations
+# =============================================================================
+viz_dir <- sub_dir("02_visualizations")
+
+## 5.1 Grouped box + violin plots for the first 6 numeric variables, each
+## annotated with a Wilcoxon test p-value between groups. Swap `features`
+## for any variable list you want to feature in a figure.
+numeric_vars <- names(stat_obj@clean.data)[sapply(stat_obj@clean.data, is.numeric)]
+my_colors <- c("0" = "#404040", "1" = "#ca0020")
+PlotGroupedDistribution(
+  object       = stat_obj,
+  features     = head(numeric_vars, 6),
+  group_col    = "group",    
+  group_colors = my_colors,
+  test         = "wilcox.test",
+  palette_name = "Set1", height = 8,width = 10,     
+  ncol         = 3,
+  save_dir     = viz_dir,
+  save_plot    = TRUE
+)
+unique(stat_obj@clean.data$group)
+## 5.2 Correlation heatmap for a clinically meaningful feature panel
+## (here: red-cell indices). Replace `features` with your variables of interest.
+PlotCorrelationHeatmap(
+  object       = stat_obj,insig = "blank",pch = 3,
+  features     = numeric_vars[-24],
+  color_scheme = "gradient",   # alternative: "brew"
+  save_dir     = viz_dir,
+  save_plot    = TRUE
+)
+
+## 5.3 PCA scatter plot coloured by the outcome group, with 95% confidence
+## ellipses — a standard "does the outcome separate along the main axes of
+## variation" sanity check before modeling.
+my_colors <- c("0" = "#404040", "1" = "#ca0020")
+PlotPCA(
+  object       = stat_obj,
+  color_by     = "group",          
+  group_colors = my_colors,
+  pcs          = c(1, 2),
+  ellipse      = TRUE,
+  palette_name = "Royal1",
+  save_dir     = viz_dir,
+  save_plot    = TRUE
+)
+
+# =============================================================================
+````
+
+### 6 Additional Descriptive Visualizations
+
+This section creates exploratory and reporting figures. Plots appear below the code and are also saved as vector PDFs for publication.
+
+````{r}
+#| label: module1-advanced-15
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 6. Additional Descriptive Visualizations
+# =============================================================================
+## 6.1 Bar plots for every categorical variable
+stat_obj <- plot_categorical_descriptive(stat_obj, save_plots = TRUE, save_dir = viz_dir)
+
+## 6.2 Violin plots for every numeric variable (one plot per variable)
+my_colors <- c("0" = "#404040", "1" = "#ca0020")
+stat_obj <- plot_numeric_descriptive(
+  stat_obj, plot_type = "violin", vars_per_plot = 1,group_col = 'group',group_colors = my_colors,
+  save_plots = TRUE, save_dir = viz_dir
+)
+
+## 6.3 Ridge (density) plots — an alternative view of the same numeric
+## variables, useful when distributions are multi-modal.
+library(ggridges)
+stat_obj <- plot_numeric_descriptive(
+  stat_obj, plot_type = "ridge", vars_per_plot = 1,
+  save_plots = TRUE, save_dir = viz_dir
+)
+
+# =============================================================================
+````
+
+### 7 Differential Feature Analysis (Wilcoxon Test)
+
+This section selects candidate features. Consider effect size, stability, and biological plausibility rather than a single significance measure.
+
+````{r}
+#| label: module1-advanced-16
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 7. Differential Feature Analysis (Wilcoxon Test)
+# =============================================================================
+deg_dir <- sub_dir("03_differential_analysis")
+stat_obj <- stat_var_feature(stat_obj, p_threshold = 0.05, logfc_threshold = 0.1,save_data = TRUE)
+deg_result <- ExtractLastTestSig(stat_obj)
+# Standardize the "feature name" column (some downstream plotting functions
+# expect a column literally called `feature`).
+deg_result$feature <- deg_result$id
+
+# Rank features by adjusted p-value and keep the top N for downstream plots —
+# this replaces any ad hoc/undefined feature list with an explicit, reproducible one.
+top_ids <- head(deg_result$id[order(deg_result$p.adjust)], N_TOP_FEATURES)
+
+# =============================================================================
+````
+
+### 8 Differential-Feature Visualizations
+
+This section selects candidate features. Consider effect size, stability, and biological plausibility rather than a single significance measure.
+
+````{r}
+#| label: module1-advanced-17
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 8. Differential-Feature Visualizations
+# =============================================================================
+## 8.1 AUC vs. p-value scatter — flags features that are both statistically
+## significant AND discriminative (AUC far from 0.5).
+PlotAUCPval(
+  deg_df     = deg_result,
+  mat_test   = stat_obj@clean.data,
+  group_col  = GROUP_COL,base_size = 8,text_repel_size = 2,
+  auc_thresh = 0.55,
+  p_thresh   = 0.05,
+  save_dir   = deg_dir,
+  save_plot  = TRUE
+)
+
+## 8.2 Heatmap of the top differential features across samples
+# Build the top annotation (assuming rownames(mat) contains sample IDs)
+top_anno <- stat_obj@info.data
+top_anno <-top_anno [,c('Gender','Age at diagnosis')]
+# Custom color palette
+custom_cols <- list(
+  Group= c("0" = "#404040", "1" = "#ca0020"),
+  Gender= c( Female= "#018571", Male = "#a6611a"),
+  `Age at diagnosis`= circlize::colorRamp2(c(40, 55, 70), c("#edf8b1", "#7fcdbb", "#2c7fb8"))
+)
+PlotFeatureHeatmap(
+  object = stat_obj,
+  features = top_ids,   
+  top_annotation = top_anno,
+  ann_colors = custom_cols,
+  cluster_rows   = TRUE,
+  show_rownames  = TRUE,
+  save_dir       = deg_dir,
+  color_palette = c("lightgray", "#7B1FA2", "black", "gold") ,
+  save_plot      = TRUE
+)
+
+## 8.3 ROC curves for the top differential features (per-feature discrimination)
+library(pROC)
+stat_obj <- VarFeature_ROC(stat_obj, data_type = "clean", save_dir = deg_dir, save_plot = TRUE,
+                           palette_name = 'Paired',base_size = 8)
+
+## 8.4 Radar chart summarizing mean expression shifts between groups
+stat_obj <- VarFeature_radarchart(stat_obj, save_dir = deg_dir, save_plot = TRUE,drop_stable = F,base_size = 6,
+                                  sort_by = 'pvalue',plot_width = 8,plot_height = 8,title = '')
+
+## 8.5 Boxplots for the top 3 differential features (raw/clean scale)
+p_box <- PlotDegBoxplot(
+  deg_results = deg_result,
+  expr_data   = stat_obj@clean.data,
+  group_col   = GROUP_COL,
+  top_n       = 5,
+  save_plot   = TRUE,
+  save_dir    = deg_dir
+)
+
+# =============================================================================
+````
+
+### 9 Reporting & Result Export
+
+This section saves model objects, tables, and figures for reproducibility, review, and reuse.
+
+````{r}
+#| label: module1-advanced-18
+#| echo: true
+#| message: false
+#| warning: false
+#| fig-show: hold
+#| out-width: '100%'
+# 9. Reporting & Result Export
+# =============================================================================
+## 9.1 Baseline characteristics table ("Table 1" for a manuscript), written
+## to a Word document for easy copy-paste into a submission.
+stat_obj <- stat_gaze_analysis(stat_obj, save_word = TRUE, save_dir = OUTPUT_DIR)
+cat("\nBaseline table generated.\n")
+if (!is.null(stat_obj@baseline.table)) print(stat_obj@baseline.table)
+
+## 9.2 Sanity check: replay the exact same cleaning pipeline on a fresh
+## sample of data, to confirm the pipeline generalizes beyond the training rows.
+set.seed(123)
+new_data <- mat[sample(seq_len(nrow(mat)), 30), ]
+processed_new <- process_new_data(stat_object = stat_obj, new_data = new_data, save_data = FALSE)
+cat("\nNew data processed. Dimensions:", nrow(processed_new), "x", ncol(processed_new), "\n")
+
+## 9.3 Extract the final cleaned dataset for use outside icare if needed
+final_clean <- ExtractCleanData(stat_obj)
+cat("\nFinal clean dataset dimensions:", nrow(final_clean), "x", ncol(final_clean), "\n")
+write.csv(final_clean, file.path(OUTPUT_DIR, "clean_data_final.csv"), row.names = FALSE)
+
+## 9.4 Save the Stat object itself — Module 2 (modeling) and Module 3
+## (subtyping) both load this file directly via readRDS("stat_obj.rds"),
+## so it is intentionally saved at the project root rather than inside
+## OUTPUT_DIR.
+saveRDS(stat_obj, file = "stat_obj.rds")
+
+cat("\n========================================\n")
+cat("Module 1 (advanced) pipeline finished successfully!\n")
+cat("All figures/tables saved under:", OUTPUT_DIR, "\n")
+cat("========================================\n")
+````
+
+## Key Figure Preview
+
+### SCI Composite: Data Cleaning and Exploration
+
+Panels follow a publication narrative: A, PCA; B, feature correlations; C, grouped distributions; D, differential-feature heatmap; E, single-feature ROC; F, multivariable feature profile. Describe the global data structure before reporting differential features and discrimination.
+
+<object data="image/composite_figures/module1_composite.pdf" type="application/pdf" width="100%" height="760"><a href="image/composite_figures/module1_composite.pdf">Download Module 1 SCI composite</a></object>
+
+<object data="image/module1/key_figures/pca.pdf" type="application/pdf" width="100%" height="620"><a href="image/module1/key_figures/pca.pdf">PCA plot</a></object>
+
+<object data="image/module1/key_figures/feature_heatmap.pdf" type="application/pdf" width="100%" height="760"><a href="image/module1/key_figures/feature_heatmap.pdf">Feature heatmap</a></object>
+
+<object data="image/module1/key_figures/roc_curve.pdf" type="application/pdf" width="100%" height="540"><a href="image/module1/key_figures/roc_curve.pdf">ROC curve</a></object>

@@ -1,27 +1,65 @@
 project:
   type: book
+  output-dir: _book
+  resources:
+    - image/**
+    - assets/**
 
 book:
-  title: "ICARE Guide"
-  author: "Huaichao Luo"
-  date: "2026/6/2"
+  title: "icare: Intelligent ClinlAbomics Research Expedition"
+  subtitle: "Clinical and Omics Analysis from Data Cleaning to Deployment"
+  author:
+    - name: Huaichao Luo
+    - name: Fei Long
+    - name: Hongyan Lin
+    - name: Jian Huang
+    - name: Guangchuang Yu
+  date: last-modified
+  repo-url: https://github.com/leonardfei/Icare_test
+  repo-branch: docs
+  repo-actions: [edit, issue]
   chapters:
     - index.qmd
-    - intro.qmd
-    - Module1.qmd
-    - Module2.qmd
-    - Module3.qmd
-    - Module4.qmd
-    - summary.qmd
-    - references.qmd
-
-bibliography: references.bib
+    - prerequisites.qmd
+    - part: "Module 1: Data Cleaning and Exploration"
+      chapters:
+        - module1-quickstart.qmd
+        - module1-advanced.qmd
+    - part: "Module 2: Classification Modeling"
+      chapters:
+        - module2-quickstart.qmd
+        - module2-advanced.qmd
+    - part: "Module 3: Unsupervised Subtyping"
+      chapters:
+        - module3-quickstart.qmd
+        - module3-advanced.qmd
+    - part: "Module 4: Survival and Prognosis"
+      chapters:
+        - module4-quickstart.qmd
+        - module4-advanced.qmd
+        - module4-pro.qmd
+  search: true
+  page-footer:
+    left: "icare 1.0.1 · GPL-3"
+    right: "Source: YuLab-SMU/icare"
 
 format:
   html:
     theme: cosmo
-  pdf:
-    documentclass: scrreprt
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    code-copy: true
+    code-overflow: wrap
+    html-math-method: katex
 
-editor: visual
+execute:
+  enabled: true
+  freeze: auto
+  cache: true
+  error: false
 
+language:
+  title-block-published: "Updated"
