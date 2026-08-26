@@ -3,6 +3,7 @@
 .RData
 .Rproj.user/
 .quarto/
+.ci/
 _book/
 _freeze/
 *_cache/
