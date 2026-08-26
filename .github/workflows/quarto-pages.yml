@@ -62,49 +62,75 @@ jobs:
            "rpart",
            "klaR",
            "C50",
-
-           # General data analysis and plotting
-           "ggplot2",
-           "dplyr",
-           "tidyr",
-           "readxl",
-           "patchwork",
-           "ggrepel",
-           "ggridges",
-           "plotly",
-           "pROC",
-           "circlize",
-           "shiny",
-
-           # Clustering / unsupervised analysis
-           "NMF",
-           "mclust",
-
-           # Survival analysis
-           "survival",
-           "survminer",
-           "rms",
-           "risksetROC",
-           "maxstat",
-           "survex",
-           "dcurves",
-
-           # mlr3 ecosystem
-           "mlr3",
-           "mlr3proba",
-           "mlr3viz",
-           "mlr3learners",
            "ranger",
-
-           # Advanced mlr3 / tuning
+           
+           # icare Suggests available from CRAN
+           "Boruta",
+           "DALEX",
+           "DT",
+           "Hmisc",
+           "NMF",
+           "NbClust",
+           "RANN",
+           "ROSE",
+           "Rtsne",
+           "UpSetR",
+           "autoReg",
+           "bbotk",
+           "bslib",
+           "c060",
+           "dcurves",
+           "digest",
+           "e1071",
+           "factoextra",
+           "flextable",
+           "forestploter",
+           "ipred",
+           "jsonlite",
+           "magrittr",
+           "maxstat",
+           "mclust",
+           "mice",
+           "mlbench",
+           "mlr3",
+           "mlr3learners",
            "mlr3mbo",
-           "bbotk"
-         ))
+           "mlr3pipelines",
+           "mlr3tuning",
+           "mlr3viz",
+           "nnls",
+           "nricens",
+           "officer",
+           "paradox",
+           "plotly",
+           "rBayesianOptimization",
+           "randomForestSRC",
+           "risksetROC",
+           "rms",
+           "shapviz",
+           "shiny",
+           "shinydashboard",
+           "survex",
+           "survminer",
+           "testthat",
+           "themis",
+           "tidyverse",
+           "timeROC",
+           "umap"
+           )) 
+                    
           remotes::install_github(
+            c(
             "mlr-org/mlr3extralearners",
-            upgrade = "never"
+            "mlr-org/mlr3proba",
+            "mlr-org/mlr3tuningspaces"
+            ),
+            upgrade = "never",
+            dependencies = TRUE
           )
-          BiocManager::install("ComplexHeatmap", ask = FALSE, update = FALSE)
+         
+          BiocManager::install(c("ComplexHeatmap","survcomp"), ask = FALSE, update = FALSE)
+          
           remotes::install_local(
             ".ci/DMwR",
             dependencies = TRUE,
