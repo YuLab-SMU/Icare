@@ -46,6 +46,8 @@ jobs:
 
       - name: Install icare and its workflow dependencies
         shell: Rscript {0}
+        env:
+          GITHUB_PAT: ${{ github.token }}
         run: |
           install.packages(c("remotes", "BiocManager"))
           BiocManager::install("ComplexHeatmap", ask = FALSE, update = FALSE)
