@@ -49,7 +49,58 @@ jobs:
         env:
           GITHUB_PAT: ${{ github.token }}
         run: |
-          install.packages(c("remotes", "BiocManager"))
+         install.packages(c(
+           "remotes",
+           "BiocManager",
+
+           # Classification / caret backends
+           "caret",
+           "randomForest",
+           "glmnet",
+           "gbm",
+           "rpart",
+
+           # General data analysis and plotting
+           "ggplot2",
+           "dplyr",
+           "tidyr",
+           "readxl",
+           "patchwork",
+           "ggrepel",
+           "ggridges",
+           "plotly",
+           "pROC",
+           "circlize",
+           "shiny",
+
+           # Clustering / unsupervised analysis
+           "NMF",
+           "mclust",
+
+           # Survival analysis
+           "survival",
+           "survminer",
+           "rms",
+           "risksetROC",
+           "maxstat",
+           "survex",
+           "dcurves",
+
+           # mlr3 ecosystem
+           "mlr3",
+           "mlr3proba",
+           "mlr3viz",
+           "mlr3learners",
+           "ranger",
+
+           # Advanced mlr3 / tuning
+           "mlr3mbo",
+           "bbotk"
+         ))
+          remotes::install_github(
+            "mlr-org/mlr3extralearners",
+            upgrade = "never"
+          )
           BiocManager::install("ComplexHeatmap", ask = FALSE, update = FALSE)
           remotes::install_local(
             ".ci/DMwR",
