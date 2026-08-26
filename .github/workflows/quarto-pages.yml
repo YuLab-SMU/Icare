@@ -60,6 +60,8 @@ jobs:
            "glmnet",
            "gbm",
            "rpart",
+           "klaR",
+           "C50",
 
            # General data analysis and plotting
            "ggplot2",
