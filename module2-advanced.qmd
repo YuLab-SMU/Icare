@@ -519,8 +519,8 @@ This section trains and compares candidate models. Select models using discrimin
 ````{r}
 #| label: module2-advanced-20
 #| echo: true
-#| message: true
-#| warning: true
+#| message: false
+#| warning: false
 #| fig-show: hold
 #| out-width: '100%'
 # 8. Ensemble Models
@@ -582,8 +582,8 @@ This section trains and compares candidate models. Select models using discrimin
 ````{r}
 #| label: module2-advanced-21
 #| echo: true
-#| message: true
-#| warning: true
+#| message: false
+#| warning: false
 #| fig-show: hold
 #| out-width: '100%'
 # 9. Hyperparameter Tuning of the Best Model
@@ -687,8 +687,8 @@ This section trains and compares candidate models. Select models using discrimin
 ````{r}
 #| label: module2-advanced-23
 #| echo: true
-#| message: true
-#| warning: true
+#| message: false
+#| warning: false
 #| fig-show: hold
 #| out-width: '100%'
 # 11. Model Explainability (XAI)
@@ -696,7 +696,7 @@ This section trains and compares candidate models. Select models using discrimin
 xai_dir <- sub_dir("04_explainability")
 
 ## 11.1 DALEX explainer for the best model, plus performance/importance plots.
-explainer <- CreateExplainer(model_obj,model = "rf")
+explainer <- CreateExplainer(model_obj)
 ExplainModelPerformance(explainer, geom = "roc", save_plots = TRUE, save_dir = xai_dir,
                         plot_width = 6, plot_height = 5)
 ExplainVariableImportance(explainer, B = 10, top_n = 20, filter_zero = TRUE,
