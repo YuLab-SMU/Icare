@@ -66,7 +66,6 @@ jobs:
            
            # icare Suggests available from CRAN
            "Boruta",
-           "Biobase",
            "DALEX",
            "DT",
            "Hmisc",
@@ -130,7 +129,7 @@ jobs:
             dependencies = TRUE
           )
          
-          BiocManager::install(c("ComplexHeatmap","survcomp"), ask = FALSE, update = FALSE)
+          BiocManager::install(c("ComplexHeatmap","survcomp","Biobase"), ask = FALSE, update = FALSE)
           
           remotes::install_local(
             ".ci/DMwR",
