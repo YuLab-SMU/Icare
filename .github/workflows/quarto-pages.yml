@@ -31,17 +31,10 @@ jobs:
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Install the dependency installers
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          extra-packages: |
-            any::remotes
-            any::BiocManager
-          needs: website
-
       - name: Install icare and its workflow dependencies
         shell: Rscript {0}
         run: |
+          install.packages(c("remotes", "BiocManager"))
           BiocManager::install("ComplexHeatmap", ask = FALSE, update = FALSE)
           remotes::install_github(
             "YuLab-SMU/icare",
