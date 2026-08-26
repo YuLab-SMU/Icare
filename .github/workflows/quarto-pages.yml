@@ -55,6 +55,7 @@ jobs:
 
            # Classification / caret backends
            "caret",
+           "caretEnsemble"
            "randomForest",
            "glmnet",
            "gbm",
