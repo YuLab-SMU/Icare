@@ -696,7 +696,7 @@ This section trains and compares candidate models. Select models using discrimin
 xai_dir <- sub_dir("04_explainability")
 
 ## 11.1 DALEX explainer for the best model, plus performance/importance plots.
-explainer <- CreateExplainer(model_obj)
+explainer <- CreateExplainer(model_obj,model = "rf")
 ExplainModelPerformance(explainer, geom = "roc", save_plots = TRUE, save_dir = xai_dir,
                         plot_width = 6, plot_height = 5)
 ExplainVariableImportance(explainer, B = 10, top_n = 20, filter_zero = TRUE,
