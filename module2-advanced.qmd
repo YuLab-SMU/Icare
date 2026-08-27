@@ -997,17 +997,3 @@ cat("Module 2 (advanced) pipeline finished successfully!\n")
 cat("All figures/tables saved under:", OUTPUT_DIR, "\n")
 cat("========================================\n")
 ````
-
-## Key Figure Preview
-
-### SCI Composite: Classification Model Development and Explanation
-
-Panels show: A, feature-selection consensus; B, RFE performance; C, model ROC; D, calibration; E, confusion matrix; F, SHAP effects. Report feature selection, discrimination, calibration, threshold performance, and explanations—not AUC alone.
-
-<object data="image/composite_figures/module2_composite.pdf" type="application/pdf" width="100%" height="760"><a href="image/composite_figures/module2_composite.pdf">Download Module 2 SCI composite</a></object>
-
-<object data="image/module2/key_figures/feature_consensus.pdf" type="application/pdf" width="100%" height="900"><a href="image/module2/key_figures/feature_consensus.pdf">Feature-selection consensus</a></object>
-
-<object data="image/module2/key_figures/multi_roc.pdf" type="application/pdf" width="100%" height="620"><a href="image/module2/key_figures/multi_roc.pdf">Model ROC curves</a></object>
-
-<object data="image/module2/key_figures/confusion_matrix.pdf" type="application/pdf" width="100%" height="540"><a href="image/module2/key_figures/confusion_matrix.pdf">Confusion matrix</a></object>

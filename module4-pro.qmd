@@ -487,16 +487,12 @@ km_maxstat   <- surv_plot_risk_km(best_lrn, train_task, "maxstat",
                                   n_boot = 100, minprop = 0.3)
 
 # Save training KM plots
-pdf(file.path(sub_dir("03_evaluation"), "KM_train_median.pdf"), width = 8, height = 7)
-print(km_median); dev.off()
-pdf(file.path(sub_dir("03_evaluation"), "KM_train_tertile.pdf"), width = 8, height = 7)
-print(km_tertile); dev.off()
-pdf(file.path(sub_dir("03_evaluation"), "KM_train_quartile.pdf"), width = 8, height = 7)
-print(km_quartile); dev.off()
-pdf(file.path(sub_dir("03_evaluation"), "KM_train_p_optimize.pdf"), width = 8, height = 7)
-print(km_p_optimize); dev.off()
-pdf(file.path(sub_dir("03_evaluation"), "KM_train_maxstat.pdf"), width = 8, height = 7)
-print(km_maxstat); dev.off()
+
+print(km_median)
+print(km_tertile)
+print(km_quartile)
+print(km_p_optimize)
+print(km_maxstat)
 
 # Apply the training median cutoff to the validation set (fixed threshold)
 train_cutoff <- get_cf(km_median)
@@ -505,8 +501,7 @@ km_val_fixed <- surv_plot_risk_km(best_lrn, val_task,
                                   cutoff_method = "custom",
                                   custom_cutoffs = train_cutoff,
                                   risk_table = TRUE)
-pdf(file.path(sub_dir("03_evaluation"), "KM_val_using_train_cutoff.pdf"), width = 8, height = 7)
-print(km_val_fixed); dev.off()
+print(km_val_fixed)
 
 # ---- 4.2 Subgroup forest plot (using training set) ----
 # Subset prog to training samples to ensure row consistency

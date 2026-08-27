@@ -659,17 +659,3 @@ cat("Best method by Silhouette score:", eval_summary$Method[which.max(eval_summa
 cat("All results saved under:", OUTPUT_DIR, "\n")
 cat("========================================\n")
 ````
-
-## Key Figure Preview
-
-### SCI Composite: Unsupervised Subtyping and Subtype Profiles
-
-Panels show: A, NMF basis; B, LPA profiles; C, t-SNE subtype distribution; D, NMF rank diagnostics; E, subtype-marker heatmap; F, cross-method subtype flow. Report the basis for subtype number, separation, agreement, and interpretable marker patterns.
-
-<object data="image/composite_figures/module3_composite.pdf" type="application/pdf" width="100%" height="760"><a href="image/composite_figures/module3_composite.pdf">Download Module 3 SCI composite</a></object>
-
-<object data="image/module3/key_figures/nmf_basis.pdf" type="application/pdf" width="100%" height="720"><a href="image/module3/key_figures/nmf_basis.pdf">NMF basis plot</a></object>
-
-<object data="image/module3/key_figures/lpa_profile.pdf" type="application/pdf" width="100%" height="520"><a href="image/module3/key_figures/lpa_profile.pdf">LPA profile plot</a></object>
-
-<object data="image/module3/key_figures/tsne_subtypes.pdf" type="application/pdf" width="100%" height="540"><a href="image/module3/key_figures/tsne_subtypes.pdf">t-SNE subtype plot</a></object>

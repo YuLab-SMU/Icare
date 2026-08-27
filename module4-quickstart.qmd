@@ -242,13 +242,11 @@ km_val <- surv_plot_risk_km(learner, val_task,
 print(km_val)
 
 # Save KM plots
-pdf(file.path(OUTPUT_DIR, "KM_train_median.pdf"), width = 8, height = 7)
 print(km_median)
-dev.off()
 
-pdf(file.path(OUTPUT_DIR, "KM_val_median.pdf"), width = 8, height = 7)
+
 print(km_val)
-dev.off()
+
 
 # ---------------------------------------------------------------------------
 ````

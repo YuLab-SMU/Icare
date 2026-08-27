@@ -580,17 +580,3 @@ cat("Module 1 (advanced) pipeline finished successfully!\n")
 cat("All figures/tables saved under:", OUTPUT_DIR, "\n")
 cat("========================================\n")
 ````
-
-## Key Figure Preview
-
-### SCI Composite: Data Cleaning and Exploration
-
-Panels follow a publication narrative: A, PCA; B, feature correlations; C, grouped distributions; D, differential-feature heatmap; E, single-feature ROC; F, multivariable feature profile. Describe the global data structure before reporting differential features and discrimination.
-
-<object data="image/composite_figures/module1_composite.pdf" type="application/pdf" width="100%" height="760"><a href="image/composite_figures/module1_composite.pdf">Download Module 1 SCI composite</a></object>
-
-<object data="image/module1/key_figures/pca.pdf" type="application/pdf" width="100%" height="620"><a href="image/module1/key_figures/pca.pdf">PCA plot</a></object>
-
-<object data="image/module1/key_figures/feature_heatmap.pdf" type="application/pdf" width="100%" height="760"><a href="image/module1/key_figures/feature_heatmap.pdf">Feature heatmap</a></object>
-
-<object data="image/module1/key_figures/roc_curve.pdf" type="application/pdf" width="100%" height="540"><a href="image/module1/key_figures/roc_curve.pdf">ROC curve</a></object>
