@@ -668,21 +668,31 @@ This section applies the trained object to new samples. Validate input format, p
 # Instead of the veteran example, use actual rows from your training data
 # (or real new data) that contain all selected features.
 # For demonstration, we take the first 2 rows of the original feature matrix.
-new_patients <- data.frame(
-  Mean_corpuscular_hemoglobin_concentration = c(33, 34),
-  Basophil_count = c(0.02, 0.03),
-  Monocytes = c(0.6, 0.7),
-  Neutrophilic_granulocyte = c(4.2, 5.1),
-  Red_blood_cell_distribution_width_CV = c(12.3, 11.8),
-  Mean_red_blood_cell_volume = c(89, 92),
-  Lymphocytes_count = c(1.8, 2.1),
-  Platelet_volume_distribution_width = c(12.0, 13.1),
-  Lymphocytes = c(1.8, 2.1),   # note: this may be same as Lymphocytes_count? check your data
-  Monocytes_count = c(0.6, 0.7),
-  Neutrophilic_granulocyte_count = c(4.2, 5.1),
-  Mean_platelet_volume = c(10.5, 11.0),
-  row.names = c("patient_1", "patient_2")
-)
+#new_patients <- data.frame(
+#  Mean_corpuscular_hemoglobin_concentration = c(33, 34),
+#  Basophil_count = c(0.02, 0.03),
+#  Monocytes = c(0.6, 0.7),
+#  Neutrophilic_granulocyte = c(4.2, 5.1),
+#  Red_blood_cell_distribution_width_CV = c(12.3, 11.8),
+#  Mean_red_blood_cell_volume = c(89, 92),
+#  Lymphocytes_count = c(1.8, 2.1),
+#  Platelet_volume_distribution_width = c(12.0, 13.1),
+#  Lymphocytes = c(1.8, 2.1),   # note: this may be same as Lymphocytes_count? check your data
+#  Monocytes_count = c(0.6, 0.7),
+#  Neutrophilic_granulocyte_count = c(4.2, 5.1),
+#  Mean_platelet_volume = c(10.5, 11.0),
+#  row.names = c("patient_1", "patient_2")
+#)
+
+# Features actually required by the fitted PrognosiX model
+required_features <- prog@best.model$train_cols
+cat("Required prediction features:\n")
+print(required_features)
+# Use actual training observations as deployment examples
+new_patients <- as.data.frame(prog@clean.data[train_idx[1:2], , drop = FALSE])
+# Keep exactly the features required by the fitted model
+new_patients <- new_patients[, required_features, drop = FALSE]
+rownames(new_patients) <- c("patient_1", "patient_2")
 
 risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
 pred_groups_med <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
