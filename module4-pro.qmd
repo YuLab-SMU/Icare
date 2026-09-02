@@ -912,32 +912,32 @@ prog@split.data <- list(train_idx = train_idx, val_idx = val_idx)
 saveRDS(prog, file = file.path(sub_dir("data"), "prog_obj_final.rds"))
 
 # ---- 8.1 Predict risk for new patients ----
-new_patients <- data.frame(
-  Mean_corpuscular_hemoglobin_concentration = c(33, 34),
-  Basophil_count = c(0.02, 0.03),
-  Monocytes = c(0.6, 0.7),
-  Eosinophil_count=c(0.02, 0.03),
-  Basophil=c(0.6, 0.7),
-  Neutrophilic_granulocyte = c(4.2, 5.1),
-  Red_blood_cell_distribution_width_CV = c(12.3, 11.8),
-  Mean_red_blood_cell_volume = c(89, 92),
-  Lymphocytes_count = c(1.8, 2.1),
-  Platelet_volume_distribution_width = c(12.0, 13.1),
-  Lymphocytes = c(1.8, 2.1),
-  Monocytes_count = c(0.6, 0.7),
-  Neutrophilic_granulocyte_count = c(4.2, 5.1),
-  Mean_platelet_volume = c(10.5, 11.0),
-  row.names = c("patient_1", "patient_2")
-)
+#new_patients <- data.frame(
+#  Mean_corpuscular_hemoglobin_concentration = c(33, 34),
+#  Basophil_count = c(0.02, 0.03),
+#  Monocytes = c(0.6, 0.7),
+#  Eosinophil_count=c(0.02, 0.03),
+#  Basophil=c(0.6, 0.7),
+#  Neutrophilic_granulocyte = c(4.2, 5.1),
+#  Red_blood_cell_distribution_width_CV = c(12.3, 11.8),
+#  Mean_red_blood_cell_volume = c(89, 92),
+#  Lymphocytes_count = c(1.8, 2.1),
+#  Platelet_volume_distribution_width = c(12.0, 13.1),
+#  Lymphocytes = c(1.8, 2.1),
+#  Monocytes_count = c(0.6, 0.7),
+#  Neutrophilic_granulocyte_count = c(4.2, 5.1),
+#  Mean_platelet_volume = c(10.5, 11.0),
+#  row.names = c("patient_1", "patient_2")
+#)
 
-risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
-pred_groups_med <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
-pred_groups_cus <- predict_risk_groups(prog, new_patients,
-                                       cutoff_method = "custom",
-                                       custom_cutoffs = opt_cutoff)
-cat("Risk scores:\n"); print(risk_scores)
-cat("Median groups:\n"); print(pred_groups_med)
-cat("Custom groups:\n"); print(pred_groups_cus)
+#risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
+#pred_groups_med <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
+#pred_groups_cus <- predict_risk_groups(prog, new_patients,
+#                                       cutoff_method = "custom",
+#                                       custom_cutoffs = opt_cutoff)
+#cat("Risk scores:\n"); print(risk_scores)
+#cat("Median groups:\n"); print(pred_groups_med)
+#cat("Custom groups:\n"); print(pred_groups_cus)
 
 # ---- 8.2 Deployment manager and Shiny app ----
 manager <- New_Prog_Manager(prog)
