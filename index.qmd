@@ -37,7 +37,7 @@ Each module contains a concise quick-start chapter and a more complete advanced 
 
 ## Authors
 
-The `icare` package is authored by Huaichao Luo, Fei Long, Hongyan Lin, Jian Huang, and Guangchuang Yu. Huaichao Luo is the package maintainer (`luohc@uestc.edu.cn`). Package development and issue tracking take place in the [YuLab-SMU/icare repository](https://github.com/YuLab-SMU/icare).
+The `icare` package is authored by Huaichao Luo, Fei Long, Hongyan Lin, Chunhui Yuan, Fubing Wang, Jian Huang, and Guangchuang Yu. Huaichao Luo is the package maintainer (`luohc@uestc.edu.cn`). Package development and issue tracking take place in the [YuLab-SMU/icare repository](https://github.com/YuLab-SMU/icare).
 
 ## Installation
 
@@ -65,6 +65,6 @@ Start with [Before You Begin](prerequisites.qmd), then choose a quick-start chap
 
 When using the package, cite:
 
-> Luo H, Long F, Lin H, Huang J, Yu G. *icare: Intelligent ClinlAbomics Research Expedition*. R package version 1.0.1.
+> Luo H, Long F, Lin H, Yuan C, Wang F, Huang J, Yu G. *icare: Intelligent ClinlAbomics Research Expedition*. R package version 1.0.1.
 
 `icare` is distributed under the GPL-3 license. This tutorial follows the active development version of the official repository; consult the repository history and `NEWS.md` when exact version reproducibility is required.
