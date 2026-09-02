@@ -299,7 +299,7 @@ mat$sex <- inf$Gender
 
 inf$time <- inf$`Combined days to last followup or death`
 inf$event <- inf$`Vital status`
-inf$event <- ifelse(inf$event == "Dead", 0, 1)
+inf$event <- ifelse(inf$event == "Dead", 1, 0)
 
 # Keep only disease samples (group == 1)
 inf <- inf[inf$group == 1, ]
