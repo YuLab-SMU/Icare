@@ -683,24 +683,14 @@ This section applies the trained object to new samples. Validate input format, p
 #  row.names = c("patient_1", "patient_2")
 #)
 
-# Features actually required by the fitted PrognosiX model
-required_features <- prog@best.model$train_cols
-cat("Required prediction features:\n")
-print(required_features)
-# Use actual training observations as deployment examples
-new_patients <- as.data.frame(prog@clean.data[train_idx[1:2], , drop = FALSE])
-# Keep exactly the features required by the fitted model
-new_patients <- new_patients[, required_features, drop = FALSE]
-rownames(new_patients) <- c("patient_1", "patient_2")
-
-risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
-pred_groups_med <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
-pred_groups_cus <- predict_risk_groups(prog, new_patients,
-                                       cutoff_method = "custom",
-                                       custom_cutoffs = opt_cutoff)
-cat("Risk scores:\n"); print(risk_scores)
-cat("Median groups:\n"); print(pred_groups_med)
-cat("Custom groups:\n"); print(pred_groups_cus)
+#risk_scores <- predict_prognosix(prog, new_patients, impute = TRUE)
+#pred_groups_med <- predict_risk_groups(prog, new_patients, cutoff_method = "median")
+#pred_groups_cus <- predict_risk_groups(prog, new_patients,
+#                                       cutoff_method = "custom",
+#                                       custom_cutoffs = opt_cutoff)
+#cat("Risk scores:\n"); print(risk_scores)
+#cat("Median groups:\n"); print(pred_groups_med)
+#cat("Custom groups:\n"); print(pred_groups_cus)
 
 manager <- New_Prog_Manager(prog)
 
