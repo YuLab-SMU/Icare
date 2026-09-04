@@ -12,7 +12,6 @@ The book is source-first: Quarto pages, tutorial data, branding assets, and publ
 - `module2-*.qmd`: `Train_Model` classification modeling
 - `module3-*.qmd`: `Subtyping` unsupervised discovery and validation
 - `module4-*.qmd`: `PrognosiX` survival and prognostic modeling
-- `image/`: module-level PDF figures and four composite manuscript figures
 - `data/`: tutorial data used by the survival workflow
 - `.github/workflows/quarto-pages.yml`: PR build check and deployment from `docs`
 

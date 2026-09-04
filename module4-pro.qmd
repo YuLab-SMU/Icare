@@ -262,7 +262,7 @@ This section imports and organizes the data. Check dimensions and variable codin
 #| out-width: '100%'
 # 1. Data preparation (move time/status to info.data)
 # ---------------------------------------------------------------------------
-raw_dis <- as.data.frame(read_excel("data/PMID37633276_DIA_plasmaproomic.xlsx", sheet = 3))
+raw_dis <- as.data.frame(read_excel("data/PMID37633276_DIA_plasmaproomic.xlsx", sheet = "Table S1B"))
 raw_dis <- raw_dis[!grepl(x = raw_dis$`Case ID`, pattern = "^KC"), ]
 
 # Extract numeric features (laboratory parameters)

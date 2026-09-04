@@ -183,8 +183,6 @@ This section applies the trained object to new samples. Validate input format, p
 rm(list = ls())
 library(icare)
 library(caret)
-#devtools::document("../../icare-git/")
-#devtools::install("../../icare-git/")
 # ---------------------------------------------------------------------------
 ````
 

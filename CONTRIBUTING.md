@@ -10,7 +10,6 @@ Changes to this book are reviewed through GitHub pull requests targeting the `do
 - Do not commit `_book/`, Quarto caches, frozen execution output, temporary R objects, or analysis output directories.
 - Preserve a strict development/validation boundary in modeling examples.
 - Do not change a package function name or claimed capability without checking the current `main` branch of `YuLab-SMU/icare`.
-- Add new static manuscript figures under the matching `image/module*/` directory and prefer vector PDF output.
 - Use informative alternative text or a clear figure caption for every reader-facing figure.
 
 ## Validation

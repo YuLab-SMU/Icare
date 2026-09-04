@@ -155,10 +155,6 @@ This section applies the trained object to new samples. Validate input format, p
 #| out-width: '100%'
 #   8) Deployment: prediction functions + interactive Shiny app
 # =============================================================================
-#devtools::document("../../icare-git/")
-if (dir.exists("../../icare-git/")) devtools::check("../../icare-git/")
-#devtools::install("../../icare-git/")
-library(icare)
 # ---------------------------------------------------------------------------
 ````
 
@@ -226,7 +222,7 @@ This section imports and organizes the data. Check dimensions and variable codin
 #| out-width: '100%'
 # 1. Data Preparation (custom Excel data)
 # ---------------------------------------------------------------------------
-raw_dis <- as.data.frame(read_excel("data/PMID37633276_DIA_plasmaproomic.xlsx", sheet = 3))
+raw_dis <- as.data.frame(read_excel("data/PMID37633276_DIA_plasmaproomic.xlsx", sheet = "Table S1B"))
 raw_dis <- raw_dis[!grepl(x = raw_dis$`Case ID`, pattern = "^KC"), ]
 
 # Extract numeric features

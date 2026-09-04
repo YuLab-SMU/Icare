@@ -30,7 +30,7 @@ This section performs the core analysis for this stage. Review the output immedi
 # =============================================================================
 # Audience : Users who want a trained, evaluated survival model without
 #            extensive benchmarking, SHAP, or DCA.
-# Dataset  : survival::veteran (built-in lung cancer trial). Replace Section 1
+# Dataset  : Replace Section 1
 #            with your own data.frame (time, status, predictors).
 # For advanced features (tuning, benchmarking, DCA, Shiny app), see
 # "04_module4_survival_ADVANCED.R".

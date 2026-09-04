@@ -41,7 +41,6 @@ icare-quarto-book/
 ├── module*.qmd
 ├── assets/       # Book branding
 ├── data/         # Tutorial data
-├── image/        # Publication-ready static figures
 └── .github/      # Automated rendering workflow
 ```
 

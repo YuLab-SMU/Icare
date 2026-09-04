@@ -2,7 +2,6 @@ project:
   type: book
   output-dir: _book
   resources:
-    - image/**
     - assets/**
 
 book:
@@ -17,7 +16,7 @@ book:
     - name: Jian Huang
     - name: Guangchuang Yu
   date: last-modified
-  repo-url: https://github.com/leonardfei/Icare_test
+  repo-url: https://github.com/YuLab-SMU/icare
   repo-branch: docs
   repo-actions: [edit, issue]
   chapters:
