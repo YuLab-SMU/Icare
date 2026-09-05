@@ -1,0 +1,143 @@
+name: Publish Quarto Book
+
+on:
+  push:
+    branches: [docs]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quarto-book-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish-book:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the book source (docs)
+        uses: actions/checkout@v4
+        with:
+          ref: docs
+          fetch-depth: 0
+
+      - name: Check out the icare package source (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .ci/icare
+          fetch-depth: 0
+
+      - name: Check out the archived DMwR source
+        uses: actions/checkout@v4
+        with:
+          repository: cran/DMwR
+          path: .ci/DMwR
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+
+      - name: Install icare and its workflow dependencies
+        shell: Rscript {0}
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          install.packages(c(
+            "remotes",
+            "BiocManager",
+
+            # Classification / caret backends
+            "caret",
+            "caretEnsemble",
+            "randomForest",
+            "glmnet",
+            "gbm",
+            "rpart",
+            "klaR",
+            "C50",
+            "ranger",
+
+            # icare Suggests available from CRAN
+            "Boruta",
+            "DALEX",
+            "DT",
+            "Hmisc",
+            "NMF",
+            "NbClust",
+            "RANN",
+            "ROSE",
+            "Rtsne",
+            "UpSetR",
+            "autoReg",
+            "bbotk",
+            "bslib",
+            "c060",
+            "dcurves",
+            "digest",
+            "e1071",
+            "factoextra",
+            "flextable",
+            "forestploter",
+            "ipred",
+            "jsonlite",
+            "magrittr",
+            "maxstat",
+            "mclust",
+            "mice",
+            "mlbench",
+            "mlr3",
+            "mlr3learners",
+            "mlr3mbo",
+            "mlr3pipelines",
+            "mlr3tuning",
+            "mlr3viz",
+            "nnls",
+            "nricens",
+            "officer",
+            "paradox",
+            "plotly",
+            "rBayesianOptimization",
+            "randomForestSRC",
+            "risksetROC",
+            "rms",
+            "shapviz",
+            "shiny",
+            "shinydashboard",
+            "survex",
+            "survminer",
+            "testthat",
+            "themis",
+            "tidyverse",
+            "timeROC",
+            "umap"
+          ))
+
+          remotes::install_github(
+            c(
+              "mlr-org/mlr3extralearners",
+              "mlr-org/mlr3proba",
+              "mlr-org/mlr3tuningspaces"
+            ),
+            upgrade = "never",
+            dependencies = TRUE
+          )
+
+          BiocManager::install(c("ComplexHeatmap", "survcomp", "Biobase"), ask = FALSE, update = FALSE)
+
+          remotes::install_local(".ci/DMwR", dependencies = TRUE, upgrade = "never")
+          remotes::install_local(".ci/icare", dependencies = TRUE, upgrade = "never")
+
+      - name: Publish book to gh-pages
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+          path: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
