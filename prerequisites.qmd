@@ -1,0 +1,71 @@
+# Before You Begin
+
+## Software and Package Setup
+
+The package requires R 3.5.0 or later. Rendering this book also requires the Quarto CLI. Install `icare` from its official GitHub repository and allow R to install the package dependencies used by the selected workflow.
+
+```{r}
+#| eval: false
+install.packages(c("remotes", "BiocManager"))
+BiocManager::install("ComplexHeatmap", ask = FALSE, update = FALSE)
+remotes::install_github(
+  "YuLab-SMU/icare",
+  dependencies = TRUE,
+  upgrade = "never"
+)
+```
+
+The advanced chapters deliberately expose optional algorithms. Their chunks check or load packages only when a method needs them. If you do not need a particular method, you may skip that chunk and its optional dependency.
+
+## Object and Workflow Map
+
+```{mermaid}
+flowchart LR
+  A[Raw clinical or omics data] --> B[CreateStatObject]
+  B --> C[Stat: clean and explore]
+  C --> D[Train_Model: classification]
+  C --> E[Subtyping: unsupervised discovery]
+  C --> F[Stat_to_PrognosiX]
+  F --> G[PrognosiX: survival modeling]
+```
+
+Module 1 creates a reusable `Stat` object. Modules 2 and 3 convert that object into task-specific containers. Module 4 keeps survival time and event status in aligned metadata while the predictor matrix is processed independently. The saved object is part of the analysis record because it retains preprocessing and modeling state, not just the final predictions.
+
+## Repository Layout
+
+```text
+icare-quarto-book/
+├── _quarto.yml
+├── index.qmd
+├── prerequisites.qmd
+├── module*.qmd
+├── assets/       # Book branding
+├── data/         # Tutorial data
+└── .github/      # Automated rendering workflow
+```
+
+Generated HTML belongs in `_book/` and is not committed. Quarto caches, frozen execution output, temporary R objects, and chapter-specific analysis folders are also excluded from version control.
+
+## Data Contracts
+
+Before running a chapter, verify the following:
+
+1. Sample identifiers are unique and aligned across predictors, outcomes, and metadata.
+2. Group, class, survival-time, and event columns use the coding expected by the chapter.
+3. Survival time has a documented unit and event status has an explicit censoring definition.
+4. Features intended for NMF are numeric and non-negative; zero-variance features are removed.
+5. Output directories and random seeds are appropriate for the study.
+
+## Prevent Information Leakage
+
+Split development and validation data before estimating any transformation that learns from the observations. Imputation values, scaling parameters, feature selection, hyperparameter tuning, thresholds, and risk cutoffs must be estimated from training data only, then applied unchanged to held-out or external data. Use nested or repeated resampling when feature selection and model tuning are compared within the same study.
+
+## Render Locally
+
+From the book root, run:
+
+```bash
+quarto render
+```
+
+Execution is enabled, successful results are cached, and `freeze: auto` avoids unnecessary recomputation. For a clean reproducibility check, remove local caches outside version control and render in a fresh R environment. The included GitHub Actions workflow performs the same source-to-HTML build whenever the `docs` branch changes.
